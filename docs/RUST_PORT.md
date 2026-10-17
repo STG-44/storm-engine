@@ -73,3 +73,8 @@ file and checks the minimum declared table length without allocating pixels or
 vertices from untrusted counts. It does not yet decode full geometry, texture
 pixels, or validate every internal reference. Original ship rendering and full
 game integration remain pending.
+
+The [first original-resource inspection results](ASSET_VALIDATION.md) record
+4,129 accepted GM headers, 5,732 accepted TX headers, and seven GM compatibility
+cases. The inspector's [four-platform CI run](https://github.com/STG-44/storm-engine/actions/runs/39004859635)
+passed for code commit `ca6a70b6`.
