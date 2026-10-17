@@ -27,7 +27,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Create the GitHub fork and retain upstream branches, tags, and history.
 - [x] Record scope and architecture in the first port commit.
 - [x] Create the Rust workspace, native window, GPU diagnostics, and offscreen rendering.
-- [ ] Verify CI builds for all three operating systems.
+- [x] Verify CI builds for all three operating systems.
 - [ ] Read Storm GM geometry and TX textures with bounds checks and format tests.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
@@ -50,7 +50,17 @@ Verified locally on 2026-10-17:
 - The native window presents three frames and exits successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 
-The Rust CI workflow covers Linux x86_64, Windows x86_64, macOS Apple Silicon, and macOS Intel.
-Its results must be checked before marking the CI milestone complete.
+The [Rust CI run for commit 7c890862](https://github.com/STG-44/storm-engine/actions/runs/39002786501)
+passed all four jobs on 2026-10-17:
+
+- Ubuntu 24.04 x86_64: formatting, Clippy, CPU tests, native build, Vulkan GPU
+  readback/animation test, PNG capture, and three frames in an X11 window under Xvfb.
+  The software adapter was Mesa llvmpipe (LLVM 20.1.2).
+- Windows 2025 x86_64: formatting, Clippy, CPU tests, and native build.
+- macOS 15 Apple Silicon: formatting, Clippy, CPU tests, and native build.
+- macOS 15 Intel: formatting, Clippy, CPU tests, and native build.
+
+CI publishes the native executables and the Linux Vulkan capture as workflow artifacts.
+Windows and hosted macOS checks do not exercise a physical GPU or native window.
 Native platform support must also be verified on representative physical GPUs.
 The user's game resource directory is still needed for integration testing with original ship models and textures.
