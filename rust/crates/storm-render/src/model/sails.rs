@@ -140,6 +140,21 @@ impl SailPatch {
 
     /// Reuses the CPU/GPU allocation; every point on the boundary stays pinned.
     pub fn deform(&self, vertices: &mut [ModelVertex], wind: SailWind, seconds: f32) -> Result<()> {
+        self.deform_with_setting(vertices, wind, seconds, 1.0)
+    }
+
+    /// Gather free edges towards sail1--sail2; a narrow folded band remains at zero.
+    pub fn deform_with_setting(
+        &self,
+        vertices: &mut [ModelVertex],
+        wind: SailWind,
+        seconds: f32,
+        deployed: f32,
+    ) -> Result<()> {
+        ensure!(
+            deployed.is_finite() && (0.0..=1.0).contains(&deployed),
+            "invalid sail deployment"
+        );
         wind.validate()?;
         ensure!(seconds.is_finite(), "invalid sail time");
         ensure!(
@@ -164,7 +179,7 @@ impl SailPatch {
                 } else {
                     (col as f32 / SEGMENTS as f32, row as f32 / SEGMENTS as f32)
                 };
-                vertices[index] = self.vertex(u, v, pressure, flutter, phase);
+                vertices[index] = self.vertex(u, v, pressure, flutter, phase, deployed);
                 index += 1;
             }
         }
@@ -178,8 +193,35 @@ impl SailPatch {
         Ok(())
     }
 
-    fn vertex(&self, u: f32, v: f32, pressure: f32, flutter: f32, phase: f32) -> ModelVertex {
-        let (base, du, dv, envelope, eu, ev, uv) = match self.shape {
+    #[allow(clippy::too_many_arguments)]
+    fn vertex(
+        &self,
+        u: f32,
+        v: f32,
+        pressure: f32,
+        flutter: f32,
+        phase: f32,
+        deployed: f32,
+    ) -> ModelVertex {
+        // Keep a small nonzero band for bundled cloth, avoiding collapsed triangles.
+        // The band is visual cloth only; it contributes no drive at zero deployment.
+        let span = 0.025 + 0.975 * deployed;
+        let shape = if deployed == 1.0 {
+            self.shape
+        } else {
+            match self.shape {
+                SailShape::Quad(p) => {
+                    SailShape::Quad([p[0], p[1], p[1].lerp(p[2], span), p[0].lerp(p[3], span)])
+                }
+                SailShape::Triangle(p) => {
+                    let edge = p[1] - p[0];
+                    let along = ((p[2] - p[0]).dot(edge) / edge.length_squared()).clamp(0.0, 1.0);
+                    let foot = p[0] + edge * along;
+                    SailShape::Triangle([p[0], p[1], foot.lerp(p[2], span)])
+                }
+            }
+        };
+        let (base, du, dv, envelope, eu, ev, uv) = match shape {
             SailShape::Triangle(p) => (
                 p[0] + (p[1] - p[0]) * u + (p[2] - p[0]) * v,
                 p[1] - p[0],
@@ -203,11 +245,21 @@ impl SailPatch {
         let wave_phase = phase + u * 7.0 + v * 11.0;
         let billow = 0.28 * pressure + flutter * wave_phase.sin();
         let wave_derivative = flutter * wave_phase.cos();
-        let height = self.scale * envelope * billow;
+        let fold_phase = v * (6.0 * std::f32::consts::PI);
+        let fold_scale = self.scale * 0.025 * (1.0 - deployed);
+        let fold = fold_scale * v * fold_phase.sin();
+        let fold_derivative =
+            fold_scale * (fold_phase.sin() + v * 6.0 * std::f32::consts::PI * fold_phase.cos());
+        let height = self.scale * deployed * envelope * billow + fold;
         let normal = (du
-            + self.normal * self.scale * (eu * billow + envelope * wave_derivative * 7.0))
+            + self.normal
+                * self.scale
+                * deployed
+                * (eu * billow + envelope * wave_derivative * 7.0))
             .cross(
-                dv + self.normal * self.scale * (ev * billow + envelope * wave_derivative * 11.0),
+                dv + self.normal
+                    * (self.scale * deployed * (ev * billow + envelope * wave_derivative * 11.0)
+                        + fold_derivative),
             )
             .normalize_or_zero();
         ModelVertex {
@@ -278,6 +330,84 @@ mod tests {
             ]),
             SailShape::Triangle([Vec3::ZERO, Vec3::X * 4.0, Vec3::Y * 6.0]),
         ]
+    }
+
+    #[test]
+    fn furling_reduces_both_surfaces_but_preserves_the_attachment_edge_and_uvs() {
+        let calm = SailWind {
+            speed: 0.0,
+            direction: 0.0,
+        };
+        for shape in shapes() {
+            let patch = SailPatch::new(shape).unwrap();
+            let full = patch.vertices(calm, 0.0).unwrap();
+            let indices = patch.indices();
+            let mut vertices = full.clone();
+            for deployed in [1.0, 0.9, 0.5, 0.1, 0.0] {
+                patch
+                    .deform_with_setting(&mut vertices, calm, 2.0, deployed)
+                    .unwrap();
+                let mut area = 0.0;
+                for tri in indices.chunks_exact(3) {
+                    let [a, b, c] = [tri[0], tri[1], tri[2]]
+                        .map(|i| Vec3::from_array(vertices[i as usize].position));
+                    let projected = (b - a).cross(c - a).dot(patch.normal);
+                    assert!(
+                        projected > 1e-6,
+                        "furling must not collapse or reverse triangles"
+                    );
+                    area += projected * 0.5;
+                }
+                let full_area = if patch.is_triangle() { 12.0 } else { 24.0 };
+                assert!((area - full_area * (0.025 + 0.975 * deployed)).abs() < 1e-4);
+                for (v, original) in vertices.iter().zip(&full) {
+                    assert_eq!(v.uv, original.uv);
+                    assert!((Vec3::from_array(v.normal).length() - 1.0).abs() < 1e-5);
+                }
+                for i in 0..=SEGMENTS as usize {
+                    let index = if patch.is_triangle() {
+                        i * (i + 1) / 2
+                    } else {
+                        i
+                    };
+                    assert!(
+                        Vec3::from_array(vertices[index].position)
+                            .distance(Vec3::from_array(full[index].position))
+                            < 1e-6
+                    );
+                }
+            }
+            let furled = vertices.clone();
+            patch
+                .deform_with_setting(
+                    &mut vertices,
+                    SailWind {
+                        speed: 40.0,
+                        direction: 1.0,
+                    },
+                    17.0,
+                    0.0,
+                )
+                .unwrap();
+            for (a, b) in vertices.iter().zip(&furled) {
+                assert_eq!(a.position, b.position, "bundled cloth must not flutter");
+                assert_eq!(a.normal, b.normal);
+            }
+            patch
+                .deform_with_setting(&mut vertices, calm, 0.0, 1.0)
+                .unwrap();
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&vertices),
+                bytemuck::cast_slice::<_, u8>(&full)
+            );
+            for bad in [-0.1, 1.1, f32::NAN] {
+                assert!(
+                    patch
+                        .deform_with_setting(&mut vertices, calm, 0.0, bad)
+                        .is_err()
+                );
+            }
+        }
     }
 
     #[test]

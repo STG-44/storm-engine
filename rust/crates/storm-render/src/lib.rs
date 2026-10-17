@@ -214,6 +214,7 @@ pub fn render_model_offscreen_at_pose(
         wind,
         pose,
         storm_sim::Waves::default(),
+        1.0,
         width,
         height,
         seconds,
@@ -229,6 +230,7 @@ pub fn render_sailing_offscreen(
     wind: model::SailWind,
     pose: model::ModelPose,
     waves: storm_sim::Waves,
+    sail_deployment: f32,
     width: u32,
     height: u32,
     seconds: f32,
@@ -236,6 +238,7 @@ pub fn render_sailing_offscreen(
     let mut scene = model::ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, asset)?;
     scene.set_pose(pose)?;
     scene.set_waves(waves)?;
+    scene.set_sail_deployment(sail_deployment)?;
     render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
         scene.draw(gpu, encoder, target, width, height, seconds, camera, wind)
     })

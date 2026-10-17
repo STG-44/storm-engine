@@ -70,15 +70,18 @@ CPU sailing tests cover dynamics, helm, frame partition, and long runs; the
 rigid-pose GPU test checks translation, yaw, heave, pitch and roll with a fixed
 camera. Two more GPU tests compare CPU/WGSL wave heights and gradients, and
 check that displaced water depth hides a submerged plate and reveals it in a trough.
+A seventh checks gathering/unfurling both sail topologies in one persistent scene,
+including stationary bundled cloth and restoration of the full rig.
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all six GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all seven GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
 It also captures a sailing transform and state JSON using the upstream cannon
 fixture and opens that fixture in sailing mode under Xvfb. A separate wave case
 uses a 0.15 m envelope suitable for the small fixture and exports hull motion.
+A gathering fixture capture and rig-state JSON check exercise partial deployment.
 Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
@@ -118,7 +121,7 @@ Child models follow the original `geometry` locators and filename convention.
 `sailt`/`sailv` groups produce triangular cloth; `sails`/`sailg`/`sailf`/`saild`/
 `sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
 deterministic kinematic code, with every boundary point pinned and normals
-recomputed each frame. Ropes, original rigging, furling, sail damage, and ship
+recomputed each frame. Ropes, original rigging, sail damage, and ship
 physics beyond the new sailing/wave prototype remain pending. The water is a new
 preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
@@ -141,7 +144,7 @@ validation scope](../docs/SAIL_PREVIEW.md).
 ## Sail the original model
 
 Add `--sail` to the original model command to enable approximate dynamics.
-Hold A/D for rudder and use W/S to change sail power. Releasing the rudder or
+Hold A/D for rudder and use W/S to request sail deployment. Releasing the rudder or
 losing focus centres it; physical keys work with any keyboard layout. Space
 pauses motion and cloth while camera controls remain available. The title shows
 speed in knots and course. The camera follows position as the hull turns.
@@ -154,7 +157,11 @@ The hull now heaves, pitches and rolls on a shared CPU/GPU wave surface. Sailing
 defaults to a 1.5 m envelope; `--wave-height 0` restores flat water. Try
 `--wave-height 3 --wave-direction 115` for a rougher cross sea. The camera keeps
 a level horizon. See [wave controls, model and validation](../docs/WAVE_RESPONSE.md).
-Visual furling, horizontal wave forces, collisions and original game balance
+Sails gather/unfurl over time and drive follows actual deployment. A full change
+takes four seconds. `--sail-setting` sets the initial fraction; `--sail-target`
+requests a new one during replay. The title shows actual and requested fractions.
+See [sail gathering details](../docs/SAIL_FURLING.md). Individual sail commands,
+original furling, horizontal wave forces, collisions and original game balance
 remain pending. See [sailing details](../docs/SAILING_PROTOTYPE.md).
 
 The `storm-formats` crate provides header inspection and full static render-data

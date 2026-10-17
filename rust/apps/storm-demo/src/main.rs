@@ -99,9 +99,12 @@ struct Options {
     /// Initial course in degrees: 0=+Z, 90=+X. Default: follow wind direction.
     #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
     heading: Option<f32>,
-    /// Effective exposed sail area fraction, 0..=1 (does not animate furling yet).
-    #[arg(long, requires = "sail", default_value_t = 1.0, value_parser = sail_setting)]
+    /// Initial deployed sail fraction, 0..=1; also works in the static/fixture preview.
+    #[arg(long, requires = "preview", default_value_t = 1.0, value_parser = sail_setting)]
     sail_setting: f32,
+    /// Requested sail fraction after starting; takes four seconds for a full change.
+    #[arg(long, requires = "sail", value_parser = sail_setting)]
+    sail_target: Option<f32>,
     /// Initial held rudder, -1 port to +1 starboard; useful for deterministic replay.
     #[arg(long, requires = "sail", default_value_t = 0.0, value_parser = rudder, allow_negative_numbers = true)]
     rudder: f32,
@@ -248,11 +251,14 @@ impl WindowState {
             .find(wgpu::TextureFormat::is_srgb)
             .context("surface has no sRGB color format")?;
         config.present_mode = wgpu::PresentMode::AutoVsync;
-        let scene = match asset {
+        let mut scene = match asset {
             Some(asset) => Scene::Model(Box::new(ModelScene::new(&gpu, config.format, asset)?)),
             None => Scene::Diagnostic(Box::new(DiagnosticScene::new(&gpu.device, config.format))),
         };
         let sailing = sailing::Session::new(options)?;
+        if let Scene::Model(scene) = &mut scene {
+            scene.set_sail_deployment(options.sail_setting)?;
+        }
         let camera = asset.map(|asset| {
             let mut c = OrbitCamera::new(asset);
             if let Some(yaw) = options.yaw {
@@ -366,6 +372,7 @@ impl WindowState {
             if let Scene::Model(scene) = &mut self.scene {
                 scene.set_pose(pose)?;
                 scene.set_waves(sailing.simulation.waves())?;
+                scene.set_sail_deployment(sailing.simulation.sail_deployed() as f32)?;
             }
             if let Some(camera) = &mut self.camera {
                 // Follow horizontal travel without rolling the camera with the hull.
@@ -663,6 +670,9 @@ fn main() -> Result<()> {
                 sailing
                     .as_ref()
                     .map_or_else(storm_sim::Waves::default, |s| s.simulation.waves()),
+                sailing.as_ref().map_or(options.sail_setting, |s| {
+                    s.simulation.sail_deployed() as f32
+                }),
                 options.width,
                 options.height,
                 sailing

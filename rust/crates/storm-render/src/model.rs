@@ -174,6 +174,7 @@ pub struct ModelScene {
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
     waves: storm_sim::Waves,
+    sail_deployment: f32,
     wave_buffer: wgpu::Buffer,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
@@ -483,6 +484,7 @@ impl ModelScene {
             pose_buffer,
             pose: ModelPose::default(),
             waves: storm_sim::Waves::default(),
+            sail_deployment: 1.0,
             wave_buffer,
             camera_group,
             textures,
@@ -499,6 +501,14 @@ impl ModelScene {
     pub fn set_waves(&mut self, waves: storm_sim::Waves) -> Result<()> {
         waves.validate()?;
         self.waves = waves;
+        Ok(())
+    }
+    pub fn set_sail_deployment(&mut self, deployed: f32) -> Result<()> {
+        ensure!(
+            deployed.is_finite() && (0.0..=1.0).contains(&deployed),
+            "invalid sail deployment"
+        );
+        self.sail_deployment = deployed;
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
@@ -525,7 +535,7 @@ impl ModelScene {
         };
         for mesh in &mut self.meshes {
             if let Some((patch, vertices)) = &mut mesh.sail {
-                patch.deform(vertices, local_wind, seconds)?;
+                patch.deform_with_setting(vertices, local_wind, seconds, self.sail_deployment)?;
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }

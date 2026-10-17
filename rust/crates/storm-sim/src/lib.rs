@@ -6,6 +6,8 @@ mod waves;
 pub use waves::{HullMotion, WaveComponent, Waves};
 
 pub const STEP_SECONDS: f64 = 1.0 / 120.0;
+/// Fraction of full area per second: four seconds for a complete manoeuvre.
+pub const SAIL_DEPLOY_RATE: f64 = 0.25;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SimError(pub &'static str);
@@ -40,7 +42,7 @@ impl Wind {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Helm {
-    /// Effective exposed sail area, 0..=1. Furling geometry is not implemented.
+    /// Requested exposed sail area, 0..=1. The rig moves towards it at a bounded rate.
     pub sail: f64,
     /// -1 port, +1 starboard. Rudder force depends on forward water speed.
     pub rudder: f64,
@@ -137,10 +139,19 @@ pub struct Sailing {
     config: ShipConfig,
     wind: Wind,
     helm: Helm,
+    sail_deployed: f64,
     remainder: f64,
     ticks: u64,
 }
 impl Sailing {
+    /// Start with the requested sails already set; later helm changes take time.
+    pub fn new_with_helm(config: ShipConfig, wind: Wind, heading: f64, helm: Helm) -> Result<Self> {
+        helm.validate()?;
+        let mut sim = Self::new(config, wind, heading)?;
+        sim.helm = helm;
+        sim.sail_deployed = helm.sail;
+        Ok(sim)
+    }
     pub fn new(config: ShipConfig, wind: Wind, heading: f64) -> Result<Self> {
         Self::with_state(
             config,
@@ -165,6 +176,7 @@ impl Sailing {
             config,
             wind,
             helm: Helm::default(),
+            sail_deployed: 1.0,
             remainder: 0.0,
             ticks: 0,
         })
@@ -185,6 +197,9 @@ impl Sailing {
     }
     pub fn helm(&self) -> Helm {
         self.helm
+    }
+    pub fn sail_deployed(&self) -> f64 {
+        self.sail_deployed
     }
     pub fn config(&self) -> ShipConfig {
         self.config
@@ -224,6 +239,13 @@ impl Sailing {
     }
 
     fn step(&mut self) -> Result<()> {
+        let distance = self.helm.sail - self.sail_deployed;
+        let sail_step = SAIL_DEPLOY_RATE * STEP_SECONDS;
+        let sail_deployed = if distance.abs() <= sail_step + 1e-12 {
+            self.helm.sail
+        } else {
+            self.sail_deployed + distance.signum() * sail_step
+        };
         let mut next = self.state;
         let forward = next.forward();
         let right = DVec2::new(forward.y, -forward.x);
@@ -236,7 +258,7 @@ impl Sailing {
         let reach = ((alignment + 0.766_044_443) / (0.766_044_443 - 0.422_618_262)).clamp(0.0, 1.0);
         let polar = reach * reach * (3.0 - 2.0 * reach) * (1.0 - 0.3 * alignment * alignment);
         let pressure =
-            0.5 * 1.225 * self.config.sail_area_m2 * self.helm.sail * apparent.length_squared();
+            0.5 * 1.225 * self.config.sail_area_m2 * sail_deployed * apparent.length_squared();
         let drive = pressure * 0.9 * polar;
         let leeway = pressure * 0.06 * apparent.normalize_or_zero().dot(right);
         let drag_forward = 2_000.0 * surge + 800.0 * surge.abs() * surge;
@@ -267,6 +289,7 @@ impl Sailing {
             (starboard - port).atan2(2.0 * half_beam),
         ]);
         self.state = next;
+        self.sail_deployed = sail_deployed;
         Ok(())
     }
 }
@@ -475,14 +498,62 @@ mod tests {
             assert!(boat.state.velocity.length() < 40.0);
             assert!(boat.state.position.is_finite());
         }
-        let mut stopped = sim();
-        stopped
-            .set_helm(Helm {
+        let mut stopped = Sailing::new_with_helm(
+            ShipConfig::default(),
+            wind(),
+            0.0,
+            Helm {
                 sail: 0.0,
                 rudder: 1.0,
-            })
-            .unwrap();
+            },
+        )
+        .unwrap();
         stopped.advance(30.0).unwrap();
         assert_eq!(stopped.state.velocity, DVec2::ZERO);
+    }
+
+    #[test]
+    fn sails_move_at_a_fixed_rate_reverse_and_drive_with_actual_area() {
+        let mut a = sim();
+        let mut b = sim();
+        let helm = Helm {
+            sail: 0.0,
+            rudder: 0.0,
+        };
+        a.set_helm(helm).unwrap();
+        b.set_helm(helm).unwrap();
+        assert_eq!(
+            a.sail_deployed(),
+            1.0,
+            "setting a target must not teleport the rig"
+        );
+        a.advance(2.0).unwrap();
+        for _ in 0..120 {
+            b.advance(1.0 / 60.0).unwrap();
+        }
+        assert_eq!(a.sail_deployed(), b.sail_deployed());
+        assert_eq!(a.state(), b.state());
+        assert!((a.sail_deployed() - 0.5).abs() < 1e-12);
+        assert!(
+            a.state.speed_knots() > 0.1,
+            "remaining exposed cloth still drives the boat"
+        );
+        a.set_helm(Helm::default()).unwrap();
+        a.advance(1.0).unwrap();
+        assert!((a.sail_deployed() - 0.75).abs() < 1e-12);
+        a.set_helm(helm).unwrap();
+        a.advance(3.0).unwrap();
+        assert_eq!(a.sail_deployed(), 0.0);
+        a.set_helm(Helm::default()).unwrap();
+        a.advance(4.0).unwrap();
+        assert_eq!(a.sail_deployed(), 1.0);
+        assert!(
+            a.set_helm(Helm {
+                sail: f64::NAN,
+                ..helm
+            })
+            .is_err()
+        );
+        assert_eq!(a.sail_deployed(), 1.0);
     }
 }

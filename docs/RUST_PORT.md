@@ -34,6 +34,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Add triangular sails, deterministic preview wind deformation, and pause/wind controls.
 - [x] Add a fixed-step planar sailing prototype with wind drive, rudder, water resistance, and physical-key input.
 - [x] Share an analytic sea between CPU/GPU and add damped heave, pitch and roll.
+- [x] Gather/unfurl both sail topologies and drive the ship with actual deployment.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -52,7 +53,7 @@ Verified locally on 2026-10-17:
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU format/shader/dynamics validation and all six explicit GPU tests pass.
+- CPU format/shader/dynamics validation and all seven explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 - Barkentine1 assembles from 20 GM files, with three original TX textures and
@@ -130,3 +131,8 @@ passed all four jobs for code commit `c3b2520e`: 24 CPU tests and native builds
 on Windows, Linux and both Mac architectures, plus six GPU tests and native
 wave capture/window checks through Vulkan on Linux. Original ship captures stay
 local; the public workflow artifacts contain only the upstream fixture.
+
+[Sail gathering](SAIL_FURLING.md) adds a rate-limited deployment state shared by
+propulsion and geometry. Quad and triangular sails gather towards the original
+attachment edge, reuse buffers and preserve UVs. Local validation passes 27 CPU
+tests and seven Metal GPU tests, including shrinking/restoring both cloth surfaces.

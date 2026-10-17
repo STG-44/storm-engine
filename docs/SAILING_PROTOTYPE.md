@@ -18,11 +18,12 @@ cargo run -p storm-demo --locked -- \
 ```
 
 Hold A/D to steer; release to centre. Opposing keys cancel, and losing focus
-centres the rudder. Physical W/S keys change effective sail power in 10% steps,
-independently of keyboard layout. This changes force without visual furling yet.
-The default is full power. Space pauses motion and cloth; camera controls stay
+centres the rudder. Physical W/S keys request deployment in 10% steps,
+independently of keyboard layout. [Sail gathering](SAIL_FURLING.md) moves the
+cloth and changes drive over time. The default is full deployment.
+Space pauses motion and cloth; camera controls stay
 active. Wind controls remain `+`/`-` and `,`/`.`. The title shows knots, course,
-sail setting, rudder, wind, and pause. The original preview omits `--sail`.
+actual/requested sails, rudder, wind, and pause. The static preview omits `--sail`.
 
 The camera follows position and initially frames the static model's usual side.
 Its world orbit angle stays fixed while the boat turns. R resets the view;

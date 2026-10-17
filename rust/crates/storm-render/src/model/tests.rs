@@ -1,6 +1,79 @@
 use super::*;
 
 #[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn persistent_sail_buffers_furl_both_shapes_and_restore_the_full_rig() {
+    let mut asset = ModelAsset::sail_demo().unwrap();
+    asset.textures[0].mips[0]
+        .rgba
+        .chunks_exact_mut(4)
+        .for_each(|p| p.copy_from_slice(&[255, 0, 0, 255]));
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut camera = OrbitCamera::new(&asset);
+    camera.yaw = 0.0;
+    let mut capture = |deployment, time, speed| {
+        scene.set_sail_deployment(deployment)?;
+        crate::render_offscreen_with(&gpu, 321, 181, time, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                time,
+                &camera,
+                SailWind {
+                    speed,
+                    direction: 0.0,
+                },
+            )
+        })
+    };
+    let mask = |frame: &crate::Frame| {
+        frame
+            .rgba
+            .chunks_exact(4)
+            .map(|p| {
+                if p[0] > 100 && p[1] < 20 && p[2] < 20 {
+                    p[0]
+                } else {
+                    0
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let full = mask(&capture(1.0, 0.0, 0.0).unwrap());
+    let half = mask(&capture(0.5, 0.0, 0.0).unwrap());
+    let furled = mask(&capture(0.0, 0.0, 0.0).unwrap());
+    for left in [true, false] {
+        let count = |pixels: &[u8]| {
+            pixels
+                .iter()
+                .enumerate()
+                .filter(|&(i, &p)| p != 0 && (i % 321 < 160) == left)
+                .count()
+        };
+        assert!(count(&full) > 300);
+        assert!(count(&half) < count(&full) * 2 / 3);
+        assert!(count(&half) > count(&full) / 3);
+        assert!(count(&furled) > 0 && count(&furled) < count(&full) / 8);
+    }
+    assert_eq!(
+        furled,
+        mask(&capture(0.0, 7.0, 40.0).unwrap()),
+        "furled cloth must stay still in changing wind/time"
+    );
+    assert_eq!(
+        full,
+        mask(&capture(1.0, 0.0, 0.0).unwrap()),
+        "reusing buffers must restore both surfaces"
+    );
+    assert!(capture(f32::NAN, 0.0, 0.0).is_err());
+}
+
+#[test]
 fn tilted_pose_keeps_bow_pitch_and_starboard_roll_signs_after_z_reflection() {
     for heading in [0.0, 0.7, 2.4] {
         let translation = Vec3::new(30.0, 1.0, -20.0);
@@ -64,6 +137,7 @@ fn displaced_water_depth_occludes_a_submerged_surface() {
             SailWind::default(),
             ModelPose::default(),
             waves,
+            1.0,
             257,
             145,
             time,

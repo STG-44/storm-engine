@@ -48,14 +48,15 @@ deformation; their distinct original behavior is not claimed.
 A quad has 169 vertices/288 triangles; a triangular grid has 91 vertices/144
 triangles, without duplicate tip vertices. Wind pressure changes the signed
 bulge along the surface normal; a bounded traveling oscillation adds flutter.
-Every boundary point is pinned, including the original attachment locators.
+At full deployment every boundary point is pinned, including the attachment locators.
 Calm wind produces the undeformed surface with no flutter. Reversing wind
 reverses inflation. Normals use analytic surface derivatives after deformation.
 Time is explicit and repeatable. Pausing excludes paused wall time when resuming.
 
 Only dynamic sail vertex buffers are rewritten on the GPU. Topology, materials,
 and static hull buffers are reused. This is a prescribed shape, without mass,
-springs, inertia, collisions, rope tension, furling, damage, or propulsion.
+springs, inertia, collisions, rope tension or damage. [The gathering prototype](SAIL_FURLING.md)
+now adds controlled deployment and connects its actual fraction to ship drive.
 Original ship previews continue using `parus_common.tga`; script-selected cloth
 textures and heraldry remain pending.
 

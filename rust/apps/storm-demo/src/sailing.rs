@@ -33,15 +33,21 @@ impl Session {
             .unwrap_or(options.wind_direction)
             .rem_euclid(360.0)
             .to_radians();
-        let mut simulation = Sailing::new(
+        let mut simulation = Sailing::new_with_helm(
             ShipConfig::default(),
             wind(options.wind()),
             f64::from(heading),
+            Helm {
+                sail: f64::from(options.sail_setting),
+                rudder: f64::from(options.rudder),
+            },
         )?;
-        simulation.set_helm(Helm {
-            sail: f64::from(options.sail_setting),
-            rudder: f64::from(options.rudder),
-        })?;
+        if let Some(target) = options.sail_target {
+            simulation.set_helm(Helm {
+                sail: f64::from(target),
+                ..simulation.helm()
+            })?;
+        }
         simulation.set_waves(Waves {
             height_m: f64::from(options.wave_height.unwrap_or(1.5)),
             direction: f64::from(
@@ -109,6 +115,13 @@ impl Session {
         if matches!(key, KeyCode::KeyA | KeyCode::KeyD) {
             helm.rudder = f64::from(i8::from(self.right) - i8::from(self.left));
         }
+        // Repeated 10% key steps should reach exact endpoints despite float rounding.
+        if helm.sail < 1e-12 {
+            helm.sail = 0.0;
+        }
+        if 1.0 - helm.sail < 1e-12 {
+            helm.sail = 1.0;
+        }
         self.simulation.set_helm(helm)?;
         Ok(())
     }
@@ -126,9 +139,10 @@ impl Session {
         let s = self.simulation.state();
         let helm = self.simulation.helm();
         format!(
-            " — {:.1} kn {:.0}° — sails {:.0}% rudder {:+.0}%",
+            " — {:.1} kn {:.0}° — sails {:.0}% -> {:.0}% rudder {:+.0}%",
             s.speed_knots(),
             s.heading.to_degrees().rem_euclid(360.0),
+            self.simulation.sail_deployed() * 100.0,
             helm.sail * 100.0,
             helm.rudder * 100.0
         )
@@ -148,7 +162,8 @@ impl Session {
             "hull_motion": { "heave_m": motion.heave_m, "pitch_degrees_bow_up": motion.pitch.to_degrees(),
                 "roll_degrees_starboard_up": motion.roll.to_degrees(), "rates_mps_radps": motion.rates },
             "waves": { "envelope_height_m": waves.height_m, "direction_degrees": waves.direction.to_degrees().rem_euclid(360.0) },
-            "sail_setting": helm.sail, "rudder": helm.rudder,
+            "sail_setting": helm.sail, "sail_deployed": self.simulation.sail_deployed(),
+            "sail_deploy_rate_per_second": storm_sim::SAIL_DEPLOY_RATE, "rudder": helm.rudder,
             "wind": { "speed_mps": wind.speed_mps, "direction_degrees": wind.direction.to_degrees().rem_euclid(360.0) },
             "config": { "mass_kg": config.mass_kg, "length_m": config.length_m, "sail_area_m2": config.sail_area_m2 },
         })
@@ -159,6 +174,44 @@ impl Session {
 mod tests {
     use super::*;
     use clap::Parser;
+
+    #[test]
+    fn replay_reports_actual_area_and_pause_holds_a_rig_mid_manoeuvre() {
+        let options = Options::try_parse_from([
+            "storm-demo",
+            "--model",
+            "fixture.gm",
+            "--sail",
+            "--sail-setting",
+            "1",
+            "--sail-target",
+            "0",
+            "--time",
+            "2",
+        ])
+        .unwrap();
+        let mut session = Session::new(&options).unwrap().unwrap();
+        assert!((session.simulation.sail_deployed() - 0.5).abs() < 1e-12);
+        assert_eq!(session.simulation.helm().sail, 0.0);
+        let motion = session.simulation.state();
+        session.update(2.0, options.wind()).unwrap();
+        assert_eq!(session.simulation.state(), motion);
+        for _ in 0..10 {
+            session.key(KeyCode::KeyW, ElementState::Pressed).unwrap();
+        }
+        assert_eq!(session.simulation.helm().sail, 1.0);
+        let deployed = session.simulation.sail_deployed();
+        session.update(2.0, options.wind()).unwrap();
+        assert_eq!(
+            session.simulation.sail_deployed(),
+            deployed,
+            "paused controls change only the target"
+        );
+        session.update(2.25, options.wind()).unwrap();
+        assert!((session.simulation.sail_deployed() - 0.5625).abs() < 1e-12);
+        let report = session.report();
+        assert!((report["sail_deployed"].as_f64().unwrap() - 0.5625).abs() < 1e-12);
+    }
 
     #[test]
     fn helm_tracks_releases_opposing_keys_and_focus_loss() {
