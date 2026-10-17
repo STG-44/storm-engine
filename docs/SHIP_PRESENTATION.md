@@ -56,7 +56,7 @@ References are the retained C++ source in this repository:
 - Original `Lo_Man.an`, `[walk]` from `Lo_Man.ani`, and six `Lowcharacters/Lo_man*`
   models supply the walking sailors. CPU quaternion interpolation and two-bone
   skinning reuse GPU buffers. Ship pose transforms both crew and deck.
-- `src/libs/ship/src/ship.cpp`, `src/libs/rigging/src/mast.cpp` and `hull.cpp`:
+- `src/libs/ship/src/ship.cpp`, `src/libs/mast/src/mast.cpp` (MAST and HULL):
   mast numeric grouping (mast2 includes mast201 etc.) and node subtrees determine
   which yards/sails/flags fall. The fall is new kinematic motion about the
   original node pivot. Cross-mast ropes and shrouds are cut; ropes entirely on
@@ -101,7 +101,7 @@ crew visibility. Public CI adds generated fixtures only; commercial resources
 and their frames remain outside Git.
 
 The whole fleet audit checks full textured decoding, original route counts,
-sail classification and test shots. It is not all-ship visual/gameplay parity.
+sail classification and test shots. It does not establish gameplay parity.
 The audit separately reports ships without matching deck paths, fireplace
 locators or detachable hull pieces.
 
@@ -125,3 +125,20 @@ fixture reaches 2.744 knots intact and 2.193 knots after six damaged sectors;
 remaining drive area is 72.964%. Those figures describe the prototype, not game
 balance. The Rust workflow repeats CPU checks on four platforms and GPU/native
 fixture checks through software Vulkan on Linux.
+
+
+A subsequent full-fleet Metal pass renders all 40 ships at 640 x 360, time 1,
+with original textures, flags, full sails and default crew where available.
+All cells of its labelled contact sheet were visually reviewed. One view per
+ship does not cover all poses/damage combinations. Twelve models retain locator
+warnings (duplicates, unmatched rope ends or rejected lengths); no incomplete
+flag/shroud groups were reported. Missing geometry is not fabricated.
+
+[CI run 39050610912](https://github.com/STG-44/storm-engine/actions/runs/39050610912)
+passes all four jobs for code `dd3e12a3`: 56 CPU tests, formatting, Clippy and
+native builds on Ubuntu, Windows, macOS ARM and macOS Intel. Linux also passes
+13 software Vulkan GPU tests, generated crew/damage PNGs, native windows and an
+asserted intact/holed sailing comparison. The downloaded Vulkan damage artifact
+was inspected; its sailing results agree with local Metal. Original game
+resources and captures are excluded from Git/CI. Physical Windows and Linux GPU
+checks with original resources remain pending.

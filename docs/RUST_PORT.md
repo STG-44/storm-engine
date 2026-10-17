@@ -174,3 +174,16 @@ sections. Swept test shots damage persistent 10/12-sector sail masks and reduce
 absolute propulsion area. Before proceeding to entities and the script VM,
 validate ships and sailing together and record the remaining combat/physics
 scope. This does not establish original battle or sailor AI parity.
+
+
+The [ship presentation CI run](https://github.com/STG-44/storm-engine/actions/runs/39050610912)
+passes all four jobs for `dd3e12a3`: 56 CPU tests per platform, native builds,
+formatting and Clippy. Linux additionally passes 13 software Vulkan GPU tests,
+generated crew/damage capture and native window checks, and lower speed after
+sail damage. Full textured loading and three-sector test shots pass on all 40
+original ships (776 GM files, 368 sails). All 40 also render through local Metal;
+the labelled contact sheet was reviewed. Original crew loads for 37 matching
+route files. See [the presentation scope](SHIP_PRESENTATION.md) for missing
+routes, locator diagnostics and combat/physics limits. The current prototype
+validation gate is complete; game entities/messages and the script runtime are
+next, with the remaining gameplay work explicitly recorded.
