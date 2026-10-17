@@ -35,7 +35,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev libvulkan1 mesa-vulkan-drivers xvfb
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev libvulkan1 mesa-vulkan-drivers vulkan-tools xvfb xauth
       - name: Install pinned Rust toolchain
         run: rustup show
       - name: Check formatting
@@ -49,11 +49,14 @@ jobs:
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           XDG_RUNTIME_DIR: /tmp/storm-runtime
         run: |
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
+          STORM_VULKAN_ICD=$(rg --files /usr/share/vulkan/icd.d | rg '/lvp_icd[^/]*[.]json$' | head -n 1)
+          test -f "$STORM_VULKAN_ICD"
+          export VK_DRIVER_FILES="$STORM_VULKAN_ICD"
+          xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
           cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3

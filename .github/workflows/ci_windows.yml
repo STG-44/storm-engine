@@ -2,11 +2,13 @@ name: CI Windows
 
 on:
   push:
+    branches-ignore: [rust-port]
     paths-ignore:
       - 'docs/**'
       - 'tools/**'
       - '*.md'
   pull_request:
+    branches-ignore: [rust-port]
     paths-ignore:
       - 'docs/**'
       - 'tools/**'

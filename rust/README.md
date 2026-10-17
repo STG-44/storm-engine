@@ -64,6 +64,10 @@ Silicon, and macOS Intel. Linux also runs the GPU test with software Vulkan and
 the native window under Xvfb. Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
+The inherited C++ workflows do not run on pushes or pull requests targeting
+`rust-port`; the Rust workflow owns checks on that integration branch. The
+original C++ workflows remain available on other branches.
+
 ## Original game resources
 
 Keep the complete game installation outside Git, or use the ignored `game-data/`
