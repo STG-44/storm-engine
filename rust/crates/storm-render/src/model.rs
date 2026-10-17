@@ -1,9 +1,11 @@
-//! Native static model preview: original mesh hierarchy/textures and diagnostic water.
+//! Native model preview: original mesh hierarchy/textures, preview cloth and water.
 mod assets;
+mod sails;
 use crate::Gpu;
 use anyhow::{Result, ensure};
-pub use assets::{LoadOptions, ModelAsset, read_asset_bytes};
+pub use assets::{LoadOptions, Mesh, ModelAsset, read_asset_bytes};
 use glam::Vec3;
+pub use sails::{SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
 pub const MODEL_SHADER: &str = include_str!("model.wgsl");
@@ -102,6 +104,7 @@ struct DrawMesh {
     indices: wgpu::Buffer,
     count: u32,
     texture: usize,
+    sail: Option<(SailPatch, Vec<ModelVertex>)>,
 }
 
 pub struct ModelScene {
@@ -350,7 +353,12 @@ impl ModelScene {
                 vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("GM vertices"),
                     contents: vertices,
-                    usage: wgpu::BufferUsages::VERTEX,
+                    usage: wgpu::BufferUsages::VERTEX
+                        | if source.sail.is_some() {
+                            wgpu::BufferUsages::COPY_DST
+                        } else {
+                            wgpu::BufferUsages::empty()
+                        },
                 }),
                 indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("GM triangles"),
@@ -359,6 +367,7 @@ impl ModelScene {
                 }),
                 count: source.indices.len() as u32,
                 texture: source.texture,
+                sail: source.sail.clone().map(|s| (s, source.vertices.clone())),
             });
         }
         Ok(Self {
@@ -382,8 +391,17 @@ impl ModelScene {
         height: u32,
         seconds: f32,
         camera: &OrbitCamera,
+        wind: SailWind,
     ) -> Result<()> {
         let uniform = camera.uniform(width, height, seconds)?;
+        wind.validate()?;
+        for mesh in &mut self.meshes {
+            if let Some((patch, vertices)) = &mut mesh.sail {
+                patch.deform(vertices, wind, seconds)?;
+                gpu.queue
+                    .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
+            }
+        }
         if self.size != (width, height) {
             self.depth = depth_view(&gpu.device, width, height);
             self.size = (width, height);

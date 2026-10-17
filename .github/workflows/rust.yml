@@ -64,6 +64,8 @@ jobs:
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --headless model-preview.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --wind-speed 16 --wind-direction -90 --time 2 --headless sail-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --paused --frames 3
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -93,4 +95,11 @@ jobs:
         with:
           name: original-model-vulkan
           path: model-preview.png
+          if-no-files-found: error
+      - name: Upload Vulkan sail preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sail-preview-vulkan
+          path: sail-preview.png
           if-no-files-found: error

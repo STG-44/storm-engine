@@ -179,13 +179,14 @@ pub fn render_model_offscreen(
     gpu: &Gpu,
     asset: &model::ModelAsset,
     camera: &model::OrbitCamera,
+    wind: model::SailWind,
     width: u32,
     height: u32,
     seconds: f32,
 ) -> Result<Frame> {
     let mut scene = model::ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, asset)?;
     render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
-        scene.draw(gpu, encoder, target, width, height, seconds, camera)
+        scene.draw(gpu, encoder, target, width, height, seconds, camera, wind)
     })
 }
 
@@ -341,7 +342,16 @@ mod tests {
         let instance = create_instance(wgpu::Backends::PRIMARY).unwrap();
         let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
         let mut camera = OrbitCamera::new(&asset);
-        let frame = render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).unwrap();
+        let frame = render_model_offscreen(
+            &gpu,
+            &asset,
+            &camera,
+            model::SailWind::default(),
+            167,
+            93,
+            0.0,
+        )
+        .unwrap();
         let red = frame
             .rgba
             .chunks_exact(4)
@@ -365,13 +375,109 @@ mod tests {
             geometry_files: 0,
             sails: 0,
         };
-        let sky = render_model_offscreen(&gpu, &background, &camera, 167, 93, 0.0).unwrap();
+        let sky = render_model_offscreen(
+            &gpu,
+            &background,
+            &camera,
+            model::SailWind::default(),
+            167,
+            93,
+            0.0,
+        )
+        .unwrap();
         assert_ne!(frame.rgba, sky.rgba, "model must alter the background");
         camera.orbit(90.0, 12.0);
         camera.zoom(1.0);
-        let moved = render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).unwrap();
+        let moved = render_model_offscreen(
+            &gpu,
+            &asset,
+            &camera,
+            model::SailWind::default(),
+            167,
+            93,
+            0.0,
+        )
+        .unwrap();
         assert_ne!(frame.rgba, moved.rgba);
         camera.distance = f32::NAN;
-        assert!(render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).is_err());
+        assert!(
+            render_model_offscreen(
+                &gpu,
+                &asset,
+                &camera,
+                model::SailWind::default(),
+                167,
+                93,
+                0.0
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn both_sail_topologies_render_and_wind_changes_the_cloth_on_gpu() {
+        use model::{ModelAsset, OrbitCamera, SailWind};
+        let mut asset = ModelAsset::sail_demo().unwrap();
+        for pixel in asset.textures[0].mips[0].rgba.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[255, 0, 0, 255]);
+        }
+        let instance = create_instance(wgpu::Backends::PRIMARY).unwrap();
+        let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+        let mut camera = OrbitCamera::new(&asset);
+        camera.yaw = 0.0; // Separate left quad and right triangle on screen.
+        let wind = SailWind {
+            speed: 24.0,
+            direction: 0.0,
+        };
+        let mut scene =
+            model::ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+        let mut capture = |wind, seconds| {
+            render_offscreen_with(&gpu, 257, 145, seconds, |encoder, target| {
+                scene.draw(&gpu, encoder, target, 257, 145, seconds, &camera, wind)
+            })
+        };
+        let first = capture(wind, 0.0).unwrap();
+        let later = capture(wind, 2.0).unwrap();
+        let calm = SailWind { speed: 0.0, ..wind };
+        let flat = capture(calm, 0.0).unwrap();
+        let flat_later = capture(calm, 2.0).unwrap();
+        // Compare only red cloth pixels: animated water cannot make this test pass.
+        let mask = |frame: &Frame| {
+            frame
+                .rgba
+                .chunks_exact(4)
+                .map(|p| {
+                    if p[0] > 100 && p[1] < 20 && p[2] < 20 {
+                        p[0]
+                    } else {
+                        0
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let red = mask(&first);
+        for left in [true, false] {
+            assert!(
+                red.iter()
+                    .enumerate()
+                    .filter(|&(i, &p)| p > 0 && (i % 257 < 128) == left)
+                    .count()
+                    > 100,
+                "both sail topologies must be visible"
+            );
+        }
+        assert_ne!(
+            red,
+            mask(&later),
+            "flutter must change cloth geometry/lighting"
+        );
+        assert_ne!(red, mask(&flat), "wind pressure must inflate the cloth");
+        assert_eq!(mask(&flat), mask(&flat_later), "calm cloth must stay still");
+        let invalid = SailWind {
+            speed: f32::NAN,
+            ..wind
+        };
+        assert!(capture(invalid, 0.0).is_err());
     }
 }

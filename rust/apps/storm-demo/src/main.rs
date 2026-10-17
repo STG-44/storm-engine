@@ -1,11 +1,13 @@
 use anyhow::{Context, Result, bail};
-use clap::{Parser, ValueEnum};
-use std::{path::PathBuf, sync::Arc, time::Instant};
+use clap::{ArgGroup, Parser, ValueEnum};
+use std::{path::PathBuf, sync::Arc};
+mod timeline;
 use storm_render::{
     DiagnosticScene, Gpu, create_instance,
-    model::{LoadOptions, ModelAsset, ModelScene, OrbitCamera},
+    model::{LoadOptions, ModelAsset, ModelScene, OrbitCamera, SailWind},
     render_model_offscreen, render_offscreen,
 };
+use timeline::Timeline;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -38,6 +40,7 @@ impl Backend {
 #[derive(Parser)]
 #[command(
     version,
+    group(ArgGroup::new("preview").args(["model", "sail_demo"])),
     about = "Storm Rust: native diagnostic sea and original GM/TX model preview"
 )]
 struct Options {
@@ -59,6 +62,9 @@ struct Options {
     /// Original GM file to preview instead of the resource-free diagnostic.
     #[arg(long)]
     model: Option<PathBuf>,
+    /// Preview generated quad/triangle cloth without original game resources.
+    #[arg(long)]
+    sail_demo: bool,
     /// Game installation or its RESOURCE directory (original files stay outside Git).
     #[arg(long, requires = "model")]
     game_dir: Option<PathBuf>,
@@ -71,12 +77,39 @@ struct Options {
     /// Preview only the supplied GM, without children or locator-generated sails.
     #[arg(long, requires = "model")]
     single_mesh: bool,
-    /// Fixed simulation time for deterministic headless captures.
-    #[arg(long, default_value_t = 0.0, value_parser = finite)]
+    /// Initial animation time; fixed for deterministic headless captures.
+    #[arg(long, default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
     time: f32,
     /// Initial orbit angle in degrees.
-    #[arg(long, requires = "model", value_parser = finite)]
+    #[arg(long, requires = "preview", value_parser = finite, allow_negative_numbers = true)]
     yaw: Option<f32>,
+    /// Preview wind speed, 0..=40 m/s. This does not drive ship physics yet.
+    #[arg(long, requires = "preview", default_value_t = 8.0, value_parser = wind_speed)]
+    wind_speed: f32,
+    /// Wind travel direction: 0 degrees is +Z, 90 degrees is +X.
+    #[arg(long, requires = "preview", default_value_t = 45.0, value_parser = finite, allow_negative_numbers = true)]
+    wind_direction: f32,
+    /// Start the native window with animation paused (Space toggles pause).
+    #[arg(long, conflicts_with = "headless")]
+    paused: bool,
+}
+
+impl Options {
+    fn wind(&self) -> SailWind {
+        SailWind {
+            speed: self.wind_speed,
+            direction: self.wind_direction.rem_euclid(360.0).to_radians(),
+        }
+    }
+}
+
+fn wind_speed(value: &str) -> std::result::Result<f32, String> {
+    let speed = finite(value)?;
+    if (0.0..=40.0).contains(&speed) {
+        Ok(speed)
+    } else {
+        Err("wind speed must be 0..=40 m/s".into())
+    }
 }
 
 fn finite(value: &str) -> std::result::Result<f32, String> {
@@ -104,7 +137,9 @@ struct WindowState {
     config: wgpu::SurfaceConfiguration,
     configured: bool,
     occluded: bool,
-    start: Instant,
+    timeline: Timeline,
+    wind: SailWind,
+    title: String,
     frames: u64,
 }
 
@@ -138,11 +173,18 @@ impl WindowState {
             .as_ref()
             .and_then(|p| p.file_stem())
             .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "diagnostic sea".to_owned());
-        window.set_title(&format!(
+            .unwrap_or_else(|| {
+                if options.sail_demo {
+                    "sail demo"
+                } else {
+                    "diagnostic sea"
+                }
+                .to_owned()
+            });
+        let title = format!(
             "Storm Rust — {scene_name} — {:?} — {}",
             info.backend, info.name
-        ));
+        );
         let size = window.inner_size();
         let mut config = surface
             .get_default_config(&gpu.adapter, size.width.max(1), size.height.max(1))
@@ -177,11 +219,36 @@ impl WindowState {
             config,
             configured: false,
             occluded: false,
-            start: Instant::now(),
+            timeline: Timeline::new(options.time, options.paused),
+            wind: options.wind(),
+            title,
             frames: 0,
         };
         state.resize(size);
+        state.refresh_title();
+        eprintln!(
+            "Controls: drag/arrows orbit, scroll zoom, R reset, Space pause, +/- wind speed, ,/. wind direction, Esc close"
+        );
         Ok(state)
+    }
+
+    fn refresh_title(&self) {
+        let pause = if self.timeline.paused {
+            " — paused"
+        } else {
+            ""
+        };
+        let wind = if self.camera.is_some() {
+            format!(
+                " — wind {:.0} m/s {:.0}°",
+                self.wind.speed,
+                self.wind.direction.to_degrees().rem_euclid(360.0)
+            )
+        } else {
+            String::new()
+        };
+        self.window
+            .set_title(&format!("{}{wind}{pause}", self.title));
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -222,7 +289,7 @@ impl WindowState {
         };
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let target = frame.texture.create_view(&Default::default());
-        let seconds = self.start.elapsed().as_secs_f32();
+        let seconds = self.timeline.seconds();
         match &mut self.scene {
             Scene::Diagnostic(scene) => scene.draw(
                 &self.gpu.queue,
@@ -240,6 +307,7 @@ impl WindowState {
                 self.config.height,
                 seconds,
                 self.camera.as_ref().expect("model camera"),
+                self.wind,
             )?,
         }
         self.gpu.queue.submit([encoder.finish()]);
@@ -335,6 +403,9 @@ impl ApplicationHandler for Application {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if event.logical_key == Key::Named(NamedKey::Space) && !event.repeat {
+                    state.timeline.toggle();
+                }
                 if let Some(camera) = state.camera.as_mut() {
                     match event.logical_key {
                         Key::Named(NamedKey::ArrowLeft) => camera.orbit(-8.0, 0.0),
@@ -346,9 +417,21 @@ impl ApplicationHandler for Application {
                                 *camera = OrbitCamera::new(asset);
                             }
                         }
+                        Key::Character(key) if matches!(key.as_str(), "+" | "=") => {
+                            state.wind.speed = (state.wind.speed + 1.0).min(40.0);
+                        }
+                        Key::Character(key) if key == "-" => {
+                            state.wind.speed = (state.wind.speed - 1.0).max(0.0);
+                        }
+                        Key::Character(key) if key == "," || key == "." => {
+                            let delta = if key == "," { -15_f32 } else { 15_f32 };
+                            state.wind.direction = (state.wind.direction + delta.to_radians())
+                                .rem_euclid(std::f32::consts::TAU);
+                        }
                         _ => {}
                     }
                 }
+                state.refresh_title();
             }
             WindowEvent::Focused(false) => {
                 state.dragging = false;
@@ -401,18 +484,41 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
-    let asset = options.model.as_ref().map(|path| {
-        let asset = ModelAsset::load(path, &LoadOptions {
-            game_dir: options.game_dir.clone(),
-            texture_dir: options.texture_dir.clone(),
-            untextured: options.untextured,
-            single_mesh: options.single_mesh,
-        })?;
-        eprintln!("Loaded {} geometry files, {} draw meshes, {} textures, {} static sails, {} triangles",
-            asset.geometry_files, asset.meshes.len(), asset.textures.len() - 1,
-            asset.sails, asset.meshes.iter().map(|m| m.indices.len() / 3).sum::<usize>());
-        Ok::<_, anyhow::Error>(Arc::new(asset))
-    }).transpose()?;
+    let asset = if options.sail_demo {
+        Some(Arc::new(ModelAsset::sail_demo()?))
+    } else {
+        options
+            .model
+            .as_ref()
+            .map(|path| {
+                let asset = ModelAsset::load(
+                    path,
+                    &LoadOptions {
+                        game_dir: options.game_dir.clone(),
+                        texture_dir: options.texture_dir.clone(),
+                        untextured: options.untextured,
+                        single_mesh: options.single_mesh,
+                    },
+                )?;
+                Ok::<_, anyhow::Error>(Arc::new(asset))
+            })
+            .transpose()?
+    };
+    if let Some(asset) = &asset {
+        eprintln!(
+            "Loaded {} geometry files, {} draw meshes, {} texture slots, {} sails ({} triangular), {} triangles",
+            asset.geometry_files,
+            asset.meshes.len(),
+            asset.textures.len(),
+            asset.sails,
+            asset.triangular_sails(),
+            asset
+                .meshes
+                .iter()
+                .map(|m| m.indices.len() / 3)
+                .sum::<usize>()
+        );
+    }
     if let Some(path) = &options.headless {
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();
@@ -426,6 +532,7 @@ fn main() -> Result<()> {
                 &gpu,
                 asset,
                 &camera,
+                options.wind(),
                 options.width,
                 options.height,
                 options.time,

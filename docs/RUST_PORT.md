@@ -31,6 +31,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Inspect original GM/TX headers with bounded reads and format tests.
 - [x] Decode static GM 1.05 render data and 2D TX mip pixels with bounds checks.
 - [x] Display an original ship with textures, static sails, preview water, and an orbit camera on local macOS Metal.
+- [x] Add triangular sails, deterministic preview wind deformation, and pause/wind controls.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -49,12 +50,12 @@ Verified locally on 2026-10-17:
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU format/shader validation and both explicit GPU tests pass.
+- CPU format/shader validation and all three explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 - Barkentine1 assembles from 20 GM files, with three original TX textures and
-  ten curved static sails generated from four-corner locators: 32 draw meshes,
-  8,055 triangles. A 1280 x 720 capture is saved outside Git.
+  twelve sails (two triangular): 34 draw meshes, 8,343 triangles. Wind deforms
+  the cloth interior with pinned boundaries. A 1280 x 720 capture is saved outside Git.
 - GPU fixture checks cover texture sampling, geometry visibility with the depth
   pipeline, zero-normal fallback lighting, camera changes, and invalid cameras.
 
@@ -78,8 +79,8 @@ see [the asset commands](../rust/README.md#original-game-resources).
 table lengths. `decode` additionally reads static geometry, names, materials,
 labels, vertices, indices, and complete 2D mip pixels. Supported layouts and
 explicit limits are documented in the run instructions. BSP collision traversal,
-animated geometry, older GM versions, original material/sea effects, triangular
-sails, ropes, and gameplay remain pending. Full decoding has been exercised on
+animated geometry, older GM versions, original material/sea effects, original
+rigging, ropes, ship physics, and gameplay remain pending. Full decoding has been exercised on
 the ship preview and upstream fixture; the previous whole-resource scan remains
 header-only evidence.
 

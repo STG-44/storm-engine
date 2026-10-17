@@ -37,8 +37,9 @@ and Linux builds need a compatible GPU driver. macOS uses Metal directly.
 The first local check passed on macOS 15.7.8 / Intel with a Radeon Pro 555X:
 Metal offscreen readback and animation tests, and three frames presented in a
 native window. The original Barkentine1 ship also renders through Metal, including
-20 geometry files, three original textures, and ten locator-generated static
-sails (8,055 triangles). Full game support is pending.
+20 geometry files, three original textures, and twelve locator-generated sails
+(two triangular, 8,343 total scene triangles). The new preview cloth responds to
+wind; full game support is pending.
 
 Linux needs the X11/Wayland development packages when compiling. On Ubuntu:
 
@@ -61,12 +62,15 @@ CPU tests validate all three WGSL shaders, static geometry references, texture
 decoding/mips, and malformed input. The explicitly ignored GPU tests check sea
 animation, row padding, invalid frame/camera parameters, and rasterization of the
 upstream cannon fixture with a red test texture. The model test also checks that
-camera movement changes the image and handles the fixture's zero normals.
+camera movement changes the image and handles the fixture's zero normals. The
+sail test checks both topologies and persistent GPU buffer updates, excluding
+animated water when comparing cloth pixels. Calm cloth stays motionless.
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs both GPU tests with software Vulkan,
-captures the diagnostic and upstream cannon, and opens both scenes under Xvfb.
+Silicon, and macOS Intel. Linux also runs all three GPU tests with software Vulkan,
+captures the diagnostic, upstream cannon, and procedural sails, and opens all
+three scenes under Xvfb (sails start paused).
 Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
@@ -95,10 +99,19 @@ Drag with the left mouse button or use the arrow keys to orbit. Scroll to zoom,
 press R to reset, and Escape to close. Add `--headless barkentine.png --time 0`
 for a deterministic capture, or `--yaw 90` for another initial angle.
 
+Space pauses/resumes animation while the camera remains usable. `+`/`-` change
+wind speed; `,`/`.` rotate the wind in 15-degree increments. The title displays
+wind and pause state. Initial settings: `--wind-speed 12 --wind-direction 45`;
+speed is 0–40 m/s and direction points towards +Z at 0°, +X at 90°. `--paused`
+starts a native window paused at `--time` (default 0). Captures always use exactly
+the requested time; pause excludes elapsed wall time when resuming.
+
 Child models follow the original `geometry` locators and filename convention.
-Four-corner sail locators produce curved static patches; triangular sails,
-ropes, animation, sail damage, and physics remain pending. The water is a new
-preview shader. Materials use the first base texture and new lighting, without
+`sailt`/`sailv` groups produce triangular cloth; `sails`/`sailg`/`sailf`/`saild`/
+`sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
+deterministic kinematic code, with every boundary point pinned and normals
+recomputed each frame. Ropes, original rigging, furling, sail damage, and ship
+physics remain pending. The water is a new preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
 
 Texture paths resolve case-insensitively on every OS. The default ship skin is
@@ -109,7 +122,12 @@ textures are errors. For a model without game resources:
 ```sh
 cargo run -p storm-demo --locked -- \
   --model tools/modding-tool/Meshes/cannon_x.gm --untextured
+cargo run -p storm-demo --locked -- --sail-demo --wind-speed 16
 ```
+
+The procedural sail demo contains one quad and one triangle with a generated
+checker texture. It needs no game resources. See [the sail implementation and
+validation scope](../docs/SAIL_PREVIEW.md).
 
 The `storm-formats` crate provides header inspection and full static render-data
 decoding through the native `storm-assets` tool:

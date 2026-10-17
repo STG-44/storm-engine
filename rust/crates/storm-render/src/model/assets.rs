@@ -1,4 +1,4 @@
-use super::ModelVertex;
+use super::{ModelVertex, SailPatch, SailShape, SailWind, sails};
 use anyhow::{Context, Result, bail, ensure};
 use glam::{Mat4, Vec3};
 use std::{
@@ -17,6 +17,18 @@ pub struct Mesh {
     pub vertices: Vec<ModelVertex>,
     pub indices: Vec<u32>,
     pub texture: usize,
+    pub sail: Option<SailPatch>,
+}
+
+impl Mesh {
+    pub fn sail(patch: SailPatch, texture: usize) -> Result<Self> {
+        Ok(Self {
+            vertices: patch.vertices(SailWind::default(), 0.0)?,
+            indices: patch.indices(),
+            texture,
+            sail: Some(patch),
+        })
+    }
 }
 
 pub struct ModelAsset {
@@ -187,6 +199,59 @@ impl TextureFiles {
 }
 
 impl ModelAsset {
+    /// Redistributable procedural fixture for inspecting both sail topologies without a game.
+    pub fn sail_demo() -> Result<Self> {
+        let quad = SailPatch::new(SailShape::Quad([
+            Vec3::new(-4.0, 7.0, 0.0),
+            Vec3::new(-0.5, 7.0, 0.0),
+            Vec3::new(-0.5, 1.0, 0.0),
+            Vec3::new(-4.0, 1.0, 0.0),
+        ]))?;
+        let triangle = SailPatch::new(SailShape::Triangle([
+            Vec3::new(1.0, 7.0, 0.0),
+            Vec3::new(1.0, 1.0, 0.0),
+            Vec3::new(5.0, 1.0, 0.0),
+        ]))?;
+        let rgba = (0..64)
+            .flat_map(|i| {
+                if (i / 8 + i % 8) % 2 == 0 {
+                    [235, 220, 185, 255]
+                } else {
+                    [160, 180, 195, 255]
+                }
+            })
+            .collect();
+        Ok(Self {
+            meshes: vec![Mesh::sail(quad, 0)?, Mesh::sail(triangle, 0)?],
+            textures: vec![Texture {
+                header: TxHeader {
+                    flags: 0,
+                    width: 8,
+                    height: 8,
+                    mips: 1,
+                    format: 21,
+                    mip0_bytes: 256,
+                },
+                mips: vec![Mip {
+                    width: 8,
+                    height: 8,
+                    rgba,
+                }],
+            }],
+            center: Vec3::new(0.5, 4.0, 0.0),
+            radius: 5.5,
+            geometry_files: 0,
+            sails: 2,
+        })
+    }
+
+    pub fn triangular_sails(&self) -> usize {
+        self.meshes
+            .iter()
+            .filter(|m| m.sail.as_ref().is_some_and(SailPatch::is_triangle))
+            .count()
+    }
+
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
         let path = path
             .canonicalize()
@@ -356,33 +421,21 @@ impl Builder {
                 vertices,
                 indices,
                 texture,
+                sail: None,
             });
         }
         if !self.single {
-            let mut sails = BTreeMap::<&str, [Option<Vec3>; 4]>::new();
-            for label in &model.labels {
-                if label.group.starts_with("sail")
-                    && let Some(index) = ["sail1", "sail2", "sail3", "sail4"]
-                        .iter()
-                        .position(|&s| s == label.name)
-                {
-                    sails.entry(&label.group).or_insert([None; 4])[index] =
-                        Some(world.transform_point3(
-                            Mat4::from_cols_array(&label.matrix).w_axis.truncate(),
-                        ));
-                }
-            }
-            for corners in sails.values() {
-                if let [Some(a), Some(b), Some(c), Some(d)] = *corners {
-                    let texture = self.texture("parus_common.tga")?;
-                    let mesh = sail_patch([a, b, c, d], texture);
-                    self.reserve(
-                        mesh.vertices.len() * std::mem::size_of::<ModelVertex>()
-                            + mesh.indices.len() * std::mem::size_of::<u32>(),
-                    )?;
-                    self.asset.meshes.push(mesh);
-                    self.asset.sails += 1;
-                }
+            for patch in sails::from_labels(&model.labels, world)
+                .with_context(|| format!("sails in {}", path.display()))?
+            {
+                let texture = self.texture("parus_common.tga")?;
+                let mesh = Mesh::sail(patch, texture)?;
+                self.reserve(
+                    mesh.vertices.len() * std::mem::size_of::<ModelVertex>()
+                        + mesh.indices.len() * std::mem::size_of::<u32>(),
+                )?;
+                self.asset.meshes.push(mesh);
+                self.asset.sails += 1;
             }
             for label in &model.labels {
                 if label.group == "geometry"
@@ -404,61 +457,15 @@ impl Builder {
     }
 }
 
-fn sail_patch(p: [Vec3; 4], texture: usize) -> Mesh {
-    const N: u32 = 12;
-    let normal = (p[1] - p[0]).cross(p[3] - p[0]).normalize_or_zero();
-    let bulge = (p[1] - p[0]).length().min((p[3] - p[0]).length()) * 0.12;
-    let position = |u: f32, v: f32| {
-        p[0].lerp(p[1], u).lerp(p[3].lerp(p[2], u), v)
-            + normal * (u * std::f32::consts::PI).sin() * (v * std::f32::consts::PI).sin() * bulge
-    };
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    for y in 0..=N {
-        for x in 0..=N {
-            let u = x as f32 / N as f32;
-            let v = y as f32 / N as f32;
-            let du = position(u + 0.001, v) - position(u - 0.001, v);
-            let dv = position(u, v + 0.001) - position(u, v - 0.001);
-            vertices.push(ModelVertex {
-                position: position(u, v).to_array(),
-                normal: du.cross(dv).normalize_or_zero().to_array(),
-                uv: [u, v],
-                color: [1.0, 0.97, 0.88, 1.0],
-            });
-            if x < N && y < N {
-                let a = y * (N + 1) + x;
-                indices.extend([a, a + 1, a + N + 1, a + 1, a + N + 2, a + N + 1]);
-            }
-        }
-    }
-    Mesh {
-        vertices,
-        indices,
-        texture,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn references_cannot_escape_and_sail_indices_fit() {
+    fn references_cannot_escape_and_native_separators_match() {
         for path in ["../secret", "/absolute", "c:/drive", "a/../../b"] {
             assert!(logical(Path::new(path)).is_err());
         }
         let native = Path::new("Ships").join("Barkentine1").join("Hull1");
         assert_eq!(logical(&native).unwrap(), "ships/barkentine1/hull1");
-        let mesh = sail_patch([Vec3::ZERO, Vec3::X, Vec3::X + Vec3::Y, Vec3::Y], 0);
-        assert!(
-            mesh.indices
-                .iter()
-                .all(|&i| (i as usize) < mesh.vertices.len())
-        );
-        assert!(
-            mesh.vertices
-                .iter()
-                .all(|v| Vec3::from_array(v.normal).is_finite())
-        );
     }
 }
