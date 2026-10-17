@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{ArgGroup, Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc};
+mod rig_report;
 mod sailing;
 mod timeline;
 use storm_render::{
@@ -93,16 +94,16 @@ struct Options {
     /// Start the native window with animation paused (Space toggles pause).
     #[arg(long, conflicts_with = "headless")]
     paused: bool,
-    /// Enable approximate ship motion for the original model (W/S sail power, A/D rudder).
-    #[arg(long, requires = "model")]
+    /// Enable approximate ship motion (W/S select original sail sets, A/D rudder).
+    #[arg(long, requires = "preview")]
     sail: bool,
     /// Initial course in degrees: 0=+Z, 90=+X. Default: follow wind direction.
     #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
     heading: Option<f32>,
-    /// Initial deployed sail fraction, 0..=1; also works in the static/fixture preview.
+    /// Initial sail set: 0 furled, 0.5 normal, 1 full.
     #[arg(long, requires = "preview", default_value_t = 1.0, value_parser = sail_setting)]
     sail_setting: f32,
-    /// Requested sail fraction after starting; takes four seconds for a full change.
+    /// Requested sail set after starting: 0, 0.5, or 1.
     #[arg(long, requires = "sail", value_parser = sail_setting)]
     sail_target: Option<f32>,
     /// Initial held rudder, -1 port to +1 starboard; useful for deterministic replay.
@@ -117,6 +118,9 @@ struct Options {
     /// Wave travel direction in degrees (default: initial wind direction).
     #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
     wave_direction: Option<f32>,
+    /// Export original per-sail set membership and exit without creating a GPU device.
+    #[arg(long, requires = "preview", conflicts_with_all = ["headless", "frames", "gpu_info", "sail"])]
+    rig_report: Option<PathBuf>,
 }
 
 fn wave_height(value: &str) -> std::result::Result<f32, String> {
@@ -130,10 +134,10 @@ fn wave_height(value: &str) -> std::result::Result<f32, String> {
 
 fn sail_setting(value: &str) -> std::result::Result<f32, String> {
     let v = finite(value)?;
-    if (0.0..=1.0).contains(&v) {
+    if [0.0, 0.5, 1.0].contains(&v) {
         Ok(v)
     } else {
-        Err("sail setting must be 0..=1".into())
+        Err("sail set must be 0 (furled), 0.5 (normal), or 1 (full)".into())
     }
 }
 fn rudder(value: &str) -> std::result::Result<f32, String> {
@@ -255,9 +259,14 @@ impl WindowState {
             Some(asset) => Scene::Model(Box::new(ModelScene::new(&gpu, config.format, asset)?)),
             None => Scene::Diagnostic(Box::new(DiagnosticScene::new(&gpu.device, config.format))),
         };
-        let sailing = sailing::Session::new(options)?;
+        let sailing = sailing::Session::new(
+            options,
+            asset.map_or_else(storm_sim::RigLayout::default, ModelAsset::rig_layout),
+        )?;
         if let Scene::Model(scene) = &mut scene {
-            scene.set_sail_deployment(options.sail_setting)?;
+            scene.set_rig_state(storm_sim::RigState::for_mode(
+                storm_sim::SailMode::from_setting(f64::from(options.sail_setting))?,
+            ))?;
         }
         let camera = asset.map(|asset| {
             let mut c = OrbitCamera::new(asset);
@@ -372,7 +381,7 @@ impl WindowState {
             if let Scene::Model(scene) = &mut self.scene {
                 scene.set_pose(pose)?;
                 scene.set_waves(sailing.simulation.waves())?;
-                scene.set_sail_deployment(sailing.simulation.sail_deployed() as f32)?;
+                scene.set_rig_state(sailing.simulation.rig())?;
             }
             if let Some(camera) = &mut self.camera {
                 // Follow horizontal travel without rolling the camera with the hull.
@@ -590,8 +599,8 @@ impl ApplicationHandler for Application {
 
 fn main() -> Result<()> {
     let options = Options::parse();
-    let instance = create_instance(options.backend.flags())?;
     if options.gpu_info {
+        let instance = create_instance(options.backend.flags())?;
         let adapters = pollster::block_on(instance.enumerate_adapters(options.backend.flags()));
         let info: Vec<_> = adapters
             .into_iter()
@@ -640,8 +649,19 @@ fn main() -> Result<()> {
                 .sum::<usize>()
         );
     }
+    if let Some(path) = &options.rig_report {
+        let asset = asset.as_ref().expect("model required by CLI");
+        std::fs::write(path, serde_json::to_vec_pretty(&rig_report::report(asset))?)?;
+        return Ok(());
+    }
+    let instance = create_instance(options.backend.flags())?;
     if let Some(path) = &options.headless {
-        let sailing = sailing::Session::new(&options)?;
+        let sailing = sailing::Session::new(
+            &options,
+            asset
+                .as_ref()
+                .map_or_else(storm_sim::RigLayout::default, |a| a.rig_layout()),
+        )?;
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();
         eprintln!("GPU: {} ({:?})", info.name, info.backend);
@@ -670,9 +690,12 @@ fn main() -> Result<()> {
                 sailing
                     .as_ref()
                     .map_or_else(storm_sim::Waves::default, |s| s.simulation.waves()),
-                sailing.as_ref().map_or(options.sail_setting, |s| {
-                    s.simulation.sail_deployed() as f32
-                }),
+                sailing.as_ref().map_or(
+                    storm_sim::RigState::for_mode(storm_sim::SailMode::from_setting(f64::from(
+                        options.sail_setting,
+                    ))?),
+                    |s| s.simulation.rig(),
+                ),
                 options.width,
                 options.height,
                 sailing

@@ -2,6 +2,72 @@ use super::*;
 
 #[test]
 #[ignore = "requires a native GPU or software Vulkan"]
+fn normal_mode_keeps_normal_sails_full_and_gathers_only_full_only_sails() {
+    let mut asset = ModelAsset::sail_demo().unwrap();
+    asset.textures[0].mips[0]
+        .rgba
+        .chunks_exact_mut(4)
+        .for_each(|p| p.copy_from_slice(&[255, 0, 0, 255]));
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut camera = OrbitCamera::new(&asset);
+    camera.yaw = 0.0;
+    let mut capture = |mode| {
+        scene
+            .set_rig_state(storm_sim::RigState::for_mode(mode))
+            .unwrap();
+        crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+    };
+    let mask = |frame: &crate::Frame, left: bool| {
+        frame
+            .rgba
+            .chunks_exact(4)
+            .enumerate()
+            .filter(|(i, _)| (i % 321 < 160) == left)
+            .map(|(_, p)| {
+                if p[0] > 100 && p[1] < 20 && p[2] < 20 {
+                    p[0]
+                } else {
+                    0
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    let full = capture(storm_sim::SailMode::Full);
+    let normal = capture(storm_sim::SailMode::Normal);
+    let furled = capture(storm_sim::SailMode::Furled);
+    assert_eq!(
+        mask(&normal, true),
+        mask(&full, true),
+        "normal sail must retain its whole surface"
+    );
+    assert_eq!(
+        mask(&normal, false),
+        mask(&furled, false),
+        "full-only sail must be completely gathered"
+    );
+    assert_ne!(mask(&normal, true), mask(&furled, true));
+    assert_ne!(mask(&normal, false), mask(&full, false));
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
 fn persistent_sail_buffers_furl_both_shapes_and_restore_the_full_rig() {
     let mut asset = ModelAsset::sail_demo().unwrap();
     asset.textures[0].mips[0]
@@ -14,7 +80,7 @@ fn persistent_sail_buffers_furl_both_shapes_and_restore_the_full_rig() {
     let mut camera = OrbitCamera::new(&asset);
     camera.yaw = 0.0;
     let mut capture = |deployment, time, speed| {
-        scene.set_sail_deployment(deployment)?;
+        scene.set_rig_state(storm_sim::RigState::uniform(f64::from(deployment)))?;
         crate::render_offscreen_with(&gpu, 321, 181, time, |encoder, target| {
             scene.draw(
                 &gpu,
@@ -137,7 +203,7 @@ fn displaced_water_depth_occludes_a_submerged_surface() {
             SailWind::default(),
             ModelPose::default(),
             waves,
-            1.0,
+            storm_sim::RigState::uniform(1.0),
             257,
             145,
             time,

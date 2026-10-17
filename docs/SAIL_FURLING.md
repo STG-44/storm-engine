@@ -1,8 +1,14 @@
 # Sail gathering and deployment
 
+[Original three sail sets](ORIGINAL_SAIL_MODES.md) supersede the uniform-area
+controls below: W/S now select 0, 0.5, 1 and each sail keeps its original set
+membership. Normal mode fully opens one tier and gathers the other. The earlier
+uniform gathering validation remains recorded here as a historical milestone.
+
+
 The sailing prototype now gathers and unfurls both four-corner and triangular
-sails. W/S request 10% more/less exposed sail. The rig moves at 0.25 of full
-area per second: four seconds for a complete change, or 0.4 s for one key step.
+sails. W/S select the original three sail sets. The rig moves at 0.25 of full
+area per second: four seconds for a complete change, for each group that changes state.
 The title displays actual deployment and the requested target. Commands can
 reverse a manoeuvre midway; Space holds the rig along with hull, waves and
 cloth animation. Controls while paused change the target for resuming.
@@ -18,7 +24,7 @@ This is prescribed motion and approximate sailing, not original rigging parity.
 It also works in static ship previews and the resource-free two-sail fixture:
 
 ```sh
-cargo run -p storm-demo --locked -- --sail-demo --sail-setting 0.25
+cargo run -p storm-demo --locked -- --sail-demo --sail-setting 0.5
 ```
 
 `--sail-target` optionally requests a different fraction when sailing starts:
@@ -46,7 +52,7 @@ vertices stay fixed in the model frame. The remaining quad edge approaches
 the attachment edge; the free triangle corner approaches its projection onto
 that edge. Analytic folds gather cloth normal to the surface. Full deployment
 retains the original preview shape. UVs, topology and GPU allocations are reused;
-normals are recomputed analytically. All loaded sails share one deployment value
+normals are recomputed analytically. Sails retain normal/full-only membership
 and still follow the hull's rigid yaw/pitch/roll.
 
 A 2.5% span remains at zero for visible bundled cloth and nondegenerate triangles.

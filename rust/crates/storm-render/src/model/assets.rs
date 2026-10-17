@@ -207,11 +207,12 @@ impl ModelAsset {
             Vec3::new(-0.5, 1.0, 0.0),
             Vec3::new(-4.0, 1.0, 0.0),
         ]))?;
-        let triangle = SailPatch::new(SailShape::Triangle([
+        let mut triangle = SailPatch::new(SailShape::Triangle([
             Vec3::new(1.0, 7.0, 0.0),
             Vec3::new(1.0, 1.0, 0.0),
             Vec3::new(5.0, 1.0, 0.0),
         ]))?;
+        triangle.tier = storm_sim::SailTier::FullOnly;
         let rgba = (0..64)
             .flat_map(|i| {
                 if (i / 8 + i % 8) % 2 == 0 {
@@ -250,6 +251,19 @@ impl ModelAsset {
             .iter()
             .filter(|m| m.sail.as_ref().is_some_and(SailPatch::is_triangle))
             .count()
+    }
+    pub fn rig_layout(&self) -> storm_sim::RigLayout {
+        let mut layout = storm_sim::RigLayout {
+            normal_weight: 0.0,
+            full_only_weight: 0.0,
+        };
+        for patch in self.meshes.iter().filter_map(|m| m.sail.as_ref()) {
+            match patch.tier {
+                storm_sim::SailTier::Normal => layout.normal_weight += patch.weight,
+                storm_sim::SailTier::FullOnly => layout.full_only_weight += patch.weight,
+            }
+        }
+        layout
     }
 
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
@@ -303,7 +317,14 @@ impl ModelAsset {
             .context("model has no name")?
             .to_string_lossy()
             .into_owned();
-        builder.node(&path, &stem, Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)), 0)?;
+        builder.node(
+            &path,
+            &stem,
+            &stem,
+            "",
+            Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
+            0,
+        )?;
         ensure!(
             !builder.asset.meshes.is_empty(),
             "model contains no visible static geometry"
@@ -365,7 +386,15 @@ impl Builder {
         self.cache.insert(path, id);
         Ok(id)
     }
-    fn node(&mut self, path: &Path, stem: &str, world: Mat4, depth: usize) -> Result<()> {
+    fn node(
+        &mut self,
+        path: &Path,
+        stem: &str,
+        node: &str,
+        parent: &str,
+        world: Mat4,
+        depth: usize,
+    ) -> Result<()> {
         ensure!(
             depth < 16 && self.asset.geometry_files < 256,
             "model hierarchy limit exceeded"
@@ -425,7 +454,7 @@ impl Builder {
             });
         }
         if !self.single {
-            for patch in sails::from_labels(&model.labels, world)
+            for patch in sails::from_labels(&model.labels, world, node, parent)
                 .with_context(|| format!("sails in {}", path.display()))?
             {
                 let texture = self.texture("parus_common.tga")?;
@@ -446,6 +475,8 @@ impl Builder {
                     self.node(
                         &child,
                         stem,
+                        &label.name,
+                        node,
                         world * Mat4::from_cols_array(&label.matrix),
                         depth + 1,
                     )?;

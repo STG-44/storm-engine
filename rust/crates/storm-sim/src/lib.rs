@@ -2,7 +2,9 @@
 //! Units: metres, seconds, kilograms, radians. Heading 0 points +Z, +pi/2 points +X.
 use glam::DVec2;
 use std::{error::Error, fmt};
+mod rig;
 mod waves;
+pub use rig::{RigLayout, RigState, SailMode, SailTier};
 pub use waves::{HullMotion, WaveComponent, Waves};
 
 pub const STEP_SECONDS: f64 = 1.0 / 120.0;
@@ -42,7 +44,7 @@ impl Wind {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Helm {
-    /// Requested exposed sail area, 0..=1. The rig moves towards it at a bounded rate.
+    /// Original sail-set request: 0 furled, 0.5 normal, 1 full; original thresholds apply.
     pub sail: f64,
     /// -1 port, +1 starboard. Rudder force depends on forward water speed.
     pub rudder: f64,
@@ -139,7 +141,9 @@ pub struct Sailing {
     config: ShipConfig,
     wind: Wind,
     helm: Helm,
-    sail_deployed: f64,
+    rig: RigState,
+    rig_layout: RigLayout,
+    sail_mode: SailMode,
     remainder: f64,
     ticks: u64,
 }
@@ -148,8 +152,8 @@ impl Sailing {
     pub fn new_with_helm(config: ShipConfig, wind: Wind, heading: f64, helm: Helm) -> Result<Self> {
         helm.validate()?;
         let mut sim = Self::new(config, wind, heading)?;
-        sim.helm = helm;
-        sim.sail_deployed = helm.sail;
+        sim.set_helm(helm)?;
+        sim.rig = RigState::for_mode(sim.sail_mode);
         Ok(sim)
     }
     pub fn new(config: ShipConfig, wind: Wind, heading: f64) -> Result<Self> {
@@ -176,7 +180,9 @@ impl Sailing {
             config,
             wind,
             helm: Helm::default(),
-            sail_deployed: 1.0,
+            rig: RigState::for_mode(SailMode::Full),
+            rig_layout: RigLayout::default(),
+            sail_mode: SailMode::Full,
             remainder: 0.0,
             ticks: 0,
         })
@@ -199,7 +205,21 @@ impl Sailing {
         self.helm
     }
     pub fn sail_deployed(&self) -> f64 {
-        self.sail_deployed
+        self.rig.fraction(self.rig_layout)
+    }
+    pub fn rig(&self) -> RigState {
+        self.rig
+    }
+    pub fn rig_layout(&self) -> RigLayout {
+        self.rig_layout
+    }
+    pub fn sail_mode(&self) -> SailMode {
+        self.sail_mode
+    }
+    pub fn set_rig_layout(&mut self, layout: RigLayout) -> Result<()> {
+        layout.validate()?;
+        self.rig_layout = layout;
+        Ok(())
     }
     pub fn config(&self) -> ShipConfig {
         self.config
@@ -215,8 +235,10 @@ impl Sailing {
         self.wind = wind;
         Ok(())
     }
-    pub fn set_helm(&mut self, helm: Helm) -> Result<()> {
+    pub fn set_helm(&mut self, mut helm: Helm) -> Result<()> {
         helm.validate()?;
+        self.sail_mode = SailMode::from_setting(helm.sail)?;
+        helm.sail = self.sail_mode.setting();
         self.helm = helm;
         Ok(())
     }
@@ -239,13 +261,9 @@ impl Sailing {
     }
 
     fn step(&mut self) -> Result<()> {
-        let distance = self.helm.sail - self.sail_deployed;
-        let sail_step = SAIL_DEPLOY_RATE * STEP_SECONDS;
-        let sail_deployed = if distance.abs() <= sail_step + 1e-12 {
-            self.helm.sail
-        } else {
-            self.sail_deployed + distance.signum() * sail_step
-        };
+        let mut rig = self.rig;
+        rig.advance(self.sail_mode);
+        let sail_deployed = rig.fraction(self.rig_layout);
         let mut next = self.state;
         let forward = next.forward();
         let right = DVec2::new(forward.y, -forward.x);
@@ -289,7 +307,7 @@ impl Sailing {
             (starboard - port).atan2(2.0 * half_beam),
         ]);
         self.state = next;
-        self.sail_deployed = sail_deployed;
+        self.rig = rig;
         Ok(())
     }
 }

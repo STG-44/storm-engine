@@ -6,6 +6,7 @@ use bytemuck::Zeroable;
 use glam::{Mat4, Vec3};
 use std::collections::BTreeMap;
 use storm_formats::geometry::Label;
+use storm_sim::SailTier;
 
 const SEGMENTS: u32 = 12;
 
@@ -55,6 +56,16 @@ pub struct SailPatch {
     shape: SailShape,
     normal: Vec3,
     scale: f32,
+    pub tier: SailTier,
+    pub weight: f64,
+    pub origin: Option<SailOrigin>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SailOrigin {
+    pub group: String,
+    pub node: String,
+    pub parent: String,
 }
 
 impl SailPatch {
@@ -80,10 +91,18 @@ impl SailPatch {
                 && scale >= 0.1,
             "degenerate sail locators"
         );
+        let weight = match shape {
+            SailShape::Quad(_) => du.length() * dv.length(),
+            SailShape::Triangle(p) => (p[2] - p[0]).length() * (p[1] - p[2]).length() * 0.5,
+        };
+        ensure!(weight.is_finite() && weight > 0.0, "invalid sail weight");
         Ok(Self {
             shape,
             normal,
             scale,
+            tier: SailTier::Normal,
+            weight: f64::from(weight),
+            origin: None,
         })
     }
 
@@ -271,7 +290,12 @@ impl SailPatch {
     }
 }
 
-pub(super) fn from_labels(labels: &[Label], world: Mat4) -> Result<Vec<SailPatch>> {
+pub(super) fn from_labels(
+    labels: &[Label],
+    world: Mat4,
+    node: &str,
+    parent: &str,
+) -> Result<Vec<SailPatch>> {
     let mut groups = BTreeMap::<&str, [Option<Vec3>; 4]>::new();
     for label in labels {
         if !label.group.starts_with("sail") {
@@ -290,8 +314,7 @@ pub(super) fn from_labels(labels: &[Label], world: Mat4) -> Result<Vec<SailPatch
             label.group,
             label.name
         );
-        corners[index] =
-            Some(world.transform_point3(Mat4::from_cols_array(&label.matrix).w_axis.truncate()));
+        corners[index] = Some(Mat4::from_cols_array(&label.matrix).w_axis.truncate());
     }
     groups
         .into_iter()
@@ -311,7 +334,21 @@ pub(super) fn from_labels(labels: &[Label], world: Mat4) -> Result<Vec<SailPatch
                 }
                 _ => bail!("unsupported sail locator group: {group}"),
             };
-            SailPatch::new(shape)
+            // C++ maxSpeed uses local locator dimensions, before node transforms.
+            let weight = SailPatch::new(shape)?.weight;
+            let world_shape = match shape {
+                SailShape::Triangle(p) => SailShape::Triangle(p.map(|p| world.transform_point3(p))),
+                SailShape::Quad(p) => SailShape::Quad(p.map(|p| world.transform_point3(p))),
+            };
+            let mut patch = SailPatch::new(world_shape)?;
+            patch.weight = weight;
+            patch.tier = SailTier::from_original(group, node, parent);
+            patch.origin = Some(SailOrigin {
+                group: group.into(),
+                node: node.into(),
+                parent: parent.into(),
+            });
+            Ok(patch)
         })
         .collect()
 }
@@ -542,7 +579,7 @@ mod tests {
         }
         let transform =
             Mat4::from_translation(Vec3::new(3.0, 5.0, -4.0)) * Mat4::from_rotation_y(0.8);
-        let patches = from_labels(&labels, transform).unwrap();
+        let patches = from_labels(&labels, transform, "rey_b2", "mast2").unwrap();
         assert_eq!(patches.len(), 8);
         assert_eq!(patches.iter().filter(|p| p.is_triangle()).count(), 2);
         let tri = patches.iter().find(|p| p.is_triangle()).unwrap();
@@ -564,9 +601,9 @@ mod tests {
             name: "sail1".into(),
             matrix: Mat4::IDENTITY.to_cols_array(),
         });
-        assert!(from_labels(&labels, transform).is_err());
+        assert!(from_labels(&labels, transform, "rey_b2", "mast2").is_err());
         labels.pop();
         labels.remove(0);
-        assert!(from_labels(&labels, transform).is_err());
+        assert!(from_labels(&labels, transform, "rey_b2", "mast2").is_err());
     }
 }

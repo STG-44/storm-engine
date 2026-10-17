@@ -7,7 +7,7 @@ use crate::Gpu;
 use anyhow::{Result, ensure};
 pub use assets::{LoadOptions, Mesh, ModelAsset, read_asset_bytes};
 use glam::{Mat4, Vec3};
-pub use sails::{SailPatch, SailShape, SailWind};
+pub use sails::{SailOrigin, SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
 pub const MODEL_SHADER: &str = include_str!("model.wgsl");
@@ -174,7 +174,7 @@ pub struct ModelScene {
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
     waves: storm_sim::Waves,
-    sail_deployment: f32,
+    rig: storm_sim::RigState,
     wave_buffer: wgpu::Buffer,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
@@ -484,7 +484,7 @@ impl ModelScene {
             pose_buffer,
             pose: ModelPose::default(),
             waves: storm_sim::Waves::default(),
-            sail_deployment: 1.0,
+            rig: storm_sim::RigState::uniform(1.0),
             wave_buffer,
             camera_group,
             textures,
@@ -503,12 +503,9 @@ impl ModelScene {
         self.waves = waves;
         Ok(())
     }
-    pub fn set_sail_deployment(&mut self, deployed: f32) -> Result<()> {
-        ensure!(
-            deployed.is_finite() && (0.0..=1.0).contains(&deployed),
-            "invalid sail deployment"
-        );
-        self.sail_deployment = deployed;
+    pub fn set_rig_state(&mut self, rig: storm_sim::RigState) -> Result<()> {
+        rig.validate()?;
+        self.rig = rig;
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
@@ -535,7 +532,12 @@ impl ModelScene {
         };
         for mesh in &mut self.meshes {
             if let Some((patch, vertices)) = &mut mesh.sail {
-                patch.deform_with_setting(vertices, local_wind, seconds, self.sail_deployment)?;
+                patch.deform_with_setting(
+                    vertices,
+                    local_wind,
+                    seconds,
+                    self.rig.deployed(patch.tier) as f32,
+                )?;
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }

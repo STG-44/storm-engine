@@ -70,12 +70,13 @@ CPU sailing tests cover dynamics, helm, frame partition, and long runs; the
 rigid-pose GPU test checks translation, yaw, heave, pitch and roll with a fixed
 camera. Two more GPU tests compare CPU/WGSL wave heights and gradients, and
 check that displaced water depth hides a submerged plate and reveals it in a trough.
-A seventh checks gathering/unfurling both sail topologies in one persistent scene,
-including stationary bundled cloth and restoration of the full rig.
+One checks gathering/unfurling both sail topologies in one persistent scene,
+including stationary bundled cloth and restoration of the full rig. Another
+checks the original intermediate set: normal sails stay full, full-only sails gather.
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all seven GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all eight GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
 It also captures a sailing transform and state JSON using the upstream cannon
@@ -193,3 +194,6 @@ compressed blocks are explicit errors. The preview limits assembled scenes to
 512 MiB, 256 nodes, and 16 levels. Header-only `scan` results are separate from
 these full decoding checks; the whole resource collection has not been fully
 decoded. No commercial assets or captures are bundled in the repository or CI.
+
+Original controls now select three sets (0 / 0.5 / 1), with generic per-sail
+classification from GM node/parent names. [Rules and the 40-model audit](../docs/ORIGINAL_SAIL_MODES.md).
