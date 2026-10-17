@@ -64,6 +64,24 @@ and Clippy. Tests cover national columns, special-role precedence, surrender,
 pirates, event replies, metadata, UV bounds, atomic failure, hiding/restoring
 and repeated nation changes in one persistent GPU scene.
 
+All 40 available ship roots fully decode without textures with explicit Spain /
+merchant context. Their 114 flags, including 43 special groups, select the
+expected (3,0) or (3,3) cells and retain node/group metadata. This checks loading
+and selection, not visual/gameplay compatibility of every ship. Original
+Barkentine1 captures separately verify all five nations, pirate variant 2,
+surrender and hidden flags through Metal; the ship and procedural fixture also
+present three native frames with national flags.
+
+The [flag-selection CI run](https://github.com/STG-44/storm-engine/actions/runs/39047481959)
+passes all four jobs for `fc560879`: Windows, Linux, Mac Intel and Apple Silicon.
+Each runs 41 CPU tests, formatting, Clippy, native builds and flag metadata
+export without creating a GPU device. Linux also passes ten software Vulkan
+GPU tests, captures the French merchant fixture and presents three paused
+native frames with English surrender flags. Its downloaded metadata confirms
+Spanish merchant cells (3,0)/(3,3), and the generated Vulkan PNG was inspected.
+Hosted Windows/macOS checks cover CPU behavior and builds; physical-GPU evidence
+is local Metal. All original-game captures and fleet reports remain outside Git.
+
 This does not load character saves, execute script events, infer ship roles
 from encounters/groups, implement deception or diplomatic reactions, or port
 town/fort flag rules. Original flag motion, damage and tension simulation also

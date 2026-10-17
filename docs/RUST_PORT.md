@@ -160,3 +160,6 @@ software Vulkan GPU tests plus procedural rigging capture/window checks on Linux
 special-flag rules, explicit context controls, bounds-checked atlas changes and
 live switching in the existing scene. Local checks pass 41 CPU/ten Metal GPU
 tests. Character/group lookup and gameplay script integration remain pending.
+The [flag-selection CI run](https://github.com/STG-44/storm-engine/actions/runs/39047481959)
+passes all four platform jobs, including 41 CPU tests per platform and ten
+Vulkan GPU tests plus national-flag capture/window checks on Linux.
