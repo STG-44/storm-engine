@@ -40,7 +40,7 @@ native window. This is renderer validation; original game support is pending.
 Linux needs the X11/Wayland development packages when compiling. On Ubuntu:
 
 ```sh
-sudo apt-get install libxkbcommon-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev
+sudo apt-get install libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev
 ```
 
 For software rendering on Linux, install `libvulkan1 mesa-vulkan-drivers`.
