@@ -83,7 +83,7 @@ table lengths. `decode` additionally reads static geometry, names, materials,
 labels, vertices, indices, and complete 2D mip pixels. Supported layouts and
 explicit limits are documented in the run instructions. BSP collision traversal,
 animated geometry, older GM versions, original material/sea effects, original
-rigging, ropes, ship physics, and gameplay remain pending. Full decoding has been exercised on
+rigging, ropes, full ship physics, and gameplay remain pending. Full decoding has been exercised on
 the ship preview and upstream fixture; the previous whole-resource scan remains
 header-only evidence.
 
@@ -103,8 +103,16 @@ platform are available as workflow artifacts. Original ship rendering has only
 been verified locally through Metal; original resources stay outside Git/CI.
 
 The [wind preview CI run](https://github.com/STG-44/storm-engine/actions/runs/39008381018)
-passed all four jobs for code commit `83ea00e1`. It adds 15 CPU tests and three
+passed all four jobs for code commit `83ea00e1`. It passes 15 CPU tests and three
 GPU tests, including persistent cloth buffer updates through software Vulkan.
 The procedural quad/triangle fixture also renders a PNG and presents three
 paused native window frames on Linux. [Sail notes](SAIL_PREVIEW.md) include the
 native Metal animation and the remaining rigging/physics scope.
+
+The [sailing dynamics CI run](https://github.com/STG-44/storm-engine/actions/runs/39009937364)
+passed all four jobs for code commit `dff737ea`: 21 CPU tests, formatting,
+Clippy, native builds, and upstream geometry decoding on each platform. Linux
+also passes all four GPU tests through software Vulkan, a sailing transform
+capture with JSON state, and three frames in its paused native window.
+[Sailing notes](SAILING_PROTOTYPE.md) record controls, reproducible cases, and
+the difference between this approximate prototype and original gameplay parity.

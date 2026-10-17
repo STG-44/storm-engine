@@ -82,3 +82,18 @@ rotation, fixed sky, and invalid transforms. The original ship's paused native
 window presents three frames. Linux CI additionally captures a sailing transform
 and state JSON using the upstream cannon and opens its paused window: the cannon
 only tests transform plumbing; the original ship stays a separate local test.
+
+The [CI run for code commit dff737ea](https://github.com/STG-44/storm-engine/actions/runs/39009937364)
+passed all four jobs on 2026-10-17: Ubuntu 24.04, Windows 2025, macOS 15 Apple
+Silicon, and macOS 15 Intel. All run 21 CPU tests, formatting, Clippy, and native
+builds. Linux passes all four GPU tests on Vulkan/Mesa llvmpipe, the deterministic
+sailing capture/state export, and three frames in the paused sailing window.
+Executables and fixture/state captures are workflow artifacts. Hosted Windows
+and macOS establish CPU/build compatibility; original ship rendering is tested
+locally on Metal with separately supplied resources.
+
+An additional local capture replays 62 s at 12 m/s wind, initial course 180°,
+and rudder +0.8. It reaches 6.07 knots, course 245.76°, and approximately 128 m
+displacement. The camera follows position at a fixed world angle, so the ship
+turns within the view. The accelerated GIF and per-frame trajectory JSON remain
+outside Git because they render the original commercial ship.
