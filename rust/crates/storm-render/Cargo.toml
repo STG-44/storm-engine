@@ -1,0 +1,20 @@
+[package]
+name = "storm-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bytemuck.workspace = true
+png.workspace = true
+wgpu.workspace = true
+
+[dev-dependencies]
+naga = { version = "30.0", features = ["wgsl-in"] }
+pollster.workspace = true
+
+[lints]
+workspace = true

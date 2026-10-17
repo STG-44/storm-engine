@@ -1,0 +1,19 @@
+[package]
+name = "storm-demo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+pollster.workspace = true
+serde_json.workspace = true
+storm-render = { path = "../../crates/storm-render" }
+wgpu.workspace = true
+winit.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,74 @@
+name: Rust
+
+on:
+  push:
+    branches: [rust-port]
+    paths: ['rust/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rust.yml']
+  pull_request:
+    paths: ['rust/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rust.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  native:
+    name: Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Linux window and Vulkan dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev libvulkan1 mesa-vulkan-drivers xvfb
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Check code
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run CPU tests
+        run: cargo test --workspace --locked
+      - name: Build native executable
+        run: cargo build --workspace --locked
+      - name: Test software Vulkan rendering and native window
+        if: runner.os == 'Linux'
+        env:
+          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          XDG_RUNTIME_DIR: /tmp/storm-runtime
+        run: |
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3
+      - name: Upload native executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: storm-demo-${{ matrix.os }}
+          path: |
+            target/debug/storm-demo
+            target/debug/storm-demo.exe
+          if-no-files-found: error
+      - name: Upload Vulkan frame
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: first-frame-vulkan
+          path: first-frame.png
+          if-no-files-found: error

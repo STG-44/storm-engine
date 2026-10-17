@@ -1,4 +1,13 @@
 # Storm-Engine
+
+## Rust port
+
+Development of the native Rust port is in the `rust-port` branch. The first
+executable is a wgpu renderer diagnostic for macOS, Windows, and Linux.
+See [run instructions](rust/README.md) and the [port roadmap](docs/RUST_PORT.md).
+Original game compatibility is still under development.
+
+## Original C++ engine
 Game engine behind [Sea Dogs](https://en.wikipedia.org/wiki/Sea_Dogs_(video_game)), [Pirates of the Caribbean](https://en.wikipedia.org/wiki/Pirates_of_the_Caribbean_(video_game)) and [Age of Pirates](https://en.wikipedia.org/wiki/Age_of_Pirates_2:_City_of_Abandoned_Ships) games.
 
 [![Join the chat at https://discord.gg/jmwETPGFRe](https://img.shields.io/discord/353218868896071692?color=%237289DA&label=storm-devs&logo=discord&logoColor=white)](https://discord.gg/jmwETPGFRe) 
