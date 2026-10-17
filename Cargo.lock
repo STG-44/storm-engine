@@ -1749,6 +1749,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "storm-render",
+ "storm-sim",
  "wgpu",
  "winit",
 ]
@@ -1775,6 +1776,13 @@ dependencies = [
  "pollster",
  "storm-formats",
  "wgpu",
+]
+
+[[package]]
+name = "storm-sim"
+version = "0.1.0"
+dependencies = [
+ "glam",
 ]
 
 [[package]]

@@ -12,6 +12,7 @@ clap.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 storm-render = { path = "../../crates/storm-render" }
+storm-sim = { path = "../../crates/storm-sim" }
 wgpu.workspace = true
 winit.workspace = true
 

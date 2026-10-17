@@ -5,6 +5,7 @@ struct Camera {
     light: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(1) var<uniform> model: mat4x4<f32>;
 @group(1) @binding(0) var surface: texture_2d<f32>;
 @group(1) @binding(1) var surface_sampler: sampler;
 
@@ -23,11 +24,12 @@ struct Output {
     @location(3) color: vec4<f32>,
 ) -> Output {
     var output: Output;
-    output.clip = camera.view_projection * vec4(position, 1.0);
-    output.normal = normal;
+    let world_position = model * vec4(position, 1.0);
+    output.clip = camera.view_projection * world_position;
+    output.normal = (model * vec4(normal, 0.0)).xyz;
     output.uv = uv;
     output.color = color;
-    output.world_position = position;
+    output.world_position = world_position.xyz;
     return output;
 }
 

@@ -32,6 +32,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Decode static GM 1.05 render data and 2D TX mip pixels with bounds checks.
 - [x] Display an original ship with textures, static sails, preview water, and an orbit camera on local macOS Metal.
 - [x] Add triangular sails, deterministic preview wind deformation, and pause/wind controls.
+- [x] Add a fixed-step planar sailing prototype with wind drive, rudder, water resistance, and physical-key input.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -42,15 +43,15 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 
 The renderer foundation is implemented in `rust/`; see [run and validation commands](../rust/README.md).
 The diagnostic sea is new test code, separate from the original Storm sea simulation.
-Static ship preview is implemented; game loading, ship simulation, and gameplay
-are not implemented yet.
+Static ship preview and approximate planar sailing are implemented. Original
+game loading, calibrated ship simulation, and gameplay remain pending.
 
 Verified locally on 2026-10-17:
 
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU format/shader validation and all three explicit GPU tests pass.
+- CPU format/shader/dynamics validation and all four explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 - Barkentine1 assembles from 20 GM files, with three original TX textures and
@@ -58,6 +59,8 @@ Verified locally on 2026-10-17:
   the cloth interior with pinned boundaries. A 1280 x 720 capture is saved outside Git.
 - GPU fixture checks cover texture sampling, geometry visibility with the depth
   pipeline, zero-normal fallback lighting, camera changes, and invalid cameras.
+- The first sailing case reaches 5.03 knots and changes course by 23.62° in 40 s.
+  [The prototype notes](SAILING_PROTOTYPE.md) record controls, units, and remaining scope.
 
 The [Rust CI run for commit 7c890862](https://github.com/STG-44/storm-engine/actions/runs/39002786501)
 passed all four jobs on 2026-10-17:

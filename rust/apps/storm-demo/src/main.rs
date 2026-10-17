@@ -1,11 +1,12 @@
 use anyhow::{Context, Result, bail};
 use clap::{ArgGroup, Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc};
+mod sailing;
 mod timeline;
 use storm_render::{
     DiagnosticScene, Gpu, create_instance,
-    model::{LoadOptions, ModelAsset, ModelScene, OrbitCamera, SailWind},
-    render_model_offscreen, render_offscreen,
+    model::{LoadOptions, ModelAsset, ModelPose, ModelScene, OrbitCamera, SailWind},
+    render_model_offscreen_at_pose, render_offscreen,
 };
 use timeline::Timeline;
 use winit::{
@@ -13,7 +14,7 @@ use winit::{
     dpi::PhysicalSize,
     event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
-    keyboard::{Key, NamedKey},
+    keyboard::{Key, KeyCode, NamedKey, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -92,6 +93,38 @@ struct Options {
     /// Start the native window with animation paused (Space toggles pause).
     #[arg(long, conflicts_with = "headless")]
     paused: bool,
+    /// Enable approximate ship motion for the original model (W/S sail power, A/D rudder).
+    #[arg(long, requires = "model")]
+    sail: bool,
+    /// Initial course in degrees: 0=+Z, 90=+X. Default: follow wind direction.
+    #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
+    heading: Option<f32>,
+    /// Effective exposed sail area fraction, 0..=1 (does not animate furling yet).
+    #[arg(long, requires = "sail", default_value_t = 1.0, value_parser = sail_setting)]
+    sail_setting: f32,
+    /// Initial held rudder, -1 port to +1 starboard; useful for deterministic replay.
+    #[arg(long, requires = "sail", default_value_t = 0.0, value_parser = rudder, allow_negative_numbers = true)]
+    rudder: f32,
+    /// Save headless simulation state as JSON, alongside the rendered PNG.
+    #[arg(long, requires_all = ["sail", "headless"])]
+    state_json: Option<PathBuf>,
+}
+
+fn sail_setting(value: &str) -> std::result::Result<f32, String> {
+    let v = finite(value)?;
+    if (0.0..=1.0).contains(&v) {
+        Ok(v)
+    } else {
+        Err("sail setting must be 0..=1".into())
+    }
+}
+fn rudder(value: &str) -> std::result::Result<f32, String> {
+    let v = finite(value)?;
+    if (-1.0..=1.0).contains(&v) {
+        Ok(v)
+    } else {
+        Err("rudder must be -1..=1".into())
+    }
 }
 
 impl Options {
@@ -140,6 +173,9 @@ struct WindowState {
     timeline: Timeline,
     wind: SailWind,
     title: String,
+    sailing: Option<sailing::Session>,
+    model_center: [f32; 3],
+    last_title_time: f32,
     frames: u64,
 }
 
@@ -201,10 +237,13 @@ impl WindowState {
             Some(asset) => Scene::Model(Box::new(ModelScene::new(&gpu, config.format, asset)?)),
             None => Scene::Diagnostic(Box::new(DiagnosticScene::new(&gpu.device, config.format))),
         };
+        let sailing = sailing::Session::new(options)?;
         let camera = asset.map(|asset| {
             let mut c = OrbitCamera::new(asset);
             if let Some(yaw) = options.yaw {
                 c.yaw = yaw.to_radians();
+            } else if let Some(sailing) = &sailing {
+                c.yaw += sailing.initial_yaw;
             }
             c
         });
@@ -222,6 +261,9 @@ impl WindowState {
             timeline: Timeline::new(options.time, options.paused),
             wind: options.wind(),
             title,
+            sailing,
+            model_center: asset.map_or([0.0; 3], |a| a.center.to_array()),
+            last_title_time: options.time,
             frames: 0,
         };
         state.resize(size);
@@ -229,6 +271,11 @@ impl WindowState {
         eprintln!(
             "Controls: drag/arrows orbit, scroll zoom, R reset, Space pause, +/- wind speed, ,/. wind direction, Esc close"
         );
+        if state.sailing.is_some() {
+            eprintln!(
+                "Sailing: physical W/S sail power, hold A/D rudder; release to centre (works with any keyboard layout)"
+            );
+        }
         Ok(state)
     }
 
@@ -247,8 +294,12 @@ impl WindowState {
         } else {
             String::new()
         };
+        let sailing = self
+            .sailing
+            .as_ref()
+            .map_or_else(String::new, sailing::Session::title);
         self.window
-            .set_title(&format!("{}{wind}{pause}", self.title));
+            .set_title(&format!("{}{wind}{sailing}{pause}", self.title));
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -290,6 +341,22 @@ impl WindowState {
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let target = frame.texture.create_view(&Default::default());
         let seconds = self.timeline.seconds();
+        let mut frame_wind = self.wind;
+        if let Some(sailing) = &mut self.sailing {
+            sailing.update(seconds, self.wind)?;
+            let pose = sailing.pose();
+            frame_wind = sailing.cloth_wind(self.wind);
+            if let Scene::Model(scene) = &mut self.scene {
+                scene.set_pose(pose)?;
+            }
+            if let Some(camera) = &mut self.camera {
+                camera.target = pose.transform_point(self.model_center.into())?;
+            }
+        }
+        if seconds - self.last_title_time >= 0.25 {
+            self.refresh_title();
+            self.last_title_time = seconds;
+        }
         match &mut self.scene {
             Scene::Diagnostic(scene) => scene.draw(
                 &self.gpu.queue,
@@ -307,7 +374,7 @@ impl WindowState {
                 self.config.height,
                 seconds,
                 self.camera.as_ref().expect("model camera"),
-                self.wind,
+                frame_wind,
             )?,
         }
         self.gpu.queue.submit([encoder.finish()]);
@@ -402,6 +469,24 @@ impl ApplicationHandler for Application {
                     });
                 }
             }
+            WindowEvent::KeyboardInput { event, .. }
+                if state.sailing.is_some()
+                    && matches!(
+                        event.physical_key,
+                        PhysicalKey::Code(
+                            KeyCode::KeyW | KeyCode::KeyS | KeyCode::KeyA | KeyCode::KeyD
+                        )
+                    ) =>
+            {
+                if let PhysicalKey::Code(code) = event.physical_key
+                    && let Some(sailing) = &mut state.sailing
+                    && let Err(error) = sailing.key(code, event.state)
+                {
+                    self.fail(event_loop, error);
+                    return;
+                }
+                state.refresh_title();
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if event.logical_key == Key::Named(NamedKey::Space) && !event.repeat {
                     state.timeline.toggle();
@@ -415,6 +500,9 @@ impl ApplicationHandler for Application {
                         Key::Character(key) if key.eq_ignore_ascii_case("r") => {
                             if let Some(asset) = self.asset.as_ref() {
                                 *camera = OrbitCamera::new(asset);
+                                if let Some(sailing) = &state.sailing {
+                                    camera.yaw += sailing.pose().yaw;
+                                }
                             }
                         }
                         Key::Character(key) if matches!(key.as_str(), "+" | "=") => {
@@ -436,6 +524,11 @@ impl ApplicationHandler for Application {
             WindowEvent::Focused(false) => {
                 state.dragging = false;
                 state.last_cursor = None;
+                if let Some(sailing) = &mut state.sailing
+                    && let Err(error) = sailing.release_rudder()
+                {
+                    self.fail(event_loop, error);
+                }
             }
             WindowEvent::Resized(size) => {
                 state.resize(size);
@@ -520,6 +613,7 @@ fn main() -> Result<()> {
         );
     }
     if let Some(path) = &options.headless {
+        let sailing = sailing::Session::new(&options)?;
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();
         eprintln!("GPU: {} ({:?})", info.name, info.backend);
@@ -527,12 +621,22 @@ fn main() -> Result<()> {
             let mut camera = OrbitCamera::new(asset);
             if let Some(yaw) = options.yaw {
                 camera.yaw = yaw.to_radians();
+            } else if let Some(sailing) = &sailing {
+                camera.yaw += sailing.initial_yaw;
             }
-            render_model_offscreen(
+            let pose = sailing
+                .as_ref()
+                .map_or_else(ModelPose::default, sailing::Session::pose);
+            camera.target = pose.transform_point(asset.center)?;
+            let wind = sailing
+                .as_ref()
+                .map_or_else(|| options.wind(), |s| s.cloth_wind(options.wind()));
+            render_model_offscreen_at_pose(
                 &gpu,
                 asset,
                 &camera,
-                options.wind(),
+                wind,
+                pose,
                 options.width,
                 options.height,
                 options.time,
@@ -541,6 +645,13 @@ fn main() -> Result<()> {
             render_offscreen(&gpu, options.width, options.height, options.time)?
         };
         frame.save_png(path)?;
+        if let Some(sailing) = &sailing {
+            let report = sailing.report();
+            eprintln!("Sailing state: {}", serde_json::to_string(&report)?);
+            if let Some(state_path) = &options.state_json {
+                std::fs::write(state_path, serde_json::to_vec_pretty(&report)?)?;
+            }
+        }
         eprintln!(
             "Saved {}x{} frame to {}",
             options.width,

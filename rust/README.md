@@ -3,8 +3,9 @@
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or
 opens an animated resource-free diagnostic sea. Both can render to a PNG without
-a window. Game scripts, ship physics, and the original sea simulation have not
-been ported.
+a window. An opt-in sailing prototype adds wind drive, water resistance, and
+rudder control. Original scripts, full ship physics, and the original sea
+simulation have not been ported.
 
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
 
@@ -65,12 +66,16 @@ upstream cannon fixture with a red test texture. The model test also checks that
 camera movement changes the image and handles the fixture's zero normals. The
 sail test checks both topologies and persistent GPU buffer updates, excluding
 animated water when comparing cloth pixels. Calm cloth stays motionless.
+CPU sailing tests cover dynamics, helm, frame partition, and long runs; the
+fourth GPU test checks rigid translation/rotation with a fixed camera.
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all three GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all four GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
+It also captures a sailing transform and state JSON using the upstream cannon
+fixture and opens that fixture in sailing mode under Xvfb.
 Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
@@ -111,7 +116,8 @@ Child models follow the original `geometry` locators and filename convention.
 `sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
 deterministic kinematic code, with every boundary point pinned and normals
 recomputed each frame. Ropes, original rigging, furling, sail damage, and ship
-physics remain pending. The water is a new preview shader. Materials use the first base texture and new lighting, without
+physics beyond the new planar prototype remain pending. The water is a new
+preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
 
 Texture paths resolve case-insensitively on every OS. The default ship skin is
@@ -128,6 +134,21 @@ cargo run -p storm-demo --locked -- --sail-demo --wind-speed 16
 The procedural sail demo contains one quad and one triangle with a generated
 checker texture. It needs no game resources. See [the sail implementation and
 validation scope](../docs/SAIL_PREVIEW.md).
+
+## Sail the original model
+
+Add `--sail` to the original model command to enable approximate dynamics.
+Hold A/D for rudder and use W/S to change sail power. Releasing the rudder or
+losing focus centres it; physical keys work with any keyboard layout. Space
+pauses motion and cloth while camera controls remain available. The title shows
+speed in knots and course. The camera follows position as the hull turns.
+
+For a reproducible turn, add `--sail --wind-speed 12 --wind-direction 180
+--heading 180 --rudder 0.6 --time 40 --headless sailing.png --state-json state.json`.
+The interval is replayed from rest with constant controls. The new CPU model
+includes apparent wind, leeway, water resistance, yaw damping, and a 120 Hz step.
+Visual furling, vertical motion, wave forces, collisions, and original game
+balance remain pending. See [sailing details and validation](../docs/SAILING_PROTOTYPE.md).
 
 The `storm-formats` crate provides header inspection and full static render-data
 decoding through the native `storm-assets` tool:

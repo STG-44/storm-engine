@@ -1,0 +1,419 @@
+//! First planar sailing model. New approximate dynamics, not Storm gameplay parity.
+//! Units: metres, seconds, kilograms, radians. Heading 0 points +Z, +pi/2 points +X.
+use glam::DVec2;
+use std::{error::Error, fmt};
+
+pub const STEP_SECONDS: f64 = 1.0 / 120.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SimError(pub &'static str);
+impl fmt::Display for SimError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl Error for SimError {}
+type Result<T> = std::result::Result<T, SimError>;
+
+#[derive(Clone, Copy, Debug)]
+pub struct Wind {
+    pub speed_mps: f64,
+    /// Direction wind travels towards; same heading convention as the ship.
+    pub direction: f64,
+}
+impl Wind {
+    pub fn validate(self) -> Result<()> {
+        if !self.speed_mps.is_finite()
+            || !(0.0..=40.0).contains(&self.speed_mps)
+            || !self.direction.is_finite()
+        {
+            return Err(SimError("wind must be finite and 0..=40 m/s"));
+        }
+        Ok(())
+    }
+    pub fn velocity(self) -> DVec2 {
+        DVec2::new(self.direction.sin(), self.direction.cos()) * self.speed_mps
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Helm {
+    /// Effective exposed sail area, 0..=1. Furling geometry is not implemented.
+    pub sail: f64,
+    /// -1 port, +1 starboard. Rudder force depends on forward water speed.
+    pub rudder: f64,
+}
+impl Default for Helm {
+    fn default() -> Self {
+        Self {
+            sail: 1.0,
+            rudder: 0.0,
+        }
+    }
+}
+impl Helm {
+    pub fn validate(self) -> Result<()> {
+        if !self.sail.is_finite()
+            || !(0.0..=1.0).contains(&self.sail)
+            || !self.rudder.is_finite()
+            || !(-1.0..=1.0).contains(&self.rudder)
+        {
+            return Err(SimError("invalid sail/rudder setting"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ShipConfig {
+    pub mass_kg: f64,
+    pub length_m: f64,
+    pub sail_area_m2: f64,
+}
+impl Default for ShipConfig {
+    fn default() -> Self {
+        Self {
+            mass_kg: 120_000.0,
+            length_m: 35.0,
+            sail_area_m2: 350.0,
+        }
+    }
+}
+impl ShipConfig {
+    fn validate(self) -> Result<()> {
+        if !self.mass_kg.is_finite()
+            || !(1_000.0..=1e9).contains(&self.mass_kg)
+            || !self.length_m.is_finite()
+            || !(2.0..=500.0).contains(&self.length_m)
+            || !self.sail_area_m2.is_finite()
+            || !(0.0..=1e5).contains(&self.sail_area_m2)
+        {
+            return Err(SimError("invalid ship configuration"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShipState {
+    /// X/Z position and velocity on the water plane.
+    pub position: DVec2,
+    pub velocity: DVec2,
+    pub heading: f64,
+    pub yaw_rate: f64,
+}
+impl ShipState {
+    pub fn forward(self) -> DVec2 {
+        DVec2::new(self.heading.sin(), self.heading.cos())
+    }
+    pub fn speed_knots(self) -> f64 {
+        self.velocity.length() * 1.943_844_492_440_6
+    }
+    pub fn apparent_wind(self, wind: Wind) -> DVec2 {
+        wind.velocity() - self.velocity
+    }
+    fn validate(self) -> Result<()> {
+        if !self.position.is_finite()
+            || !self.velocity.is_finite()
+            || !self.heading.is_finite()
+            || !self.yaw_rate.is_finite()
+            || self.velocity.length() > 200.0
+            || self.yaw_rate.abs() > 10.0
+        {
+            return Err(SimError(
+                "ship state is non-finite or outside simulation limits",
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub struct Sailing {
+    state: ShipState,
+    config: ShipConfig,
+    wind: Wind,
+    helm: Helm,
+    remainder: f64,
+    ticks: u64,
+}
+impl Sailing {
+    pub fn new(config: ShipConfig, wind: Wind, heading: f64) -> Result<Self> {
+        Self::with_state(
+            config,
+            wind,
+            ShipState {
+                position: DVec2::ZERO,
+                velocity: DVec2::ZERO,
+                heading,
+                yaw_rate: 0.0,
+            },
+        )
+    }
+    pub fn with_state(config: ShipConfig, wind: Wind, mut state: ShipState) -> Result<Self> {
+        config.validate()?;
+        wind.validate()?;
+        state.validate()?;
+        state.heading = wrap(state.heading);
+        Ok(Self {
+            state,
+            config,
+            wind,
+            helm: Helm::default(),
+            remainder: 0.0,
+            ticks: 0,
+        })
+    }
+    pub fn state(&self) -> ShipState {
+        self.state
+    }
+    pub fn helm(&self) -> Helm {
+        self.helm
+    }
+    pub fn config(&self) -> ShipConfig {
+        self.config
+    }
+    pub fn wind(&self) -> Wind {
+        self.wind
+    }
+    pub fn time(&self) -> f64 {
+        self.ticks as f64 * STEP_SECONDS
+    }
+    pub fn set_wind(&mut self, wind: Wind) -> Result<()> {
+        wind.validate()?;
+        self.wind = wind;
+        Ok(())
+    }
+    pub fn set_helm(&mut self, helm: Helm) -> Result<()> {
+        helm.validate()?;
+        self.helm = helm;
+        Ok(())
+    }
+
+    /// Inputs are held constant during this interval. Live callers may cap catch-up time.
+    pub fn advance(&mut self, seconds: f64) -> Result<()> {
+        if !seconds.is_finite() || !(0.0..=3600.0).contains(&seconds) {
+            return Err(SimError(
+                "simulation interval must be finite and 0..=3600 seconds",
+            ));
+        }
+        let total = self.remainder + seconds;
+        let steps = ((total + STEP_SECONDS * 1e-9) / STEP_SECONDS).floor() as u64;
+        for _ in 0..steps {
+            self.step()?;
+            self.ticks += 1;
+        }
+        self.remainder = (total - steps as f64 * STEP_SECONDS).max(0.0);
+        Ok(())
+    }
+
+    fn step(&mut self) -> Result<()> {
+        let mut next = self.state;
+        let forward = next.forward();
+        let right = DVec2::new(forward.y, -forward.x);
+        let surge = next.velocity.dot(forward);
+        let sway = next.velocity.dot(right);
+        let apparent = next.apparent_wind(self.wind);
+        let alignment = apparent.normalize_or_zero().dot(forward);
+        // No-go zone within 40 degrees of directly into the apparent wind;
+        // smoothly restore drive over the following 25 degrees. New preview polar.
+        let reach = ((alignment + 0.766_044_443) / (0.766_044_443 - 0.422_618_262)).clamp(0.0, 1.0);
+        let polar = reach * reach * (3.0 - 2.0 * reach) * (1.0 - 0.3 * alignment * alignment);
+        let pressure =
+            0.5 * 1.225 * self.config.sail_area_m2 * self.helm.sail * apparent.length_squared();
+        let drive = pressure * 0.9 * polar;
+        let leeway = pressure * 0.06 * apparent.normalize_or_zero().dot(right);
+        let drag_forward = 2_000.0 * surge + 800.0 * surge.abs() * surge;
+        let drag_side = 18_000.0 * sway + 9_000.0 * sway.abs() * sway;
+        let rudder_force = 0.5 * 1025.0 * 4.0 * surge.abs() * surge * 0.8 * self.helm.rudder;
+        let force = forward * (drive - drag_forward) + right * (leeway - drag_side - rudder_force);
+        let inertia = self.config.mass_kg * self.config.length_m.powi(2);
+        let torque = rudder_force * self.config.length_m * 0.4
+            - inertia * (0.025 * next.yaw_rate + 0.25 * next.yaw_rate.abs() * next.yaw_rate);
+        next.velocity += force / self.config.mass_kg * STEP_SECONDS;
+        next.position += next.velocity * STEP_SECONDS;
+        next.yaw_rate += torque / (inertia / 12.0) * STEP_SECONDS;
+        next.heading = wrap(next.heading + next.yaw_rate * STEP_SECONDS);
+        next.validate()?;
+        self.state = next;
+        Ok(())
+    }
+}
+
+fn wrap(angle: f64) -> f64 {
+    (angle + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn wind() -> Wind {
+        Wind {
+            speed_mps: 12.0,
+            direction: 0.0,
+        }
+    }
+    fn sim() -> Sailing {
+        Sailing::new(ShipConfig::default(), wind(), 0.0).unwrap()
+    }
+
+    #[test]
+    fn wind_drives_the_ship_but_headwind_and_calm_do_not() {
+        let mut down = sim();
+        down.advance(60.0).unwrap();
+        assert!(down.state.position.y > 50.0 && down.state.speed_knots() > 2.0);
+        assert!(down.state.position.x.abs() < 1e-8);
+        for w in [
+            Wind {
+                speed_mps: 0.0,
+                direction: 0.0,
+            },
+            Wind {
+                direction: std::f64::consts::PI,
+                ..wind()
+            },
+        ] {
+            let mut boat = Sailing::new(ShipConfig::default(), w, 0.0).unwrap();
+            boat.advance(60.0).unwrap();
+            assert!(boat.state.velocity.length() < 1e-8);
+        }
+    }
+
+    #[test]
+    fn fixed_steps_ignore_frame_partition_and_invalid_input_is_rejected() {
+        let mut a = sim();
+        a.set_helm(Helm {
+            sail: 0.8,
+            rudder: 0.3,
+        })
+        .unwrap();
+        let mut b = sim();
+        b.set_helm(a.helm).unwrap();
+        a.advance(30.0).unwrap();
+        for _ in 0..1800 {
+            b.advance(1.0 / 60.0).unwrap();
+        }
+        assert_eq!(a.state, b.state);
+        assert_eq!(a.ticks, b.ticks);
+        let before = a.state;
+        assert!(a.advance(f64::NAN).is_err());
+        assert!(
+            a.set_helm(Helm {
+                sail: 2.0,
+                rudder: 0.0
+            })
+            .is_err()
+        );
+        assert!(
+            a.set_wind(Wind {
+                speed_mps: 41.0,
+                ..wind()
+            })
+            .is_err()
+        );
+        assert_eq!(before, a.state);
+    }
+
+    #[test]
+    fn rudder_needs_water_speed_and_turns_in_opposite_directions() {
+        let mut port = sim();
+        let mut starboard = sim();
+        port.set_helm(Helm {
+            sail: 1.0,
+            rudder: -0.7,
+        })
+        .unwrap();
+        starboard
+            .set_helm(Helm {
+                sail: 1.0,
+                rudder: 0.7,
+            })
+            .unwrap();
+        port.advance(30.0).unwrap();
+        starboard.advance(30.0).unwrap();
+        assert!(port.state.heading < -0.05 && starboard.state.heading > 0.05);
+        assert!((port.state.position.x + starboard.state.position.x).abs() < 1e-8);
+        assert!((port.state.position.y - starboard.state.position.y).abs() < 1e-8);
+        let mut parked = sim();
+        parked
+            .set_wind(Wind {
+                speed_mps: 0.0,
+                ..wind()
+            })
+            .unwrap();
+        parked.set_helm(starboard.helm).unwrap();
+        parked.advance(30.0).unwrap();
+        assert_eq!(parked.state.heading, 0.0);
+    }
+
+    #[test]
+    fn reduced_sails_reduce_drive_and_water_resistance_dissipates_motion() {
+        let mut full = sim();
+        let mut reefed = sim();
+        reefed
+            .set_helm(Helm {
+                sail: 0.25,
+                rudder: 0.0,
+            })
+            .unwrap();
+        full.advance(30.0).unwrap();
+        reefed.advance(30.0).unwrap();
+        assert!(full.state.velocity.length() > reefed.state.velocity.length());
+        let mut coast = Sailing::with_state(
+            ShipConfig::default(),
+            Wind {
+                speed_mps: 0.0,
+                ..wind()
+            },
+            ShipState {
+                position: DVec2::ZERO,
+                velocity: DVec2::new(1.0, 8.0),
+                heading: 0.0,
+                yaw_rate: 0.1,
+            },
+        )
+        .unwrap();
+        coast
+            .set_helm(Helm {
+                sail: 0.0,
+                rudder: 0.0,
+            })
+            .unwrap();
+        let mut previous = coast.state.velocity.length_squared();
+        for _ in 0..1200 {
+            coast.advance(STEP_SECONDS).unwrap();
+            let speed = coast.state.velocity.length_squared();
+            assert!(speed <= previous + 1e-10);
+            previous = speed;
+        }
+        assert!(coast.state.velocity.length() < 6.0);
+        assert!(coast.state.yaw_rate.abs() < 0.01);
+    }
+
+    #[test]
+    fn maximum_wind_remains_finite_over_an_hour_and_zero_sails_provide_no_drive() {
+        for rudder in [-1.0, 0.0, 1.0] {
+            let mut boat = Sailing::new(
+                ShipConfig::default(),
+                Wind {
+                    speed_mps: 40.0,
+                    direction: 0.7,
+                },
+                0.0,
+            )
+            .unwrap();
+            boat.set_helm(Helm { sail: 1.0, rudder }).unwrap();
+            boat.advance(3600.0).unwrap();
+            assert!(boat.state.velocity.length() < 40.0);
+            assert!(boat.state.position.is_finite());
+        }
+        let mut stopped = sim();
+        stopped
+            .set_helm(Helm {
+                sail: 0.0,
+                rudder: 1.0,
+            })
+            .unwrap();
+        stopped.advance(30.0).unwrap();
+        assert_eq!(stopped.state.velocity, DVec2::ZERO);
+    }
+}

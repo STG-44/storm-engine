@@ -4,7 +4,7 @@ mod sails;
 use crate::Gpu;
 use anyhow::{Result, ensure};
 pub use assets::{LoadOptions, Mesh, ModelAsset, read_asset_bytes};
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 pub use sails::{SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
@@ -21,6 +21,26 @@ pub struct ModelVertex {
     pub normal: [f32; 3],
     pub uv: [f32; 2],
     pub color: [f32; 4],
+}
+
+/// Rigid transform in renderer coordinates; no ship physics is implemented here.
+#[derive(Clone, Copy, Default)]
+pub struct ModelPose {
+    pub translation: [f32; 3],
+    pub yaw: f32,
+}
+impl ModelPose {
+    fn matrix(self) -> Result<Mat4> {
+        ensure!(
+            self.translation.iter().all(|v| v.is_finite()) && self.yaw.is_finite(),
+            "invalid model pose"
+        );
+        Ok(Mat4::from_translation(Vec3::from_array(self.translation))
+            * Mat4::from_rotation_y(self.yaw))
+    }
+    pub fn transform_point(self, point: Vec3) -> Result<Vec3> {
+        Ok(self.matrix()?.transform_point3(point))
+    }
 }
 
 #[derive(Clone)]
@@ -111,6 +131,8 @@ pub struct ModelScene {
     pipeline: wgpu::RenderPipeline,
     ocean: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
+    pose_buffer: wgpu::Buffer,
+    pose: ModelPose,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
     meshes: Vec<DrawMesh>,
@@ -142,16 +164,28 @@ impl ModelScene {
         let device = &gpu.device;
         let camera_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Model camera layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
         });
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Model texture layout"),
@@ -180,13 +214,24 @@ impl ModelScene {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Rigid model pose"),
+            contents: bytemuck::bytes_of(&Mat4::IDENTITY.to_cols_array_2d()),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let camera_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Model camera"),
             layout: &camera_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: camera_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: pose_buffer.as_entire_binding(),
+                },
+            ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Original texture sampler"),
@@ -374,12 +419,19 @@ impl ModelScene {
             pipeline,
             ocean,
             camera_buffer,
+            pose_buffer,
+            pose: ModelPose::default(),
             camera_group,
             textures,
             meshes,
             depth: depth_view(device, 1, 1),
             size: (1, 1),
         })
+    }
+    pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
+        pose.matrix()?;
+        self.pose = pose;
+        Ok(())
     }
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
@@ -395,9 +447,13 @@ impl ModelScene {
     ) -> Result<()> {
         let uniform = camera.uniform(width, height, seconds)?;
         wind.validate()?;
+        let local_wind = SailWind {
+            direction: wind.direction - self.pose.yaw,
+            ..wind
+        };
         for mesh in &mut self.meshes {
             if let Some((patch, vertices)) = &mut mesh.sail {
-                patch.deform(vertices, wind, seconds)?;
+                patch.deform(vertices, local_wind, seconds)?;
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }
@@ -408,6 +464,11 @@ impl ModelScene {
         }
         gpu.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
+        gpu.queue.write_buffer(
+            &self.pose_buffer,
+            0,
+            bytemuck::bytes_of(&self.pose.matrix()?.to_cols_array_2d()),
+        );
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

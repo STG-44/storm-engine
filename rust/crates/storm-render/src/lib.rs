@@ -184,7 +184,31 @@ pub fn render_model_offscreen(
     height: u32,
     seconds: f32,
 ) -> Result<Frame> {
+    render_model_offscreen_at_pose(
+        gpu,
+        asset,
+        camera,
+        wind,
+        model::ModelPose::default(),
+        width,
+        height,
+        seconds,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn render_model_offscreen_at_pose(
+    gpu: &Gpu,
+    asset: &model::ModelAsset,
+    camera: &model::OrbitCamera,
+    wind: model::SailWind,
+    pose: model::ModelPose,
+    width: u32,
+    height: u32,
+    seconds: f32,
+) -> Result<Frame> {
     let mut scene = model::ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, asset)?;
+    scene.set_pose(pose)?;
     render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
         scene.draw(gpu, encoder, target, width, height, seconds, camera, wind)
     })
@@ -479,5 +503,78 @@ mod tests {
             ..wind
         };
         assert!(capture(invalid, 0.0).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn rigid_model_pose_moves_geometry_while_camera_and_water_stay_fixed() {
+        use model::{LoadOptions, ModelAsset, ModelPose, ModelScene, OrbitCamera, SailWind};
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tools/modding-tool/Meshes/cannon_x.gm");
+        let mut asset = ModelAsset::load(
+            &path,
+            &LoadOptions {
+                untextured: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        asset.textures[0].mips[0].rgba = vec![255, 0, 0, 255];
+        let instance = create_instance(wgpu::Backends::PRIMARY).unwrap();
+        let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+        let mut camera = OrbitCamera::new(&asset);
+        camera.yaw = 0.0;
+        let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+        let mut capture = |pose| {
+            scene.set_pose(pose)?;
+            render_offscreen_with(&gpu, 257, 145, 0.0, |encoder, target| {
+                scene.draw(
+                    &gpu,
+                    encoder,
+                    target,
+                    257,
+                    145,
+                    0.0,
+                    &camera,
+                    SailWind::default(),
+                )
+            })
+        };
+        let at_rest = capture(ModelPose::default()).unwrap();
+        let moved = capture(ModelPose {
+            translation: [0.25, 0.0, 0.0],
+            yaw: 0.0,
+        })
+        .unwrap();
+        let turned = capture(ModelPose {
+            yaw: std::f32::consts::FRAC_PI_2,
+            ..Default::default()
+        })
+        .unwrap();
+        let centroid = |f: &Frame| {
+            let xs = f
+                .rgba
+                .chunks_exact(4)
+                .enumerate()
+                .filter(|(_, p)| p[0] > 100 && p[1] < 20 && p[2] < 20)
+                .map(|(i, _)| (i % 257) as f64)
+                .collect::<Vec<_>>();
+            assert!(xs.len() > 50);
+            xs.iter().sum::<f64>() / xs.len() as f64
+        };
+        assert!(centroid(&moved) > centroid(&at_rest) + 10.0);
+        assert_ne!(at_rest.rgba, turned.rgba);
+        assert_eq!(
+            &at_rest.rgba[..257 * 4],
+            &moved.rgba[..257 * 4],
+            "pose must not move the sky"
+        );
+        assert!(
+            capture(ModelPose {
+                yaw: f32::NAN,
+                ..Default::default()
+            })
+            .is_err()
+        );
     }
 }

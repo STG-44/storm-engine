@@ -1,5 +1,5 @@
 [workspace]
-members = ["rust/crates/storm-render", "rust/crates/storm-formats", "rust/apps/storm-demo"]
+members = ["rust/crates/storm-render", "rust/crates/storm-formats", "rust/crates/storm-sim", "rust/apps/storm-demo"]
 resolver = "3"
 
 [workspace.package]
