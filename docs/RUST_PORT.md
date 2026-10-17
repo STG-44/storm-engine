@@ -136,3 +136,9 @@ local; the public workflow artifacts contain only the upstream fixture.
 propulsion and geometry. Quad and triangular sails gather towards the original
 attachment edge, reuse buffers and preserve UVs. Local validation passes 27 CPU
 tests and seven Metal GPU tests, including shrinking/restoring both cloth surfaces.
+
+The [sail gathering CI run](https://github.com/STG-44/storm-engine/actions/runs/39011763235)
+passed all four jobs for code commit `98c8148a`: 27 CPU tests and native builds
+on Windows, Linux and both Mac architectures. Linux passes seven GPU tests,
+captures partially gathered quad/triangle cloth, opens its paused window and
+checks an exported rig state with actual deployment 0.5 and target zero.

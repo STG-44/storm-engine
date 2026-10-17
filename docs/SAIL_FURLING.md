@@ -75,3 +75,14 @@ Barkentine1 renders locally with all 20 GM files and 12 sails, including its
 two triangles. The local animation replays a four-second manoeuvre from full to
 zero deployment, with every frame checked against the CPU fraction. Original
 game assets and captures stay outside Git and CI.
+
+The [CI run for code commit 98c8148a](https://github.com/STG-44/storm-engine/actions/runs/39011763235)
+passed all four jobs on 2026-10-17: Windows 2025, Ubuntu 24.04, macOS 15 Apple
+Silicon and macOS 15 Intel. Every job passes 27 CPU tests, formatting, Clippy,
+upstream fixture decoding and native builds. Linux additionally passes all
+seven GPU tests on Vulkan/Mesa llvmpipe, the partial-deployment PNG/window case,
+and the headless rig-state assertion. The downloaded `furling-vulkan` artifact
+was inspected: its PNG shows both reduced cloth surfaces and its JSON records
+0.5 actual deployment with a zero target at two seconds. Original ship rendering
+remains a separate local Metal check; hosted Windows/macOS verify CPU/build
+compatibility, without establishing physical GPU or gameplay compatibility.
