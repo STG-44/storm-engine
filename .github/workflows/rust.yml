@@ -53,9 +53,9 @@ jobs:
         run: |
           mkdir -p "$XDG_RUNTIME_DIR"
           chmod 700 "$XDG_RUNTIME_DIR"
-          STORM_VULKAN_ICD=$(rg --files /usr/share/vulkan/icd.d | rg '/lvp_icd[^/]*[.]json$' | head -n 1)
-          test -f "$STORM_VULKAN_ICD"
-          export VK_DRIVER_FILES="$STORM_VULKAN_ICD"
+          STORM_VULKAN_ICDS=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          export VK_DRIVER_FILES="${STORM_VULKAN_ICDS[0]}"
+          test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
           cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
