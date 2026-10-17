@@ -122,8 +122,9 @@ Child models follow the original `geometry` locators and filename convention.
 `sailt`/`sailv` groups produce triangular cloth; `sails`/`sailg`/`sailf`/`saild`/
 `sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
 deterministic kinematic code, with every boundary point pinned and normals
-recomputed each frame. Ropes, original rigging, sail damage, and ship
-physics beyond the new sailing/wave prototype remain pending. The water is a new
+recomputed each frame. Locator-built ropes, shrouds and flags are implemented;
+original rigging dynamics, sail damage, and ship physics beyond the new
+sailing/wave prototype remain pending. The water is a new
 preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
 

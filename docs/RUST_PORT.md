@@ -56,8 +56,8 @@ Verified locally on 2026-10-17:
 - CPU format/shader/dynamics validation and all nine explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
-- Barkentine1 assembles from 20 GM files, with three original TX textures and
-  twelve sails (two triangular): 34 draw meshes, 8,343 triangles. Wind deforms
+- Barkentine1 assembles from 20 GM files, with six texture slots and
+  twelve sails (two triangular): 38 draw meshes, 19,431 triangles including rigging. Wind deforms
   the cloth interior with pinned boundaries. A 1280 x 720 capture is saved outside Git.
 - GPU fixture checks cover texture sampling, geometry visibility with the depth
   pipeline, zero-normal fallback lighting, camera changes, and invalid cameras.
@@ -85,8 +85,8 @@ table lengths. `decode` additionally reads static geometry, names, materials,
 labels, vertices, indices, and complete 2D mip pixels. Supported layouts and
 explicit limits are documented in the run instructions. BSP collision traversal,
 animated geometry, older GM versions, original material/sea effects, original
-rigging, ropes, full ship physics, and gameplay remain pending. Full decoding has been exercised on
-the ship preview and upstream fixture; the previous whole-resource scan remains
+rigging dynamics, full ship physics, and gameplay remain pending. Full decoding has been exercised on
+all 40 available ship roots and the upstream fixture; the previous whole-resource scan remains
 header-only evidence.
 
 The [first original-resource inspection results](ASSET_VALIDATION.md) record
@@ -146,7 +146,12 @@ checks an exported rig state with actual deployment 0.5 and target zero.
 [Original sail sets](ORIGINAL_SAIL_MODES.md) restore three-state selection and
 model-specific membership. All 40 available ship roots (776 GM files, 368 sails)
 match independent C++-rule classification. Local checks pass 30 CPU/eight GPU tests.
+The [original-set CI run](https://github.com/STG-44/storm-engine/actions/runs/39026148582)
+passes all four platform jobs, including eight Vulkan GPU tests on Linux.
 
 [Rigging preview](RIGGING_PREVIEW.md) adds rope ties, shrouds and flag animation.
 All 40 available ship roots decode with generated rigging; local validation passes
 35 CPU tests and nine Metal GPU tests. Commercial assets/captures remain external.
+The [rigging CI run](https://github.com/STG-44/storm-engine/actions/runs/39026983401)
+passes all four jobs for `a132be4c`, with 35 CPU tests on each platform and nine
+software Vulkan GPU tests plus procedural rigging capture/window checks on Linux.

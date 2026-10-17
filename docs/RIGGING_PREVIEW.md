@@ -77,3 +77,11 @@ incomplete or duplicate groups. It renders 20 GM files, 38 draw meshes, six
 texture slots, 12 sails and 19,431 triangles locally through Metal. Original ship
 captures and metadata reports remain outside Git. Linux CI exercises the
 generated rigging fixture and its native window through software Vulkan.
+
+The [rigging CI run](https://github.com/STG-44/storm-engine/actions/runs/39026983401)
+passes all four jobs for code commit `a132be4c`: Windows, Linux, Mac Intel and
+Apple Silicon. Each runs formatting, Clippy, 35 CPU tests, native builds and a
+GPU-free rig report. Linux also passes nine software Vulkan GPU tests, captures
+the procedural rigging fixture and presents three frames in its native window.
+The downloaded fixture PNG was inspected locally. Windows and hosted macOS
+results cover CPU checks and builds; physical-GPU verification is local Metal.

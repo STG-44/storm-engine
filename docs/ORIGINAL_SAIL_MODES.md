@@ -108,3 +108,9 @@ scene confirms that normal-mode cloth exactly matches full-mode cloth for the
 normal tier and furled-mode cloth for the full-only tier. Fleet decoding and
 classification are separate from visual inspection; not all 40 ships have been
 rendered or checked for gameplay compatibility.
+
+The [original-set CI run](https://github.com/STG-44/storm-engine/actions/runs/39026148582)
+passes all four platform jobs with 30 CPU tests, formatting, Clippy and native
+builds. Linux also passes eight software Vulkan GPU tests, captures the
+normal-set fixture and opens its native window. Hosted Windows/macOS jobs
+check CPU behavior and builds; local Metal supplies physical-GPU evidence.
