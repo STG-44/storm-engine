@@ -3,8 +3,8 @@
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or
 opens an animated resource-free diagnostic sea. Both can render to a PNG without
-a window. An opt-in sailing prototype adds wind drive, water resistance, and
-rudder control. Original scripts, full ship physics, and the original sea
+a window. An opt-in sailing prototype adds wind drive, water resistance,
+rudder control, and damped wave response. Original scripts, full ship physics, and the original sea
 simulation have not been ported.
 
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
@@ -67,15 +67,18 @@ camera movement changes the image and handles the fixture's zero normals. The
 sail test checks both topologies and persistent GPU buffer updates, excluding
 animated water when comparing cloth pixels. Calm cloth stays motionless.
 CPU sailing tests cover dynamics, helm, frame partition, and long runs; the
-fourth GPU test checks rigid translation/rotation with a fixed camera.
+rigid-pose GPU test checks translation, yaw, heave, pitch and roll with a fixed
+camera. Two more GPU tests compare CPU/WGSL wave heights and gradients, and
+check that displaced water depth hides a submerged plate and reveals it in a trough.
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all four GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all six GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
 It also captures a sailing transform and state JSON using the upstream cannon
-fixture and opens that fixture in sailing mode under Xvfb.
+fixture and opens that fixture in sailing mode under Xvfb. A separate wave case
+uses a 0.15 m envelope suitable for the small fixture and exports hull motion.
 Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 

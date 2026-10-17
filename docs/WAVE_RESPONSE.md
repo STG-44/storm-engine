@@ -72,3 +72,12 @@ The original Barkentine1 loads 20 GM files, three original textures and all
 12 sails (including two triangles), renders through Metal, and presents three
 paused native frames with waves. The local animation samples 12–21.75 s at
 0.25 s intervals and plays 2.5 times faster; it stays outside the repository.
+
+The [CI run for code commit c3b2520e](https://github.com/STG-44/storm-engine/actions/runs/39010786290)
+passed all four jobs on 2026-10-17: Windows 2025, Ubuntu 24.04, macOS 15 Apple
+Silicon and macOS 15 Intel. Each passes 24 CPU tests, formatting, Clippy and native
+builds. Linux passes all six GPU tests on Vulkan/Mesa llvmpipe, wave capture/state
+export and three paused native wave frames. The downloaded wave artifact contains
+nonzero heave/pitch/roll at 12 s with a 0.15 m envelope; its PNG was inspected.
+Windows and hosted macOS establish CPU/build compatibility; original ship
+rendering is verified separately on local Metal with supplied game resources.

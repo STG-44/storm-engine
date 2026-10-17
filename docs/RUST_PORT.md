@@ -52,7 +52,7 @@ Verified locally on 2026-10-17:
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU format/shader/dynamics validation and all four explicit GPU tests pass.
+- CPU format/shader/dynamics validation and all six explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 - Barkentine1 assembles from 20 GM files, with three original TX textures and
@@ -124,3 +124,9 @@ The local original-ship capture includes all 12 sails. Local validation passes
 24 CPU tests and six Metal GPU tests, including CPU/WGSL agreement and an
 emerging/submerged geometry check. CI adds a separate wave capture/state export
 and paused native window using the small upstream cannon fixture.
+
+The [wave response CI run](https://github.com/STG-44/storm-engine/actions/runs/39010786290)
+passed all four jobs for code commit `c3b2520e`: 24 CPU tests and native builds
+on Windows, Linux and both Mac architectures, plus six GPU tests and native
+wave capture/window checks through Vulkan on Linux. Original ship captures stay
+local; the public workflow artifacts contain only the upstream fixture.
