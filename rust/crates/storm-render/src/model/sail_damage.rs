@@ -406,6 +406,18 @@ impl ModelAsset {
         seconds: f32,
         rig: storm_sim::RigState,
     ) -> Result<Vec<SailImpact>> {
+        self.sail_volley_with(state, sections, wind, seconds, rig, |_| Ok(()))
+    }
+    /// Observe each individual test segment, preserving cannon event boundaries.
+    pub fn sail_volley_with(
+        &self,
+        state: &mut ShipState,
+        sections: u32,
+        wind: SailWind,
+        seconds: f32,
+        rig: storm_sim::RigState,
+        mut on_shot: impl FnMut(&[SailImpact]) -> Result<()>,
+    ) -> Result<Vec<SailImpact>> {
         ensure!(
             (1..=12).contains(&sections),
             "volley sections must be 1..=12"
@@ -456,7 +468,7 @@ impl ModelAsset {
                     let extent = 0.2 * (attempt + 1) as f32;
                     for reverse in [false, true] {
                         let sign = if reverse { -1.0 } else { 1.0 };
-                        hits.extend(self.trace_sail_shot(
+                        let shot = self.trace_sail_shot(
                             state,
                             point - normal * extent * sign,
                             point + normal * extent * sign,
@@ -464,7 +476,9 @@ impl ModelAsset {
                             seconds,
                             rig,
                             ModelPose::default(),
-                        )?);
+                        )?;
+                        on_shot(&shot)?;
+                        hits.extend(shot);
                         if state
                             .sail_holes
                             .get(&index)

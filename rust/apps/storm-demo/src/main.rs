@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{ArgGroup, Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc};
+mod damage_events;
 mod flags;
 mod rig_report;
 mod sailing;
@@ -159,6 +160,15 @@ struct Options {
     /// Fire reproducible swept test shots into N sections of every deployed sail.
     #[arg(long,requires="preview",value_parser=clap::value_parser!(u32).range(1..=12))]
     sail_volley: Option<u32>,
+    /// Write observed original sail event payloads; also updated by native X shots.
+    #[arg(long, requires = "preview")]
+    event_report: Option<PathBuf>,
+    /// Explicit preview attacker character index; no character scripts are loaded.
+    #[arg(long, requires = "preview", default_value_t = -1, allow_negative_numbers = true)]
+    shot_owner: i32,
+    /// Explicit preview target character index; -1 suppresses DoSailHole as in C++.
+    #[arg(long, requires = "preview", default_value_t = -1, allow_negative_numbers = true)]
+    ship_character: i32,
     /// Focus the initial camera on the original deck walking network.
     #[arg(long, requires = "preview")]
     deck_view: bool,
@@ -523,6 +533,7 @@ struct Application {
     state: Option<WindowState>,
     failure: Option<anyhow::Error>,
     asset: Option<Arc<ModelAsset>>,
+    damage_events: damage_events::DamageEvents,
 }
 
 impl Application {
@@ -657,6 +668,24 @@ impl ApplicationHandler for Application {
                             pose,
                         ) {
                             Ok(hits) => {
+                                if let Err(error) = self
+                                    .damage_events
+                                    .shot(
+                                        asset,
+                                        &hits,
+                                        self.options.shot_owner,
+                                        self.options.ship_character,
+                                    )
+                                    .and_then(|()| {
+                                        self.options
+                                            .event_report
+                                            .as_ref()
+                                            .map_or(Ok(()), |path| self.damage_events.write(path))
+                                    })
+                                {
+                                    self.fail(event_loop, error);
+                                    return;
+                                }
                                 eprintln!("Cannonball segment: {} sail intersections", hits.len());
                                 !hits.is_empty()
                             }
@@ -787,6 +816,7 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
+    let mut damage_events = damage_events::DamageEvents::new()?;
     let mut asset = if options.ship_demo {
         Some(Arc::new(ModelAsset::ship_demo()?))
     } else if options.rigging_demo {
@@ -829,7 +859,7 @@ fn main() -> Result<()> {
         asset.ship_state.validate(&asset.ship)?;
         if let Some(sections) = options.sail_volley {
             let mut damage = asset.ship_state.clone();
-            let hits = asset.sail_volley(
+            let hits = asset.sail_volley_with(
                 &mut damage,
                 sections,
                 options.wind(),
@@ -838,6 +868,7 @@ fn main() -> Result<()> {
                     storm_sim::SailMode::from_setting(f64::from(options.sail_setting))
                         .expect("validated sail set"),
                 ),
+                |hits| damage_events.shot(asset, hits, options.shot_owner, options.ship_character),
             )?;
             eprintln!(
                 "Test cannonball segments: {} intersections, {} newly damaged sections",
@@ -878,6 +909,9 @@ fn main() -> Result<()> {
                 .map(|m| m.indices.len() / 3)
                 .sum::<usize>()
         );
+    }
+    if let Some(path) = &options.event_report {
+        damage_events.write(path)?;
     }
     if let Some(path) = &options.rig_report {
         let asset = asset.as_ref().expect("model required by CLI");
@@ -968,6 +1002,7 @@ fn main() -> Result<()> {
         state: None,
         failure: None,
         asset,
+        damage_events,
     };
     event_loop
         .run_app(&mut application)

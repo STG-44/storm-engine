@@ -7,6 +7,12 @@ a window. An opt-in sailing prototype adds wind drive, water resistance,
 rudder control, and damped wave response. Original scripts, full ship physics, and the original sea
 simulation have not been ported.
 
+The [entity/message foundation](../docs/RUNTIME_FOUNDATION.md) includes a native
+sail damage observer. Add `--event-report events.json --shot-owner 7
+--ship-character 19` to a model preview or a GPU-free `--rig-report` command to
+inspect the original event payloads. Character indices are preview inputs;
+original character scripts are not running.
+
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
 
 ## Run

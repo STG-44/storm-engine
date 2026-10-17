@@ -85,7 +85,8 @@ jobs:
           python3 -c "import json; a=json.load(open('intact-sailing.json')); b=json.load(open('holed-sailing.json')); assert b['rig']['missing_weight']>0; assert b['sail_deployed']<a['sail_deployed']; assert b['speed_knots']<a['speed_knots']; assert len(b['ship']['sail_holes'])==2"
       - name: Verify original sail-set metadata without a GPU device
         run: |
-          cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --rig-report ship-layout.json
+          cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --rig-report ship-layout.json --event-report sail-events.json --shot-owner 7 --ship-character 19
+          python -c "import json; s=json.load(open('sail-events.json')); assert s['observer_entity']==4294967296; assert s['script_vm'] is False; assert s['total_events']>0; assert all(e['name']=='ShpSailDamage' and e['format']=='lfffl' and e['owner']==7 and e['character']==19 for e in s['events'])"
           cargo run -p storm-demo --locked -- --sail-demo --rig-report rig-layout.json
           cargo run -p storm-demo --locked -- --rigging-demo --flag-nation spain --flag-role merchant --rig-report flags-layout.json
       - name: Upload native executable
@@ -173,6 +174,7 @@ jobs:
           path: |
             ship-damage-preview.png
             ship-layout.json
+            sail-events.json
             intact-sailing.png
             intact-sailing.json
             holed-sailing.png

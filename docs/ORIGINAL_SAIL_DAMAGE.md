@@ -40,8 +40,9 @@ coefficients scale billow (and triangular flutter) in the existing preview.
 The full original wind generator, rolling/free-sail integrator and distance LOD
 selection are separate from this damage port; the renderer keeps full detail.
 `SetAllHole`-style restoration is available through `ModelAsset::set_sail_holes`.
-The script VM and dispatch of `DoSailHole`/`SHIP_SAIL_DAMAGE` are still pending;
-trace results expose the resulting mask and nearest impact for that integration.
+The demo now dispatches `DoSailHole`/`SHIP_SAIL_DAMAGE` payloads through a native
+observer; see the [runtime foundation](RUNTIME_FOUNDATION.md). Script execution
+and gameplay side effects during collision traversal remain pending.
 
 ## Reproduce
 

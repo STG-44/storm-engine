@@ -21,6 +21,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - `rust-port` is the integration branch for the port.
 - Work is recorded in focused commits with validation results. Completed milestones should have reproducible commands and platform evidence.
 - Upstream baseline: `a68f43df197a50c5177f40209abc109f01f4b114` from `storm-devs/storm-engine`.
+- Public development review: [draft PR #1](https://github.com/STG-44/storm-engine/pull/1) into this fork's `develop`; upstream is archived.
 
 ## Milestones
 
@@ -41,6 +42,8 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
+  - [x] Add the [native entity/message foundation and sail event observer](RUNTIME_FOUNDATION.md).
+  - [ ] Port attributes, delayed events, script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
 
