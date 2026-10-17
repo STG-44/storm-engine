@@ -20,7 +20,8 @@ fn sky(ray: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fragment_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> {
     let uv = (pixel.xy / frame.xy) * 2.0 - 1.0;
-    let ray = normalize(vec3(uv.x * frame.x / frame.y, -uv.y * 0.7 + 0.12, -1.6));
+    let view = vec2(uv.x * frame.x / frame.y, -uv.y) * 0.7;
+    let ray = normalize(vec3(view.x, view.y + 0.12, -1.6));
     if ray.y >= -0.002 { return vec4(sky(ray), 1.0); }
     let distance = 2.8 / -ray.y;
     let point = ray.xz * distance;
