@@ -13,7 +13,7 @@ generated alpha markers, never commercial artwork.
 | --- | --- |
 | `sailone.cpp::SetSail` | 13 x 17 quad vertices, 17 triangular rows (153 vertices), twelve/ten damage bits |
 | `sailone.cpp::FillIndex` | Same full-resolution triangle indices and intact/damaged ranges, including the original reversed placement/order in the hole range |
-| `sailone.cpp::SetTexGrid` | Mask UV = (1 + 0.5 * base.u, 0.5 * base.v + triangular ? 0.5 : 0) |
+| `sailone.cpp::SetTexGrid` | Mask UV = (1 + 0.5 * base.u, 0.5 * base.v + (triangular ? 0.5 : 0)) |
 | `sail.cpp::Realize` | Damaged triangles first, mirror U / wrap V; intact triangles use wrap U / V |
 | `src/techniques/ship/Sail.fx` | Multiply base alpha by mask alpha; mask RGB does not tint cloth; source-alpha blending and depth writes |
 | `renderer/src/s_device.cpp` | Original alpha test: greater than 0xA0 / 255 |
@@ -78,3 +78,22 @@ speed cases. Rust checks these portable results on every CI platform. The
 manual generator requires Python 3 and a C++17 compiler; routine tests do not.
 GPU tests additionally check alpha-mask changes, flutter/furling, pause and exact
 restoration in one persistent scene. Real game artwork is verified locally.
+
+
+## Validation on 2026-10-18
+
+Code [`9de18547`](https://github.com/STG-44/storm-engine/commit/9de185474a80cf87d9bb7ac94a8b33570b73f88c)
+passes [all four platform jobs](https://github.com/STG-44/storm-engine/actions/runs/39077873810):
+58 CPU tests (including all 7,934 original C++ cases), formatting, Clippy and
+native builds on Linux, Windows, macOS ARM and macOS Intel. Linux also passes
+13 GPU tests using software Vulkan and native fixture windows under Xvfb. Its
+downloaded damage artifact was inspected; mask state, drive fraction and sailing
+speed match a local Metal capture exactly.
+
+Locally, all 40 original ship roots (368 sails) load the original damage texture
+and INI coefficients. Deterministic test volleys damage 1,105 sectors (some
+segments intersect additional cloth). The original Barkentine renders through
+Metal with the supplied mask; all 48 damaged sectors remain recorded on twelve
+sails after complete furling. Both its native window and the generated fixture
+present three frames. Commercial resources and original-ship captures remain
+external; physical Windows/Linux GPU checks with game data are still pending.

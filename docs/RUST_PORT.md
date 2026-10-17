@@ -194,3 +194,11 @@ circles with the game's alpha mask, original full-resolution index partition,
 UV/sampler rules and coarse collision behavior. A retained-C++ reference checks
 7,934 cases independently of Rust. Script events and original wind/rolling
 integration remain separate work; this change does not claim full sail/VM parity.
+
+
+The [original sail damage CI run](https://github.com/STG-44/storm-engine/actions/runs/39077873810)
+passes all four platform jobs for `9de18547`: 58 CPU tests including 7,934 cases
+from retained C++ methods, plus 13 Vulkan GPU tests and native fixtures on Linux.
+Local Metal checks exercise the actual original mask; all 40 original ship roots
+load it and their INI settings. Original wind/rolling and script event integration
+remain distinct from the now-portable damage material/collision implementation.
