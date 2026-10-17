@@ -1,6 +1,8 @@
 //! Native model preview: original mesh hierarchy/textures, preview cloth and water.
 mod assets;
+mod rigging;
 mod sails;
+pub use rigging::{FlagPatch, RigMesh, RiggingConfig, RiggingStats};
 #[cfg(test)]
 mod tests;
 use crate::Gpu;
@@ -165,6 +167,7 @@ struct DrawMesh {
     count: u32,
     texture: usize,
     sail: Option<(SailPatch, Vec<ModelVertex>)>,
+    rigging: Option<(RigMesh, Vec<ModelVertex>)>,
 }
 
 pub struct ModelScene {
@@ -461,7 +464,7 @@ impl ModelScene {
                     label: Some("GM vertices"),
                     contents: vertices,
                     usage: wgpu::BufferUsages::VERTEX
-                        | if source.sail.is_some() {
+                        | if source.sail.is_some() || source.rigging.is_some() {
                             wgpu::BufferUsages::COPY_DST
                         } else {
                             wgpu::BufferUsages::empty()
@@ -475,6 +478,7 @@ impl ModelScene {
                 count: source.indices.len() as u32,
                 texture: source.texture,
                 sail: source.sail.clone().map(|s| (s, source.vertices.clone())),
+                rigging: source.rigging.clone().map(|r| (r, source.vertices.clone())),
             });
         }
         Ok(Self {
@@ -545,6 +549,13 @@ impl ModelScene {
         if self.size != (width, height) {
             self.depth = depth_view(&gpu.device, width, height);
             self.size = (width, height);
+        }
+        for mesh in &mut self.meshes {
+            if let Some((rigging, vertices)) = &mut mesh.rigging {
+                rigging.deform(vertices, local_wind, seconds, self.rig)?;
+                gpu.queue
+                    .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
+            }
         }
         gpu.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));

@@ -76,7 +76,7 @@ checks the original intermediate set: normal sails stay full, full-only sails ga
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all eight GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all nine GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
 It also captures a sailing transform and state JSON using the upstream cannon
@@ -197,3 +197,8 @@ decoded. No commercial assets or captures are bundled in the repository or CI.
 
 Original controls now select three sets (0 / 0.5 / 1), with generic per-sail
 classification from GM node/parent names. [Rules and the 40-model audit](../docs/ORIGINAL_SAIL_MODES.md).
+
+[Rigging preview](../docs/RIGGING_PREVIEW.md) adds locator-built ropes and
+shrouds plus wind-driven flags. Run `--rigging-demo` without game resources.
+The tested original ship loads its rigging textures/atlas settings from
+`RESOURCE/INI/rigging.ini`; flag nation/script selection remains pending.

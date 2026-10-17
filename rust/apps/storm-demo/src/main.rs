@@ -42,7 +42,7 @@ impl Backend {
 #[derive(Parser)]
 #[command(
     version,
-    group(ArgGroup::new("preview").args(["model", "sail_demo"])),
+    group(ArgGroup::new("preview").args(["model", "sail_demo", "rigging_demo"])),
     about = "Storm Rust: native diagnostic sea and original GM/TX model preview"
 )]
 struct Options {
@@ -67,6 +67,9 @@ struct Options {
     /// Preview generated quad/triangle cloth without original game resources.
     #[arg(long)]
     sail_demo: bool,
+    /// Resource-free ropes, shrouds, quad flags and pennants fixture.
+    #[arg(long)]
+    rigging_demo: bool,
     /// Game installation or its RESOURCE directory (original files stay outside Git).
     #[arg(long, requires = "model")]
     game_dir: Option<PathBuf>,
@@ -614,7 +617,9 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
-    let asset = if options.sail_demo {
+    let asset = if options.rigging_demo {
+        Some(Arc::new(ModelAsset::rigging_demo()?))
+    } else if options.sail_demo {
         Some(Arc::new(ModelAsset::sail_demo()?))
     } else {
         options
@@ -635,6 +640,16 @@ fn main() -> Result<()> {
             .transpose()?
     };
     if let Some(asset) = &asset {
+        let r = asset.rigging_stats;
+        eprintln!(
+            "Rigging: {} ropes, {} shroud sets, {} flags; unmatched ropes {}, incomplete shrouds {}, incomplete flags {}",
+            r.ropes,
+            r.shrouds,
+            r.flags,
+            r.unmatched_ropes,
+            r.incomplete_shrouds,
+            r.incomplete_flags
+        );
         eprintln!(
             "Loaded {} geometry files, {} draw meshes, {} texture slots, {} sails ({} triangular), {} triangles",
             asset.geometry_files,

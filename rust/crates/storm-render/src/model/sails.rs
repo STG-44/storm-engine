@@ -109,6 +109,31 @@ impl SailPatch {
     pub fn is_triangle(&self) -> bool {
         matches!(self.shape, SailShape::Triangle(_))
     }
+    /// Rope ties follow the closest original hard point and preserve their rest offset.
+    pub(super) fn gather_anchor(&self, point: Vec3, deployed: f32) -> Vec3 {
+        let corners = match self.shape {
+            SailShape::Triangle(p) => [
+                (p[0], 0.0, 0.0),
+                (p[1], 1.0, 0.0),
+                (p[2], 0.0, 1.0),
+                (p[2], 0.0, 1.0),
+            ],
+            SailShape::Quad(p) => [
+                (p[0], 0.0, 0.0),
+                (p[1], 1.0, 0.0),
+                (p[2], 1.0, 1.0),
+                (p[3], 0.0, 1.0),
+            ],
+        };
+        let &(corner, u, v) = corners
+            .iter()
+            .min_by(|a, b| {
+                a.0.distance_squared(point)
+                    .total_cmp(&b.0.distance_squared(point))
+            })
+            .expect("sail corners");
+        Vec3::from_array(self.vertex(u, v, 0.0, 0.0, 0.0, deployed).position) + point - corner
+    }
 
     pub fn vertex_count(&self) -> usize {
         let n = SEGMENTS as usize + 1;

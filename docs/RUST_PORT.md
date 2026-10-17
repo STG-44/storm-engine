@@ -53,7 +53,7 @@ Verified locally on 2026-10-17:
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU format/shader/dynamics validation and all eight explicit GPU tests pass.
+- CPU format/shader/dynamics validation and all nine explicit GPU tests pass.
 - The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
 - Barkentine1 assembles from 20 GM files, with three original TX textures and
@@ -146,3 +146,7 @@ checks an exported rig state with actual deployment 0.5 and target zero.
 [Original sail sets](ORIGINAL_SAIL_MODES.md) restore three-state selection and
 model-specific membership. All 40 available ship roots (776 GM files, 368 sails)
 match independent C++-rule classification. Local checks pass 30 CPU/eight GPU tests.
+
+[Rigging preview](RIGGING_PREVIEW.md) adds rope ties, shrouds and flag animation.
+All 40 available ship roots decode with generated rigging; local validation passes
+35 CPU tests and nine Metal GPU tests. Commercial assets/captures remain external.

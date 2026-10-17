@@ -428,6 +428,7 @@ mod tests {
             radius: asset.radius,
             geometry_files: 0,
             sails: 0,
+            rigging_stats: model::RiggingStats::default(),
         };
         let sky = render_model_offscreen(
             &gpu,

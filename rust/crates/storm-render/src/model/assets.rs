@@ -1,4 +1,7 @@
-use super::{ModelVertex, SailPatch, SailShape, SailWind, sails};
+use super::{
+    ModelVertex, RigMesh, RiggingConfig, RiggingStats, SailPatch, SailShape, SailWind, rigging,
+    sails,
+};
 use anyhow::{Context, Result, bail, ensure};
 use glam::{Mat4, Vec3};
 use std::{
@@ -18,6 +21,7 @@ pub struct Mesh {
     pub indices: Vec<u32>,
     pub texture: usize,
     pub sail: Option<SailPatch>,
+    pub rigging: Option<RigMesh>,
 }
 
 impl Mesh {
@@ -27,6 +31,7 @@ impl Mesh {
             indices: patch.indices(),
             texture,
             sail: Some(patch),
+            rigging: None,
         })
     }
 }
@@ -38,6 +43,7 @@ pub struct ModelAsset {
     pub radius: f32,
     pub geometry_files: usize,
     pub sails: usize,
+    pub rigging_stats: RiggingStats,
 }
 
 #[derive(Default)]
@@ -199,6 +205,76 @@ impl TextureFiles {
 }
 
 impl ModelAsset {
+    /// Generated rigging fixture; no original game assets are bundled.
+    pub fn rigging_demo() -> Result<Self> {
+        use storm_formats::geometry::Label;
+        let mut asset = Self::sail_demo()?;
+        let mut collector = rigging::Collector::default();
+        let labels = [
+            ("hull", "ropeb1", Vec3::ZERO),
+            ("mast", "ropee1", Vec3::new(0.0, 10.0, 0.0)),
+            ("hull", "ropeb2", Vec3::new(4.0, 0.0, 0.0)),
+            ("mast", "ropee2", Vec3::new(0.0, 9.0, 0.0)),
+            ("vants", "vant1u", Vec3::new(0.0, 7.0, 0.0)),
+            ("vants", "vant1l", Vec3::new(-2.0, 0.0, 1.0)),
+            ("vants", "vant1r", Vec3::new(-2.0, 0.0, -1.0)),
+            ("flag1", "f1", Vec3::new(0.0, 10.0, 0.0)),
+            ("flag1", "f2", Vec3::new(3.0, 10.0, 0.0)),
+            ("flag1", "f3", Vec3::new(3.0, 9.0, 0.0)),
+            ("flag1", "f4", Vec3::new(0.0, 9.0, 0.0)),
+            ("flag2", "f1", Vec3::new(-4.0, 8.0, 0.0)),
+            ("flag2", "f2", Vec3::new(-1.0, 7.6, 0.0)),
+            ("flag2", "f3", Vec3::new(-4.0, 7.2, 0.0)),
+        ]
+        .map(|(group, name, p)| Label {
+            group: group.into(),
+            name: name.into(),
+            matrix: Mat4::from_translation(p).to_cols_array(),
+        });
+        collector.add(&labels, Mat4::IDENTITY, "fixture");
+        let config = RiggingConfig {
+            flag_columns: 1,
+            flag_rows: 1,
+            ..Default::default()
+        };
+        let (ropes, flags, stats) = collector.build(&[], &config)?;
+        asset.rigging_stats = stats;
+        asset.textures.push(Texture {
+            header: TxHeader {
+                flags: 0,
+                width: 1,
+                height: 1,
+                mips: 1,
+                format: 21,
+                mip0_bytes: 4,
+            },
+            mips: vec![Mip {
+                width: 1,
+                height: 1,
+                rgba: vec![255; 4],
+            }],
+        });
+        let mut append = |rigging: RigMesh, texture| -> Result<()> {
+            let vertices =
+                rigging.vertices(SailWind::default(), 0.0, storm_sim::RigState::uniform(1.0))?;
+            let indices = rigging.indices();
+            asset.meshes.push(Mesh {
+                vertices,
+                indices,
+                texture,
+                sail: None,
+                rigging: Some(rigging),
+            });
+            Ok(())
+        };
+        append(RigMesh::Ropes(ropes), 1)?;
+        for flag in flags {
+            append(RigMesh::Flag(flag), 0)?;
+        }
+        asset.center = Vec3::new(0.0, 5.0, 0.0);
+        asset.radius = 8.0;
+        Ok(asset)
+    }
     /// Redistributable procedural fixture for inspecting both sail topologies without a game.
     pub fn sail_demo() -> Result<Self> {
         let quad = SailPatch::new(SailShape::Quad([
@@ -243,6 +319,7 @@ impl ModelAsset {
             radius: 5.5,
             geometry_files: 0,
             sails: 2,
+            rigging_stats: RiggingStats::default(),
         })
     }
 
@@ -305,11 +382,13 @@ impl ModelAsset {
                 radius: 1.0,
                 geometry_files: 0,
                 sails: 0,
+                rigging_stats: RiggingStats::default(),
             },
             files,
             cache: BTreeMap::new(),
             active: BTreeSet::new(),
             single: options.single_mesh,
+            rigging: rigging::Collector::default(),
             render_bytes: 4,
         };
         let stem = path
@@ -325,6 +404,9 @@ impl ModelAsset {
             Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
             0,
         )?;
+        if !options.single_mesh {
+            builder.add_rigging()?;
+        }
         ensure!(
             !builder.asset.meshes.is_empty(),
             "model contains no visible static geometry"
@@ -357,8 +439,59 @@ struct Builder {
     active: BTreeSet<PathBuf>,
     single: bool,
     render_bytes: usize,
+    rigging: rigging::Collector,
 }
 impl Builder {
+    fn add_rigging(&mut self) -> Result<()> {
+        let mut config = RiggingConfig::default();
+        if let Some(files) = &self.files {
+            let resource = files
+                .root
+                .parent()
+                .context("texture root has no RESOURCE parent")?;
+            if let Ok(ini_dir) = find_child(resource, "INI")
+                && let Ok(ini) = find_child(&ini_dir, "rigging.ini")
+            {
+                let text = String::from_utf8_lossy(&read_asset_bytes(&ini)?).into_owned();
+                config = RiggingConfig::from_ini(&text)?;
+            }
+        }
+        let patches = self
+            .asset
+            .meshes
+            .iter()
+            .filter_map(|m| m.sail.clone())
+            .collect::<Vec<_>>();
+        let (ropes, flags, stats) = self.rigging.build(&patches, &config)?;
+        self.asset.rigging_stats = stats;
+        if !ropes.is_empty() {
+            let texture = self.texture(&config.rope_texture)?;
+            self.add_rig_mesh(RigMesh::Ropes(ropes), texture)?;
+        }
+        if !flags.is_empty() {
+            let texture = self.texture(&config.flag_texture)?;
+            for flag in flags {
+                self.add_rig_mesh(RigMesh::Flag(flag), texture)?;
+            }
+        }
+        Ok(())
+    }
+    fn add_rig_mesh(&mut self, rigging: RigMesh, texture: usize) -> Result<()> {
+        self.reserve(
+            rigging.vertex_count() * std::mem::size_of::<ModelVertex>() + rigging.index_count() * 4,
+        )?;
+        let vertices =
+            rigging.vertices(SailWind::default(), 0.0, storm_sim::RigState::uniform(1.0))?;
+        let indices = rigging.indices();
+        self.asset.meshes.push(Mesh {
+            vertices,
+            indices,
+            texture,
+            sail: None,
+            rigging: Some(rigging),
+        });
+        Ok(())
+    }
     fn reserve(&mut self, bytes: usize) -> Result<()> {
         self.render_bytes = self
             .render_bytes
@@ -410,6 +543,7 @@ impl Builder {
         let model = Geometry::read(&read_asset_bytes(path)?)
             .with_context(|| format!("decode {}", path.display()))?;
         self.asset.geometry_files += 1;
+        self.rigging.add(&model.labels, world, node);
         let normals = world.inverse().transpose();
         for object in &model.objects {
             if object.flags & 1 == 0 || object.triangle_count == 0 {
@@ -451,6 +585,7 @@ impl Builder {
                 indices,
                 texture,
                 sail: None,
+                rigging: None,
             });
         }
         if !self.single {
