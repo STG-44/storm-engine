@@ -45,3 +45,8 @@ struct Output {
     let light = 0.35 + 0.65 * abs(dot(normal, normalize(camera.light.xyz)));
     return vec4(texel.rgb * input.color.rgb * light * vec3(1.02, 1.0, 0.96), 1.0);
 }
+
+@fragment fn particle_fragment(input: Output) -> @location(0) vec4<f32> {
+    let texel=textureSample(surface,surface_sampler,input.uv);
+    return vec4(texel.rgb*input.color.rgb,texel.a*input.color.a);
+}

@@ -422,6 +422,8 @@ mod tests {
         );
         assert_eq!(frame.rgba.len(), 167 * 93 * 4);
         let background = ModelAsset {
+            ship: Default::default(),
+            ship_state: Default::default(),
             meshes: vec![],
             textures: vec![],
             center: asset.center,

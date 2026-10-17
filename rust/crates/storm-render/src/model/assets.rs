@@ -15,8 +15,11 @@ use storm_formats::{
     geometry::Geometry,
     texture::{Mip, Texture},
 };
+mod presentation;
 
 pub struct Mesh {
+    pub ship_node: Option<String>,
+    pub dynamic: Option<super::DynamicMesh>,
     pub vertices: Vec<ModelVertex>,
     pub indices: Vec<u32>,
     pub texture: usize,
@@ -26,17 +29,22 @@ pub struct Mesh {
 
 impl Mesh {
     pub fn sail(patch: SailPatch, texture: usize) -> Result<Self> {
+        let ship_node = patch.origin.as_ref().map(|o| o.node.clone());
         Ok(Self {
             vertices: patch.vertices(SailWind::default(), 0.0)?,
             indices: patch.indices(),
             texture,
             sail: Some(patch),
             rigging: None,
+            ship_node,
+            dynamic: None,
         })
     }
 }
 
 pub struct ModelAsset {
+    pub ship: super::ShipAsset,
+    pub ship_state: super::ShipState,
     pub meshes: Vec<Mesh>,
     pub textures: Vec<Texture>,
     pub center: Vec3,
@@ -48,6 +56,8 @@ pub struct ModelAsset {
 
 #[derive(Default)]
 pub struct LoadOptions {
+    /// None uses the original preview default (five) when a ship graph exists.
+    pub crew: Option<usize>,
     pub game_dir: Option<PathBuf>,
     /// Relative to RESOURCE/Textures. Default ship preview selects Hull1.
     pub texture_dir: Option<PathBuf>,
@@ -294,6 +304,8 @@ impl ModelAsset {
                 indices,
                 texture,
                 sail: None,
+                ship_node: rigging.node().map(str::to_owned),
+                dynamic: None,
                 rigging: Some(rigging),
             });
             Ok(())
@@ -331,6 +343,8 @@ impl ModelAsset {
             })
             .collect();
         Ok(Self {
+            ship: Default::default(),
+            ship_state: Default::default(),
             meshes: vec![Mesh::sail(quad, 0)?, Mesh::sail(triangle, 0)?],
             textures: vec![Texture {
                 header: TxHeader {
@@ -379,11 +393,23 @@ impl ModelAsset {
         Ok(())
     }
     pub fn rig_layout(&self) -> storm_sim::RigLayout {
+        self.rig_layout_at(&self.ship_state, 0.0)
+    }
+    pub fn rig_layout_at(&self, state: &super::ShipState, seconds: f32) -> storm_sim::RigLayout {
         let mut layout = storm_sim::RigLayout {
             normal_weight: 0.0,
             full_only_weight: 0.0,
+            missing_weight: 0.0,
         };
         for patch in self.meshes.iter().filter_map(|m| m.sail.as_ref()) {
+            if patch.origin.as_ref().is_some_and(|o| {
+                self.ship
+                    .fallen_mast(&o.node, state)
+                    .is_some_and(|(_, t, _)| seconds >= t)
+            }) {
+                layout.missing_weight += patch.weight;
+                continue;
+            }
             match patch.tier {
                 storm_sim::SailTier::Normal => layout.normal_weight += patch.weight,
                 storm_sim::SailTier::FullOnly => layout.full_only_weight += patch.weight,
@@ -425,6 +451,8 @@ impl ModelAsset {
         };
         let mut builder = Builder {
             asset: Self {
+                ship: Default::default(),
+                ship_state: Default::default(),
                 meshes: Vec::new(),
                 textures: vec![white],
                 center: Vec3::ZERO,
@@ -477,6 +505,9 @@ impl ModelAsset {
             builder.asset.center.is_finite() && builder.asset.radius.is_finite(),
             "model bounds overflow"
         );
+        if !options.single_mesh {
+            builder.add_presentation(&stem, options)?;
+        }
         Ok(builder.asset)
     }
 }
@@ -541,6 +572,8 @@ impl Builder {
             indices,
             texture,
             sail: None,
+            ship_node: rigging.node().map(str::to_owned),
+            dynamic: None,
             rigging: Some(rigging),
         });
         Ok(())
@@ -595,6 +628,32 @@ impl Builder {
         );
         let model = Geometry::read(&read_asset_bytes(path)?)
             .with_context(|| format!("decode {}", path.display()))?;
+        ensure!(
+            model.buffers.iter().flatten().all(|v| v.skin.is_none()),
+            "animated geometry requires the crew animation loader"
+        );
+        let center = Vec3::from_array(model.header.bounds_center);
+        let size = Vec3::from_array(model.header.bounds_size);
+        let mut pivot = center - Vec3::Y * (size.y * 0.5);
+        if super::part_number(node, "mast") == Some(1) {
+            pivot.z -= size.z * 0.5;
+        }
+        self.asset.ship.nodes.push(super::ShipNode {
+            name: node.into(),
+            parent: parent.into(),
+            pivot: world.transform_point3(pivot),
+        });
+        for label in &model.labels {
+            if matches!(label.group.as_str(), "fireplace" | "fireplaces") {
+                self.asset.ship.fires.push(super::FirePoint {
+                    node: node.into(),
+                    name: label.name.clone(),
+                    position: world
+                        .transform_point3(Mat4::from_cols_array(&label.matrix).w_axis.truncate()),
+                });
+            }
+        }
+        ensure!(self.asset.ship.fires.len() <= 256, "too many fire locators");
         self.asset.geometry_files += 1;
         self.rigging.add(&model.labels, world, node);
         let normals = world.inverse().transpose();
@@ -639,6 +698,8 @@ impl Builder {
                 texture,
                 sail: None,
                 rigging: None,
+                ship_node: Some(node.into()),
+                dynamic: None,
             });
         }
         if !self.single {

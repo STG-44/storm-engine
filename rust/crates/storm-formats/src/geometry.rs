@@ -7,6 +7,13 @@ pub struct Vertex {
     pub normal: [f32; 3],
     pub color: [f32; 4],
     pub uv: [f32; 2],
+    pub skin: Option<Skin>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Skin {
+    pub bones: [u8; 2],
+    pub weight: f32,
 }
 
 #[derive(Debug)]
@@ -178,26 +185,47 @@ impl Geometry {
         let mut buffers = Vec::new();
         for r in descriptors.chunks_exact(8) {
             let kind = count(r, 0)?;
-            if kind > 3 {
+            if kind > 4 {
                 return Err(FormatError(
                     "animated GM vertex buffers are not supported yet",
                 ));
             }
-            let stride = 36 + kind as usize * 8;
+            let stride = if kind == 4 {
+                44
+            } else {
+                36 + kind as usize * 8
+            };
             let size = count(r, 1)? as usize;
             if !size.is_multiple_of(stride) {
                 return Err(FormatError("GM vertex buffer has a partial vertex"));
             }
             let mut vertices = Vec::new();
             for vertex in cursor.take(size)?.chunks_exact(stride) {
-                let color = word(vertex, 6);
-                for uv in vertex[28..].chunks_exact(8) {
+                let animated = kind == 4;
+                let normal = if animated { 5 } else { 3 };
+                let color = word(vertex, if animated { 8 } else { 6 });
+                let uv_offset = if animated { 9 } else { 7 };
+                let skin = if animated {
+                    let weight = floats::<1>(vertex, 3)?[0];
+                    if !(0.0..=1.0).contains(&weight) {
+                        return Err(FormatError("invalid skin weight"));
+                    }
+                    let ids = word(vertex, 4);
+                    Some(Skin {
+                        bones: [ids as u8, (ids >> 8) as u8],
+                        weight,
+                    })
+                } else {
+                    None
+                };
+                for uv in vertex[uv_offset * 4..].chunks_exact(8) {
                     floats::<2>(uv, 0)?;
                 }
                 vertices.push(Vertex {
                     position: floats(vertex, 0)?,
-                    normal: floats(vertex, 3)?,
-                    uv: floats(vertex, 7)?,
+                    normal: floats(vertex, normal)?,
+                    uv: floats(vertex, uv_offset)?,
+                    skin,
                     color: [
                         ((color >> 16) & 255) as f32 / 255.0,
                         ((color >> 8) & 255) as f32 / 255.0,

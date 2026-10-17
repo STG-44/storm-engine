@@ -4,6 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 mod flags;
 mod rig_report;
 mod sailing;
+mod ship_controls;
 mod timeline;
 use storm_render::{
     DiagnosticScene, Gpu, create_instance,
@@ -43,7 +44,7 @@ impl Backend {
 #[derive(Parser)]
 #[command(
     version,
-    group(ArgGroup::new("preview").args(["model", "sail_demo", "rigging_demo"])),
+    group(ArgGroup::new("preview").args(["model", "sail_demo", "rigging_demo","ship_demo"])),
     about = "Storm Rust: native diagnostic sea and original GM/TX model preview"
 )]
 struct Options {
@@ -71,6 +72,9 @@ struct Options {
     /// Resource-free ropes, shrouds, quad flags and pennants fixture.
     #[arg(long)]
     rigging_demo: bool,
+    /// Resource-free crew, fire, masts and hull damage fixture.
+    #[arg(long)]
+    ship_demo: bool,
     /// Game installation or its RESOURCE directory (original files stay outside Git).
     #[arg(long, requires = "model")]
     game_dir: Option<PathBuf>,
@@ -140,6 +144,21 @@ struct Options {
     /// Hide flag surfaces while retaining ropes, poles and sails.
     #[arg(long, requires="preview", conflicts_with_all=["flag_nation","flag_role","surrendered","pirate_flag"])]
     hide_flags: bool,
+    /// Visible original sailors, 0..=50; default five when original routes exist.
+    #[arg(long,requires="game_dir",value_parser=clap::value_parser!(u32).range(0..=50))]
+    crew: Option<u32>,
+    /// Start a fire/smoke preview at original fireplace locators.
+    #[arg(long, requires = "preview")]
+    fire: bool,
+    /// Break a mast and its original numbered topmast group at time zero.
+    #[arg(long,requires="preview",value_parser=clap::value_parser!(u32).range(1..=100000))]
+    break_mast: Vec<u32>,
+    /// Detach a named original shatter hull node, for example shatter4.
+    #[arg(long, requires = "preview")]
+    break_hull: Vec<String>,
+    /// Focus the initial camera on the original deck walking network.
+    #[arg(long, requires = "preview")]
+    deck_view: bool,
 }
 
 fn wave_height(value: &str) -> std::result::Result<f32, String> {
@@ -233,6 +252,7 @@ struct WindowState {
     last_title_time: f32,
     frames: u64,
     flag_controls: flags::Controls,
+    ship_state: storm_render::model::ShipState,
 }
 
 impl WindowState {
@@ -304,6 +324,11 @@ impl WindowState {
         }
         let camera = asset.map(|asset| {
             let mut c = OrbitCamera::new(asset);
+            if options.deck_view {
+                c.target = asset.ship.deck_center.unwrap_or(asset.center);
+                c.distance = 20.0;
+                c.pitch = 0.45;
+            }
             if let Some(yaw) = options.yaw {
                 c.yaw = yaw.to_radians();
             } else if let Some(sailing) = &sailing {
@@ -326,15 +351,22 @@ impl WindowState {
             wind: options.wind(),
             title,
             sailing,
-            model_center: asset.map_or([0.0; 3], |a| a.center.to_array()),
+            model_center: asset.map_or([0.0; 3], |a| {
+                if options.deck_view {
+                    a.ship.deck_center.unwrap_or(a.center).to_array()
+                } else {
+                    a.center.to_array()
+                }
+            }),
             last_title_time: options.time,
             frames: 0,
             flag_controls: options.flag_controls()?,
+            ship_state: asset.map_or_else(Default::default, |a| a.ship_state.clone()),
         };
         state.resize(size);
         state.refresh_title();
         eprintln!(
-            "Controls: drag/arrows orbit, scroll zoom, R reset, Space pause, +/- wind speed, ,/. wind direction, physical F nation, G flag role, H hide flags, J surrender, Esc close"
+            "Controls: drag/arrows orbit, scroll zoom, R camera, Space pause, +/- wind speed, ,/. wind direction; physical F nation, G flag role, H hide flags, J surrender, C crew, B fire, M break next mast, P break next hull piece, 0 repair/reset; Esc close"
         );
         if state.sailing.is_some() {
             eprintln!(
@@ -368,8 +400,25 @@ impl WindowState {
         } else {
             String::new()
         };
-        self.window
-            .set_title(&format!("{}{wind}{sailing}{flags}{pause}", self.title));
+        let damage = if self.camera.is_some() {
+            format!(
+                " — crew {} / fire {} / broken M{} H{}",
+                if self.ship_state.crew_visible {
+                    "on"
+                } else {
+                    "off"
+                },
+                self.ship_state.fire_started.is_some(),
+                self.ship_state.broken_masts.len(),
+                self.ship_state.broken_hulls.len()
+            )
+        } else {
+            String::new()
+        };
+        self.window.set_title(&format!(
+            "{}{wind}{sailing}{flags}{damage}{pause}",
+            self.title
+        ));
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -567,6 +616,31 @@ impl ApplicationHandler for Application {
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if !event.repeat
                     && let PhysicalKey::Code(code) = event.physical_key
+                    && let Some(asset) = &self.asset
+                {
+                    let seconds = state
+                        .sailing
+                        .as_ref()
+                        .map_or_else(|| state.timeline.seconds(), |s| s.simulation.time() as f32);
+                    if ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds) {
+                        if let Scene::Model(scene) = &mut state.scene
+                            && let Err(error) = scene.set_ship_state(state.ship_state.clone())
+                        {
+                            self.fail(event_loop, error);
+                            return;
+                        }
+                        if let Some(sailing) = &mut state.sailing
+                            && let Err(error) = sailing
+                                .simulation
+                                .set_rig_layout(asset.rig_layout_at(&state.ship_state, seconds))
+                        {
+                            self.fail(event_loop, error.into());
+                            return;
+                        }
+                    }
+                }
+                if !event.repeat
+                    && let PhysicalKey::Code(code) = event.physical_key
                     && matches!(&state.scene, Scene::Model(_))
                     && state.flag_controls.key(code)
                 {
@@ -667,7 +741,9 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
-    let mut asset = if options.rigging_demo {
+    let mut asset = if options.ship_demo {
+        Some(Arc::new(ModelAsset::ship_demo()?))
+    } else if options.rigging_demo {
         Some(Arc::new(ModelAsset::rigging_demo()?))
     } else if options.sail_demo {
         Some(Arc::new(ModelAsset::sail_demo()?))
@@ -683,6 +759,7 @@ fn main() -> Result<()> {
                         texture_dir: options.texture_dir.clone(),
                         untextured: options.untextured,
                         single_mesh: options.single_mesh,
+                        crew: options.crew.map(|n| n as usize),
                     },
                 )?;
                 Ok::<_, anyhow::Error>(Arc::new(asset))
@@ -691,9 +768,26 @@ fn main() -> Result<()> {
     };
     let selection = options.flag_controls()?.selection();
     if let Some(asset) = &mut asset {
-        Arc::get_mut(asset)
-            .expect("newly loaded unique asset")
-            .set_flags(selection)?;
+        let asset = Arc::get_mut(asset).expect("newly loaded unique asset");
+        asset.set_flags(selection)?;
+        asset.ship_state.broken_masts = options.break_mast.iter().map(|&n| (n, 0.0)).collect();
+        asset.ship_state.broken_hulls = options
+            .break_hull
+            .iter()
+            .map(|n| (n.clone(), 0.0))
+            .collect();
+        asset.ship_state.fire_started = options.fire.then_some(0.0);
+        if options.fire && asset.ship.fires.is_empty() {
+            bail!("this model has no fireplace locators; use --ship-demo for a generated fixture");
+        }
+        asset.ship_state.validate(&asset.ship)?;
+        eprintln!(
+            "Ship: {} visible crew, {} fire points, masts {:?}, hull nodes {:?}",
+            asset.ship.crew_count,
+            asset.ship.fires.len(),
+            asset.ship.masts(),
+            asset.ship.hulls()
+        );
     }
     if let Some(asset) = &asset {
         let r = asset.rigging_stats;
@@ -738,6 +832,11 @@ fn main() -> Result<()> {
         eprintln!("GPU: {} ({:?})", info.name, info.backend);
         let frame = if let Some(asset) = &asset {
             let mut camera = OrbitCamera::new(asset);
+            if options.deck_view {
+                camera.target = asset.ship.deck_center.unwrap_or(asset.center);
+                camera.distance = 20.0;
+                camera.pitch = 0.45;
+            }
             if let Some(yaw) = options.yaw {
                 camera.yaw = yaw.to_radians();
             } else if let Some(sailing) = &sailing {
@@ -746,7 +845,9 @@ fn main() -> Result<()> {
             let pose = sailing
                 .as_ref()
                 .map_or_else(ModelPose::default, sailing::Session::pose);
-            camera.target = asset.center;
+            if !options.deck_view {
+                camera.target = asset.center;
+            }
             camera.target.x += pose.translation[0];
             camera.target.z += pose.translation[2];
             let wind = sailing
@@ -778,7 +879,10 @@ fn main() -> Result<()> {
         };
         frame.save_png(path)?;
         if let Some(sailing) = &sailing {
-            let report = sailing.report();
+            let mut report = sailing.report();
+            if let Some(asset) = &asset {
+                report["ship"] = rig_report::ship_frame(asset, sailing.simulation.time() as f32);
+            }
             eprintln!("Sailing state: {}", serde_json::to_string(&report)?);
             if let Some(state_path) = &options.state_json {
                 std::fs::write(state_path, serde_json::to_vec_pretty(&report)?)?;

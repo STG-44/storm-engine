@@ -71,12 +71,15 @@ impl SailTier {
 pub struct RigLayout {
     pub normal_weight: f64,
     pub full_only_weight: f64,
+    /// Lost sail weight stays in the reference area instead of renormalizing survivors.
+    pub missing_weight: f64,
 }
 impl Default for RigLayout {
     fn default() -> Self {
         Self {
             normal_weight: 1.0,
             full_only_weight: 1.0,
+            missing_weight: 0.0,
         }
     }
 }
@@ -86,7 +89,9 @@ impl RigLayout {
             || self.normal_weight < 0.0
             || !self.full_only_weight.is_finite()
             || self.full_only_weight < 0.0
-            || !(self.normal_weight + self.full_only_weight).is_finite()
+            || !self.missing_weight.is_finite()
+            || self.missing_weight < 0.0
+            || !(self.normal_weight + self.full_only_weight + self.missing_weight).is_finite()
         {
             return Err(SimError("invalid rig weights"));
         }
@@ -132,7 +137,7 @@ impl RigState {
         }
     }
     pub fn fraction(self, layout: RigLayout) -> f64 {
-        let total = layout.normal_weight + layout.full_only_weight;
+        let total = layout.normal_weight + layout.full_only_weight + layout.missing_weight;
         if total == 0.0 {
             0.0
         } else {
@@ -159,6 +164,34 @@ impl RigState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn losing_sails_reduces_absolute_drive_area_instead_of_rescaling_survivors() {
+        let layout = RigLayout {
+            normal_weight: 3.0,
+            full_only_weight: 2.0,
+            missing_weight: 5.0,
+        };
+        layout.validate().unwrap();
+        assert_eq!(RigState::for_mode(SailMode::Full).fraction(layout), 0.5);
+        assert_eq!(RigState::for_mode(SailMode::Normal).fraction(layout), 0.3);
+        assert_eq!(RigState::for_mode(SailMode::Furled).fraction(layout), 0.0);
+        assert!(
+            RigLayout {
+                missing_weight: f64::NAN,
+                ..layout
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            RigLayout {
+                missing_weight: -1.0,
+                ..layout
+            }
+            .validate()
+            .is_err()
+        );
+    }
     #[test]
     fn original_thresholds_and_all_locator_kinds_use_the_original_node_rules() {
         for (v, mode) in [
@@ -201,6 +234,7 @@ mod tests {
         let layout = RigLayout {
             normal_weight: 7.0,
             full_only_weight: 3.0,
+            missing_weight: 0.0,
         };
         let mut state = RigState::for_mode(SailMode::Full);
         for _ in 0..480 {
@@ -231,7 +265,8 @@ mod tests {
         assert_eq!(
             state.fraction(RigLayout {
                 normal_weight: 0.0,
-                full_only_weight: 0.0
+                full_only_weight: 0.0,
+                missing_weight: 0.0,
             }),
             0.0
         );

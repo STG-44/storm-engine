@@ -318,6 +318,8 @@ fn displaced_water_depth_occludes_a_submerged_surface() {
         texture: 0,
         sail: None,
         rigging: None,
+        ship_node: None,
+        dynamic: None,
     }];
     asset.center = Vec3::ZERO;
     asset.radius = 4.0;

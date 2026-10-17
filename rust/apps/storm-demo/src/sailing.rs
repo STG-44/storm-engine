@@ -177,7 +177,7 @@ impl Session {
             "sail_setting": helm.sail, "sail_deployed": self.simulation.sail_deployed(),
             "sail_mode": self.simulation.sail_mode().name(),
             "rig": { "normal_deployed": rig.normal, "full_only_deployed": rig.full_only,
-                "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight },
+                "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight,"missing_weight":layout.missing_weight },
             "sail_deploy_rate_per_second": storm_sim::SAIL_DEPLOY_RATE, "rudder": helm.rudder,
             "wind": { "speed_mps": wind.speed_mps, "direction_degrees": wind.direction.to_degrees().rem_euclid(360.0) },
             "config": { "mass_kg": config.mass_kg, "length_m": config.length_m, "sail_area_m2": config.sail_area_m2 },

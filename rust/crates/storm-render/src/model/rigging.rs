@@ -144,6 +144,7 @@ impl Collector {
         ensure!(self.labels.len() <= 50_000, "too many rigging locators");
         let mut ropes = BTreeMap::<(String, u32), [Option<&PlacedLabel>; 2]>::new();
         let mut shrouds = BTreeMap::<(String, u32), [Option<Vec3>; 3]>::new();
+        let mut shroud_nodes = BTreeMap::new();
         let mut flags = BTreeMap::<(String, String), [Option<Vec3>; 4]>::new();
         let mut duplicate_points = 0;
         for l in &self.labels {
@@ -182,6 +183,9 @@ impl Collector {
                     let entry = shrouds.entry((prefix.into(), id)).or_insert([None; 3]);
                     duplicate_points += usize::from(entry[index].is_some());
                     entry[index] = Some(l.position);
+                    if index == 0 {
+                        shroud_nodes.insert((prefix.to_owned(), id), l.node.clone());
+                    }
                 }
             }
             if (l.group.starts_with("flag") || l.group.starts_with("sflag"))
@@ -207,6 +211,7 @@ impl Collector {
                 continue;
             };
             let bind = |l: &PlacedLabel| RopeEnd {
+                node: Some(l.node.clone()),
                 position: l.position,
                 sail: patches
                     .iter()
@@ -234,7 +239,7 @@ impl Collector {
                 stats.invalid_lengths += 1;
             }
         }
-        for (_, points) in shrouds {
+        for (key, points) in shrouds {
             let [Some(top), Some(left), Some(right)] = points else {
                 stats.incomplete_shrouds += 1;
                 continue;
@@ -242,9 +247,10 @@ impl Collector {
             stats.shrouds += 1;
             for i in 0..config.shroud_ropes {
                 let base = left.lerp(right, i as f32 / (config.shroud_ropes - 1) as f32);
-                if let Some(line) =
+                if let Some(mut line) =
                     RopeLine::fixed(base, top, config.shroud_width, config.segment_length)
                 {
+                    line.cut_node = shroud_nodes.get(&key).cloned();
                     lines.push(line);
                 }
             }
@@ -254,12 +260,13 @@ impl Collector {
                 if t >= 0.96 {
                     break;
                 }
-                if let Some(line) = RopeLine::fixed(
+                if let Some(mut line) = RopeLine::fixed(
                     left.lerp(top, t),
                     right.lerp(top, t),
                     config.rope_width,
                     config.segment_length,
                 ) {
+                    line.cut_node = shroud_nodes.get(&key).cloned();
                     lines.push(line);
                 }
             }
@@ -292,6 +299,7 @@ impl Collector {
 
 #[derive(Clone, Debug)]
 pub struct RopeEnd {
+    pub node: Option<String>,
     pub position: Vec3,
     pub sail: Option<SailPatch>,
 }
@@ -304,6 +312,7 @@ impl RopeEnd {
 }
 #[derive(Clone, Debug)]
 pub struct RopeLine {
+    cut_node: Option<String>,
     start: RopeEnd,
     end: RopeEnd,
     radius: f32,
@@ -324,6 +333,7 @@ impl RopeLine {
             return None;
         }
         Some(Self {
+            cut_node: None,
             start,
             end,
             radius: width * 0.5,
@@ -335,10 +345,12 @@ impl RopeLine {
     fn fixed(a: Vec3, b: Vec3, width: f32, segment: f32) -> Option<Self> {
         Self::new(
             RopeEnd {
+                node: None,
                 position: a,
                 sail: None,
             },
             RopeEnd {
+                node: None,
                 position: b,
                 sail: None,
             },
@@ -592,6 +604,65 @@ pub enum RigMesh {
     Flag(FlagPatch),
 }
 impl RigMesh {
+    pub(super) fn follow_damage(
+        &self,
+        out: &mut [ModelVertex],
+        asset: &super::ShipAsset,
+        state: &super::ShipState,
+        seconds: f32,
+    ) {
+        if let Self::Ropes(lines) = self {
+            let mut offset = 0;
+            for line in lines {
+                let vertices = &mut out[offset..offset + line.vertex_count()];
+                offset += line.vertex_count();
+                let fallen = |node: &Option<String>| {
+                    node.as_deref()
+                        .and_then(|n| asset.fallen_mast(n, state))
+                        .filter(|(_, t, _)| seconds >= *t)
+                        .map(|(id, _, _)| id)
+                };
+                let a = fallen(&line.start.node);
+                let b = fallen(&line.end.node);
+                let cut = line.cut_node.as_deref().is_some_and(|n| {
+                    asset
+                        .fallen_mast(n, state)
+                        .is_some_and(|(_, t, _)| seconds >= t)
+                }) || [&line.start.node, &line.end.node].into_iter().any(|n| {
+                    n.as_deref()
+                        .is_some_and(|n| asset.hidden(n, state, seconds))
+                });
+                if cut || a != b {
+                    for v in vertices {
+                        v.position = [0.0; 3];
+                        v.normal = [0.0, 1.0, 0.0];
+                    }
+                } else if a.is_some()
+                    && let Some(matrix) = line
+                        .start
+                        .node
+                        .as_deref()
+                        .and_then(|n| asset.transform(n, state, seconds))
+                {
+                    for v in vertices {
+                        v.position = matrix
+                            .transform_point3(Vec3::from_array(v.position))
+                            .to_array();
+                        v.normal = matrix
+                            .transform_vector3(Vec3::from_array(v.normal))
+                            .normalize_or_zero()
+                            .to_array();
+                    }
+                }
+            }
+        }
+    }
+    pub fn node(&self) -> Option<&str> {
+        match self {
+            Self::Flag(f) => f.origin.as_ref().map(|o| o.node.as_str()),
+            _ => None,
+        }
+    }
     pub fn index_count(&self) -> usize {
         match self {
             Self::Ropes(lines) => lines.iter().map(|l| l.segments * SIDES * 6).sum(),

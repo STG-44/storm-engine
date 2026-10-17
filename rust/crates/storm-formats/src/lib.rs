@@ -5,8 +5,12 @@
 //! minimum file lengths. The geometry/texture modules decode static meshes
 //! and 2D mip pixels; animation and BSP collision remain separate work.
 
+pub mod animation;
 pub mod geometry;
+#[cfg(test)]
+mod presentation_tests;
 pub mod texture;
+pub mod waypoints;
 
 use std::{error::Error, fmt};
 

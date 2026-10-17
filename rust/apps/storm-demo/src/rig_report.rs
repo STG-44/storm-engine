@@ -31,9 +31,21 @@ pub fn report(asset: &ModelAsset) -> Value {
     }).collect::<Vec<_>>();
     json!({ "geometry_files": asset.geometry_files, "sail_count": sails.len(),
         "normal_count": normal, "full_only_count": sails.len()-normal,
-        "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight,
+        "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight,"missing_sail_weight":layout.missing_weight,
         "normal_mode_fraction": RigState::for_mode(SailMode::Normal).fraction(layout), "sails": sails, "flags":flags,
+        "ship":ship_frame(asset,0.0),
         "rigging": { "ropes":r.ropes,"shrouds":r.shrouds,"flags":r.flags,
             "unmatched_ropes":r.unmatched_ropes,"incomplete_shrouds":r.incomplete_shrouds,
             "incomplete_flags":r.incomplete_flags,"invalid_lengths":r.invalid_lengths,"duplicate_points":r.duplicate_points } })
+}
+
+pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
+    let state = &asset.ship_state;
+    json!({"crew_count":asset.ship.crew_count,"crew_visible":state.crew_visible,"waypoint_counts":asset.ship.waypoint_counts,"waypoint_missing_links":asset.ship.waypoint_missing_links,"crew_source":asset.ship.crew_source,
+        "masts":asset.ship.masts(),"hulls":asset.ship.hulls(),
+        "fire_points":asset.ship.fires.iter().map(|p|json!({"node":p.node,"name":p.name,"position":p.position.to_array()})).collect::<Vec<_>>(),
+        "broken_masts":state.broken_masts,"broken_hulls":state.broken_hulls,"fire_started":state.fire_started,"seconds":seconds,
+        "crew_positions":asset.meshes.iter().filter_map(|m|match &m.dynamic {
+            Some(storm_render::model::DynamicMesh::Crew(c))=>{let(p,_)=c.route.sample(seconds+c.phase);Some([p.x,p.y,-p.z])},_=>None
+        }).collect::<Vec<_>>()})
 }

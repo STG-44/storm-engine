@@ -1,8 +1,16 @@
 //! Native model preview: original mesh hierarchy/textures, preview cloth and water.
 mod assets;
+mod crew;
+mod effects;
 mod rigging;
 mod sails;
+mod ship;
+pub use crew::{CrewPatch, Patrol, Skeleton};
+pub use effects::{DynamicMesh, ParticlePatch};
 pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
+pub use ship::{FirePoint, ShipAsset, ShipNode, ShipState, mast_falls_with, part_number};
+#[cfg(test)]
+mod presentation_tests;
 #[cfg(test)]
 mod tests;
 use crate::Gpu;
@@ -162,6 +170,8 @@ impl From<storm_sim::Waves> for WaveUniform {
     }
 }
 struct DrawMesh {
+    ship_node: Option<String>,
+    dynamic: Option<(DynamicMesh, Vec<ModelVertex>)>,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
@@ -171,6 +181,11 @@ struct DrawMesh {
 }
 
 pub struct ModelScene {
+    particle_pipeline: wgpu::RenderPipeline,
+    ship: ShipAsset,
+    ship_state: ShipState,
+    pose_stride: u32,
+    pose_bytes: Vec<u8>,
     pipeline: wgpu::RenderPipeline,
     ocean: wgpu::RenderPipeline,
     camera_buffer: wgpu::Buffer,
@@ -207,6 +222,11 @@ fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
 
 impl ModelScene {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, asset: &ModelAsset) -> Result<Self> {
+        asset.ship_state.validate(&asset.ship)?;
+        ensure!(asset.meshes.len() <= 4096, "too many model draw meshes");
+        let pose_stride = 64_u32.div_ceil(gpu.device.limits().min_uniform_buffer_offset_alignment)
+            * gpu.device.limits().min_uniform_buffer_offset_alignment;
+        let pose_bytes = vec![0u8; pose_stride as usize * (asset.meshes.len() + 1)];
         let device = &gpu.device;
         let camera_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Model camera layout"),
@@ -226,7 +246,7 @@ impl ModelScene {
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
+                        has_dynamic_offset: true,
                         min_binding_size: None,
                     },
                     count: None,
@@ -270,10 +290,11 @@ impl ModelScene {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let pose_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let pose_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Rigid model pose"),
-            contents: bytemuck::bytes_of(&Mat4::IDENTITY.to_cols_array_2d()),
+            size: pose_bytes.len() as u64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         let wave_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Shared wave coefficients"),
@@ -290,7 +311,11 @@ impl ModelScene {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: pose_buffer.as_entire_binding(),
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &pose_buffer,
+                        offset: 0,
+                        size: std::num::NonZeroU64::new(64),
+                    }),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -431,6 +456,41 @@ impl ModelScene {
             multiview_mask: None,
             cache: None,
         });
+        let particle_target = Some(wgpu::ColorTargetState {
+            format,
+            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+            write_mask: wgpu::ColorWrites::ALL,
+        });
+        let mut particle_depth = depth.clone();
+        particle_depth.as_mut().unwrap().depth_write_enabled = Some(false);
+        let particle_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Ship fire and smoke"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vertex_main"),
+                compilation_options: Default::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<ModelVertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &MODEL_ATTRIBUTES,
+                })],
+            },
+            primitive: wgpu::PrimitiveState {
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: particle_depth,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("particle_fragment"),
+                compilation_options: Default::default(),
+                targets: &[particle_target],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let ocean_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Preview ocean"),
             source: wgpu::ShaderSource::Wgsl(OCEAN_SHADER.into()),
@@ -479,7 +539,10 @@ impl ModelScene {
                     label: Some("GM vertices"),
                     contents: vertices,
                     usage: wgpu::BufferUsages::VERTEX
-                        | if source.sail.is_some() || source.rigging.is_some() {
+                        | if source.sail.is_some()
+                            || source.rigging.is_some()
+                            || source.dynamic.is_some()
+                        {
                             wgpu::BufferUsages::COPY_DST
                         } else {
                             wgpu::BufferUsages::empty()
@@ -494,9 +557,16 @@ impl ModelScene {
                 texture: source.texture,
                 sail: source.sail.clone().map(|s| (s, source.vertices.clone())),
                 rigging: source.rigging.clone().map(|r| (r, source.vertices.clone())),
+                dynamic: source.dynamic.clone().map(|d| (d, source.vertices.clone())),
+                ship_node: source.ship_node.clone(),
             });
         }
         Ok(Self {
+            particle_pipeline,
+            ship: asset.ship.clone(),
+            ship_state: asset.ship_state.clone(),
+            pose_stride,
+            pose_bytes,
             pipeline,
             ocean,
             camera_buffer,
@@ -515,6 +585,11 @@ impl ModelScene {
     pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
         pose.matrix()?;
         self.pose = pose;
+        Ok(())
+    }
+    pub fn set_ship_state(&mut self, state: ShipState) -> Result<()> {
+        state.validate(&self.ship)?;
+        self.ship_state = state;
         Ok(())
     }
     pub fn set_waves(&mut self, waves: storm_sim::Waves) -> Result<()> {
@@ -557,6 +632,25 @@ impl ModelScene {
             direction: local.x.atan2(local.z),
             speed: local.x.hypot(local.z).min(40.0),
         };
+        let eye = self.pose.matrix()?.inverse().transform_point3(Vec3::new(
+            uniform.eye_time[0],
+            uniform.eye_time[1],
+            uniform.eye_time[2],
+        ));
+        for mesh in &mut self.meshes {
+            if let Some((dynamic, vertices)) = &mut mesh.dynamic {
+                dynamic.deform(
+                    vertices,
+                    seconds,
+                    local_wind,
+                    eye,
+                    &self.ship,
+                    &self.ship_state,
+                )?;
+                gpu.queue
+                    .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
+            }
+        }
         for mesh in &mut self.meshes {
             if let Some((patch, vertices)) = &mut mesh.sail {
                 patch.deform_with_setting(
@@ -576,6 +670,7 @@ impl ModelScene {
         for mesh in &mut self.meshes {
             if let Some((rigging, vertices)) = &mut mesh.rigging {
                 rigging.deform(vertices, local_wind, seconds, self.rig)?;
+                rigging.follow_damage(vertices, &self.ship, &self.ship_state, seconds);
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }
@@ -587,11 +682,20 @@ impl ModelScene {
             0,
             bytemuck::bytes_of(&WaveUniform::from(self.waves)),
         );
-        gpu.queue.write_buffer(
-            &self.pose_buffer,
-            0,
-            bytemuck::bytes_of(&self.pose.matrix()?.to_cols_array_2d()),
-        );
+        let base = self.pose.matrix()?;
+        self.pose_bytes[..64].copy_from_slice(bytemuck::bytes_of(&base.to_cols_array_2d()));
+        for (i, mesh) in self.meshes.iter().enumerate() {
+            let transform = mesh
+                .ship_node
+                .as_deref()
+                .and_then(|n| self.ship.transform(n, &self.ship_state, seconds))
+                .unwrap_or_default();
+            let offset = (i + 1) * self.pose_stride as usize;
+            self.pose_bytes[offset..offset + 64]
+                .copy_from_slice(bytemuck::bytes_of(&(base * transform).to_cols_array_2d()));
+        }
+        gpu.queue
+            .write_buffer(&self.pose_buffer, 0, &self.pose_bytes);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -613,22 +717,50 @@ impl ModelScene {
             }),
             ..Default::default()
         });
-        pass.set_bind_group(0, &self.camera_group, &[]);
+        pass.set_bind_group(0, &self.camera_group, &[0]);
         pass.set_pipeline(&self.ocean);
         pass.draw(0..3, 0..1);
-        pass.set_pipeline(&self.pipeline);
-        for mesh in &self.meshes {
-            if mesh
-                .rigging
-                .as_ref()
-                .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
-            {
-                continue;
+        for particles in [false, true] {
+            pass.set_pipeline(if particles {
+                &self.particle_pipeline
+            } else {
+                &self.pipeline
+            });
+            for (i, mesh) in self.meshes.iter().enumerate() {
+                if mesh.dynamic.as_ref().is_some_and(|(d, _)| d.particle()) != particles {
+                    continue;
+                }
+                if mesh
+                    .dynamic
+                    .as_ref()
+                    .is_some_and(|(d, _)| !d.visible(&self.ship_state, seconds))
+                {
+                    continue;
+                }
+                if mesh
+                    .ship_node
+                    .as_deref()
+                    .is_some_and(|n| self.ship.hidden(n, &self.ship_state, seconds))
+                {
+                    continue;
+                }
+                if mesh
+                    .rigging
+                    .as_ref()
+                    .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
+                {
+                    continue;
+                }
+                pass.set_bind_group(1, &self.textures[mesh.texture], &[]);
+                pass.set_bind_group(
+                    0,
+                    &self.camera_group,
+                    &[((i + 1) as u32) * self.pose_stride],
+                );
+                pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..mesh.count, 0, 0..1);
             }
-            pass.set_bind_group(1, &self.textures[mesh.texture], &[]);
-            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..mesh.count, 0, 0..1);
         }
         Ok(())
     }

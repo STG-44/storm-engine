@@ -79,6 +79,83 @@ fn label(group: &str, name: &str, position: Vec3) -> Label {
 }
 
 #[test]
+fn broken_mast_cuts_cross_node_rope_and_shrouds_but_keeps_local_and_hull_ropes() {
+    use crate::model::{ShipAsset, ShipNode, ShipState};
+    let mut c = Collector::default();
+    c.add(
+        &[
+            label("hull", "ropeb1", Vec3::ZERO),
+            label("hull", "ropeb3", Vec3::X),
+            label("hull", "ropee3", Vec3::X * 3.0),
+            label("vants", "vant1l", -Vec3::X),
+            label("vants", "vant1r", Vec3::X),
+        ],
+        Mat4::IDENTITY,
+        "hull",
+    );
+    c.add(
+        &[
+            label("mast", "ropee1", Vec3::Y * 5.0),
+            label("mast", "ropeb2", Vec3::Y * 3.0),
+            label("mast", "ropee2", Vec3::Y * 6.0),
+            label("vants", "vant1u", Vec3::Y * 5.0),
+        ],
+        Mat4::IDENTITY,
+        "mast2",
+    );
+    let (lines, _, _) = c.build(&[], &RiggingConfig::default()).unwrap();
+    let mesh = RigMesh::Ropes(lines.clone());
+    let asset = ShipAsset {
+        nodes: vec![
+            ShipNode {
+                name: "hull".into(),
+                parent: String::new(),
+                pivot: Vec3::ZERO,
+            },
+            ShipNode {
+                name: "mast2".into(),
+                parent: "hull".into(),
+                pivot: Vec3::ZERO,
+            },
+        ],
+        ..Default::default()
+    };
+    let mut state = ShipState::default();
+    state.broken_masts.insert(2, 0.0);
+    let rest = mesh
+        .vertices(SailWind::default(), 0.0, RigState::uniform(1.0))
+        .unwrap();
+    let mut frame = rest.clone();
+    mesh.follow_damage(&mut frame, &asset, &state, 2.0);
+    let mut offset = 0;
+    for (i, line) in lines.iter().enumerate() {
+        let range = offset..offset + line.vertex_count();
+        offset = range.end;
+        match i {
+            0 => assert!(frame[range].iter().all(|v| v.position == [0.0; 3])),
+            1 => {
+                let transform = asset.transform("mast2", &state, 2.0).unwrap();
+                for (a, b) in rest[range.clone()].iter().zip(&frame[range]) {
+                    assert!(
+                        transform
+                            .transform_point3(Vec3::from_array(a.position))
+                            .distance(Vec3::from_array(b.position))
+                            < 1e-5
+                    );
+                }
+            }
+            2 => assert!(
+                rest[range.clone()]
+                    .iter()
+                    .zip(&frame[range])
+                    .all(|(a, b)| a.position == b.position)
+            ),
+            _ => assert!(frame[range].iter().all(|v| v.position == [0.0; 3])),
+        }
+    }
+}
+
+#[test]
 fn quad_flag_uses_original_f1_f4_attached_edge() {
     let p = [
         Vec3::Y * 2.0,
