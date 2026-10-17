@@ -28,7 +28,8 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Record scope and architecture in the first port commit.
 - [x] Create the Rust workspace, native window, GPU diagnostics, and offscreen rendering.
 - [x] Verify CI builds for all three operating systems.
-- [ ] Read Storm GM geometry and TX textures with bounds checks and format tests.
+- [x] Inspect original GM/TX headers with bounded reads and format tests.
+- [ ] Decode Storm GM geometry and TX mip pixels with complete bounds checks.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -63,4 +64,12 @@ passed all four jobs on 2026-10-17:
 CI publishes the native executables and the Linux Vulkan capture as workflow artifacts.
 Windows and hosted macOS checks do not exercise a physical GPU or native window.
 Native platform support must also be verified on representative physical GPUs.
-The user's game resource directory is still needed for integration testing with original ship models and textures.
+Original model and texture resources are now available locally, outside Git.
+The native `storm-assets` tool can inspect a file or scan a resource directory;
+see [the asset commands](../rust/README.md#original-game-resources).
+Its first tests cover upstream cannon geometry, truncated headers, invalid
+counts/bounds, TX mip counts, and palette storage. It reads at most 72 bytes per
+file and checks the minimum declared table length without allocating pixels or
+vertices from untrusted counts. It does not yet decode full geometry, texture
+pixels, or validate every internal reference. Original ship rendering and full
+game integration remain pending.

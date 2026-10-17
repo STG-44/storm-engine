@@ -71,5 +71,23 @@ original C++ workflows remain available on other branches.
 ## Original game resources
 
 Keep the complete game installation outside Git, or use the ignored `game-data/`
-directory. The current diagnostic needs no assets. GM/TX readers and original
-ship rendering are subsequent milestones in [the port plan](../docs/RUST_PORT.md).
+directory. The current diagnostic needs no assets. The `storm-formats` crate
+provides safe GM/TX header readers and the native `storm-assets` inspection tool:
+
+```sh
+cargo run -p storm-formats --locked -- inspect tools/modding-tool/Meshes/cannon_x.gm
+cargo run -p storm-formats --locked -- inspect /path/to/game/RESOURCE/Textures/example.tga.tx
+cargo run -p storm-formats --locked -- scan /path/to/game/RESOURCE
+```
+
+Inspection reports GM object/material/triangle counts, bounds, and vertex-buffer
+counts; TX dimensions, mip count, pixel format, palette/cubemap flags, and base-mip
+size. Scan checks headers and minimum table lengths, skips symbolic links, prints
+JSON, and exits unsuccessfully if any inspected file fails. It preserves unknown
+TX format codes for future decoders. It reads at most 72 bytes per asset.
+
+Header checks do not establish that every vertex, index, name offset, mip, or BSP
+record is valid. Full geometry/pixel decoding and original ship rendering remain
+subsequent milestones in [the port plan](../docs/RUST_PORT.md). Tests use the
+existing upstream cannon mesh and malformed/truncated binary headers. No
+commercial game assets are bundled in the Rust crates or CI artifacts.
