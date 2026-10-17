@@ -29,7 +29,8 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Create the Rust workspace, native window, GPU diagnostics, and offscreen rendering.
 - [x] Verify CI builds for all three operating systems.
 - [x] Inspect original GM/TX headers with bounded reads and format tests.
-- [ ] Decode Storm GM geometry and TX mip pixels with complete bounds checks.
+- [x] Decode static GM 1.05 render data and 2D TX mip pixels with bounds checks.
+- [x] Display an original ship with textures, static sails, preview water, and an orbit camera on local macOS Metal.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -40,16 +41,22 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 
 The renderer foundation is implemented in `rust/`; see [run and validation commands](../rust/README.md).
 The diagnostic sea is new test code, separate from the original Storm sea simulation.
-Game loading, ships, and gameplay are not implemented yet.
+Static ship preview is implemented; game loading, ship simulation, and gameplay
+are not implemented yet.
 
 Verified locally on 2026-10-17:
 
 - macOS 15.7.8, Intel x86_64, Rust 1.96.0.
 - Metal rendering on AMD Radeon Pro 555X; adapter discovery also finds Intel UHD Graphics 630.
 - Formatting and Clippy pass with warnings denied.
-- CPU shader validation and the explicit GPU readback/animation test pass.
-- The native window presents three frames and exits successfully.
+- CPU format/shader validation and both explicit GPU tests pass.
+- The native diagnostic and original ship windows each present three frames and exit successfully.
 - A 1280 x 720 frame is saved through the offscreen pipeline.
+- Barkentine1 assembles from 20 GM files, with three original TX textures and
+  ten curved static sails generated from four-corner locators: 32 draw meshes,
+  8,055 triangles. A 1280 x 720 capture is saved outside Git.
+- GPU fixture checks cover texture sampling, geometry visibility with the depth
+  pipeline, zero-normal fallback lighting, camera changes, and invalid cameras.
 
 The [Rust CI run for commit 7c890862](https://github.com/STG-44/storm-engine/actions/runs/39002786501)
 passed all four jobs on 2026-10-17:
@@ -67,12 +74,14 @@ Native platform support must also be verified on representative physical GPUs.
 Original model and texture resources are now available locally, outside Git.
 The native `storm-assets` tool can inspect a file or scan a resource directory;
 see [the asset commands](../rust/README.md#original-game-resources).
-Its first tests cover upstream cannon geometry, truncated headers, invalid
-counts/bounds, TX mip counts, and palette storage. It reads at most 72 bytes per
-file and checks the minimum declared table length without allocating pixels or
-vertices from untrusted counts. It does not yet decode full geometry, texture
-pixels, or validate every internal reference. Original ship rendering and full
-game integration remain pending.
+`inspect` and `scan` read at most 72 bytes per file and check minimum declared
+table lengths. `decode` additionally reads static geometry, names, materials,
+labels, vertices, indices, and complete 2D mip pixels. Supported layouts and
+explicit limits are documented in the run instructions. BSP collision traversal,
+animated geometry, older GM versions, original material/sea effects, triangular
+sails, ropes, and gameplay remain pending. Full decoding has been exercised on
+the ship preview and upstream fixture; the previous whole-resource scan remains
+header-only evidence.
 
 The [first original-resource inspection results](ASSET_VALIDATION.md) record
 4,129 accepted GM headers, 5,732 accepted TX headers, and seven GM compatibility

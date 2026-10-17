@@ -9,6 +9,8 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 bytemuck.workspace = true
+glam.workspace = true
+storm-formats = { path = "../storm-formats" }
 png.workspace = true
 wgpu.workspace = true
 

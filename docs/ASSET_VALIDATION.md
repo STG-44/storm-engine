@@ -4,6 +4,25 @@ The first local resource sample is from Sea Dogs: To Each His Own. Resources
 remain outside Git; only the inspection code and these results are published.
 This records metadata compatibility, not game loading or rendering support.
 
+## First native ship preview, 2026-10-17
+
+The new full static readers and preview were exercised on
+`MODELS/Ships/Barkentine1/barkentine1.gm` and its children, using original local
+resources outside Git:
+
+- 20 GM 1.05 files, 32 draw meshes, 8,055 triangles.
+- Three decoded original TX textures; ten curved static four-corner sails.
+- Native Metal on AMD Radeon Pro 555X, macOS 15.7.8 Intel.
+- 1280 x 720 offscreen PNG and three successfully presented native window frames.
+
+The image uses new lighting and diagnostic water. It does not establish ship
+physics, original rigging/material behavior, collision, or gameplay support.
+The test suite also decodes the upstream cannon and rasterizes it with a red
+test texture, including a geometric-normal fallback for its zero vertex normals.
+Commercial assets and the ship capture are not committed. The results below
+remain header-only checks across the collection; they do not imply full decoding
+of every resource.
+
 ## Rust header scan, 2026-10-17
 
 ```sh

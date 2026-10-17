@@ -45,7 +45,7 @@ jobs:
       - name: Run CPU tests
         run: cargo test --workspace --locked
       - name: Inspect upstream geometry fixture
-        run: cargo run -p storm-formats --locked -- inspect tools/modding-tool/Meshes/cannon_x.gm
+        run: cargo run -p storm-formats --locked -- decode tools/modding-tool/Meshes/cannon_x.gm
       - name: Build native executable
         run: cargo build --workspace --locked
       - name: Test software Vulkan rendering and native window
@@ -62,6 +62,8 @@ jobs:
           cargo test -p storm-render --locked -- --ignored
           cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --headless model-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --frames 3
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -84,4 +86,11 @@ jobs:
           path: |
             target/debug/storm-assets
             target/debug/storm-assets.exe
+          if-no-files-found: error
+      - name: Upload Vulkan model preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-model-vulkan
+          path: model-preview.png
           if-no-files-found: error

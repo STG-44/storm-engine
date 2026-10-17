@@ -1,9 +1,10 @@
-# Storm Rust renderer foundation
+# Storm Rust native model preview
 
 This native application is the first executable part of the Storm Engine Rust
-port. It opens an animated diagnostic sea using wgpu, or renders the same scene
-to a PNG without a window. The diagnostic scene is newly written and does not
-yet implement Storm gameplay, ship loading, or the original sea simulation.
+port. It previews original static GM geometry and TX textures using wgpu, or
+opens an animated resource-free diagnostic sea. Both can render to a PNG without
+a window. Game scripts, ship physics, and the original sea simulation have not
+been ported.
 
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
 
@@ -35,7 +36,9 @@ and Linux builds need a compatible GPU driver. macOS uses Metal directly.
 
 The first local check passed on macOS 15.7.8 / Intel with a Radeon Pro 555X:
 Metal offscreen readback and animation tests, and three frames presented in a
-native window. This is renderer validation; original game support is pending.
+native window. The original Barkentine1 ship also renders through Metal, including
+20 geometry files, three original textures, and ten locator-generated static
+sails (8,055 triangles). Full game support is pending.
 
 Linux needs the X11/Wayland development packages when compiling. On Ubuntu:
 
@@ -54,14 +57,17 @@ cargo test --workspace --locked
 cargo test -p storm-render --locked -- --ignored
 ```
 
-The default test validates the WGSL shader without a GPU. The explicitly ignored
-GPU test renders two animation times, checks opaque nonuniform pixels, verifies
-row padding is removed, and rejects invalid frame sizes and times. It requires
-an actual native graphics adapter or a software Vulkan implementation.
+CPU tests validate all three WGSL shaders, static geometry references, texture
+decoding/mips, and malformed input. The explicitly ignored GPU tests check sea
+animation, row padding, invalid frame/camera parameters, and rasterization of the
+upstream cannon fixture with a red test texture. The model test also checks that
+camera movement changes the image and handles the fixture's zero normals.
+They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs the GPU test with software Vulkan and
-the native window under Xvfb. Hosted macOS/Windows builds alone do not establish
+Silicon, and macOS Intel. Linux also runs both GPU tests with software Vulkan,
+captures the diagnostic and upstream cannon, and opens both scenes under Xvfb.
+Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
 The inherited C++ workflows do not run on pushes or pull requests targeting
@@ -71,13 +77,45 @@ original C++ workflows remain available on other branches.
 ## Original game resources
 
 Keep the complete game installation outside Git, or use the ignored `game-data/`
-directory. The current diagnostic needs no assets. The `storm-formats` crate
-provides safe GM/TX header readers and the native `storm-assets` inspection tool:
+directory. The diagnostic and upstream cannon fixture need no game installation.
+To preview the original barquentine, replace `/path/to/game` with your local
+installation (or pass its RESOURCE directory to `--game-dir`):
+
+```sh
+cargo run -p storm-demo --locked -- \
+  --model /path/to/game/RESOURCE/MODELS/Ships/Barkentine1/barkentine1.gm \
+  --game-dir /path/to/game
+```
+
+Drag with the left mouse button or use the arrow keys to orbit. Scroll to zoom,
+press R to reset, and Escape to close. Add `--headless barkentine.png --time 0`
+for a deterministic capture, or `--yaw 90` for another initial angle.
+
+Child models follow the original `geometry` locators and filename convention.
+Four-corner sail locators produce curved static patches; triangular sails,
+ropes, animation, sail damage, and physics remain pending. The water is a new
+preview shader. Materials use the first base texture and new lighting, without
+COL lighting, normal maps, or original material effects.
+
+Texture paths resolve case-insensitively on every OS. The default ship skin is
+Hull1. Use `--texture-dir Ships/Barkentine1/Hull2` to choose another skin, and
+`--single-mesh` to disable children and generated sails. Missing or ambiguous
+textures are errors. For a model without game resources:
+
+```sh
+cargo run -p storm-demo --locked -- \
+  --model tools/modding-tool/Meshes/cannon_x.gm --untextured
+```
+
+The `storm-formats` crate provides header inspection and full static render-data
+decoding through the native `storm-assets` tool:
 
 ```sh
 cargo run -p storm-formats --locked -- inspect tools/modding-tool/Meshes/cannon_x.gm
 cargo run -p storm-formats --locked -- inspect /path/to/game/RESOURCE/Textures/example.tga.tx
 cargo run -p storm-formats --locked -- scan /path/to/game/RESOURCE
+cargo run -p storm-formats --locked -- decode tools/modding-tool/Meshes/cannon_x.gm
+cargo run -p storm-formats --locked -- decode /path/to/game/RESOURCE/Textures/example.tga.tx
 ```
 
 Inspection reports GM object/material/triangle counts, bounds, and vertex-buffer
@@ -86,8 +124,15 @@ size. Scan checks headers and minimum table lengths, skips symbolic links, print
 JSON, and exits unsuccessfully if any inspected file fails. It preserves unknown
 TX format codes for future decoders. It reads at most 72 bytes per asset.
 
-Header checks do not establish that every vertex, index, name offset, mip, or BSP
-record is valid. Full geometry/pixel decoding and original ship rendering remain
-subsequent milestones in [the port plan](../docs/RUST_PORT.md). Tests use the
-existing upstream cannon mesh and malformed/truncated binary headers. No
-commercial game assets are bundled in the Rust crates or CI artifacts.
+`decode` reads the full file (256 MiB input limit), validates static GM 1.05
+buffers/types 0–3, local indices, material/texture/name references, finite render
+values, and declared BSP byte/index ranges. Collision traversal and animated
+buffers are not implemented. Unknown older GM versions remain errors.
+
+TX decoding validates every declared mip and supports DXT1–5, A8R8G8B8,
+X8R8G8B8, R5G6B5, A1R5G5B5, A4R4G4B4, and L8, producing portable RGBA8 with a
+256 MiB decoded budget. Palette, cubemap, unknown flags/formats, and partial
+compressed blocks are explicit errors. The preview limits assembled scenes to
+512 MiB, 256 nodes, and 16 levels. Header-only `scan` results are separate from
+these full decoding checks; the whole resource collection has not been fully
+decoded. No commercial assets or captures are bundled in the repository or CI.

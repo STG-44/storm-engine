@@ -1,11 +1,15 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc, time::Instant};
-use storm_render::{DiagnosticScene, Gpu, create_instance, render_offscreen};
+use storm_render::{
+    DiagnosticScene, Gpu, create_instance,
+    model::{LoadOptions, ModelAsset, ModelScene, OrbitCamera},
+    render_model_offscreen, render_offscreen,
+};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowId},
@@ -34,7 +38,7 @@ impl Backend {
 #[derive(Parser)]
 #[command(
     version,
-    about = "Storm Rust: native renderer foundation (no game assets required)"
+    about = "Storm Rust: native diagnostic sea and original GM/TX model preview"
 )]
 struct Options {
     #[arg(long, value_enum, default_value_t)]
@@ -52,13 +56,51 @@ struct Options {
     /// Exit after this many presented frames (for native window smoke checks).
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     frames: Option<u64>,
+    /// Original GM file to preview instead of the resource-free diagnostic.
+    #[arg(long)]
+    model: Option<PathBuf>,
+    /// Game installation or its RESOURCE directory (original files stay outside Git).
+    #[arg(long, requires = "model")]
+    game_dir: Option<PathBuf>,
+    /// Texture search directory relative to RESOURCE/Textures; default ship skin is Hull1.
+    #[arg(long, requires = "game_dir")]
+    texture_dir: Option<PathBuf>,
+    /// Render geometry with a white material, without loading commercial textures.
+    #[arg(long, requires = "model", conflicts_with = "game_dir")]
+    untextured: bool,
+    /// Preview only the supplied GM, without children or locator-generated sails.
+    #[arg(long, requires = "model")]
+    single_mesh: bool,
+    /// Fixed simulation time for deterministic headless captures.
+    #[arg(long, default_value_t = 0.0, value_parser = finite)]
+    time: f32,
+    /// Initial orbit angle in degrees.
+    #[arg(long, requires = "model", value_parser = finite)]
+    yaw: Option<f32>,
+}
+
+fn finite(value: &str) -> std::result::Result<f32, String> {
+    let v = value.parse::<f32>().map_err(|e| e.to_string())?;
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        Err("value must be finite".to_owned())
+    }
+}
+
+enum Scene {
+    Diagnostic(Box<DiagnosticScene>),
+    Model(Box<ModelScene>),
 }
 
 struct WindowState {
     surface: wgpu::Surface<'static>,
     window: Arc<Window>,
     gpu: Gpu,
-    scene: DiagnosticScene,
+    scene: Scene,
+    camera: Option<OrbitCamera>,
+    dragging: bool,
+    last_cursor: Option<(f64, f64)>,
     config: wgpu::SurfaceConfiguration,
     configured: bool,
     occluded: bool,
@@ -71,6 +113,7 @@ impl WindowState {
         instance: &wgpu::Instance,
         event_loop: &ActiveEventLoop,
         options: &Options,
+        asset: Option<&ModelAsset>,
     ) -> Result<Self> {
         let window = Arc::new(
             event_loop
@@ -90,7 +133,16 @@ impl WindowState {
             "GPU: {} ({:?}, {:?})",
             info.name, info.backend, info.device_type
         );
-        window.set_title(&format!("Storm Rust — {:?} — {}", info.backend, info.name));
+        let scene_name = options
+            .model
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "diagnostic sea".to_owned());
+        window.set_title(&format!(
+            "Storm Rust — {scene_name} — {:?} — {}",
+            info.backend, info.name
+        ));
         let size = window.inner_size();
         let mut config = surface
             .get_default_config(&gpu.adapter, size.width.max(1), size.height.max(1))
@@ -103,12 +155,25 @@ impl WindowState {
             .find(wgpu::TextureFormat::is_srgb)
             .context("surface has no sRGB color format")?;
         config.present_mode = wgpu::PresentMode::AutoVsync;
-        let scene = DiagnosticScene::new(&gpu.device, config.format);
+        let scene = match asset {
+            Some(asset) => Scene::Model(Box::new(ModelScene::new(&gpu, config.format, asset)?)),
+            None => Scene::Diagnostic(Box::new(DiagnosticScene::new(&gpu.device, config.format))),
+        };
+        let camera = asset.map(|asset| {
+            let mut c = OrbitCamera::new(asset);
+            if let Some(yaw) = options.yaw {
+                c.yaw = yaw.to_radians();
+            }
+            c
+        });
         let mut state = Self {
             surface,
             window,
             gpu,
             scene,
+            camera,
+            dragging: false,
+            last_cursor: None,
             config,
             configured: false,
             occluded: false,
@@ -156,14 +221,27 @@ impl WindowState {
             }
         };
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
-        self.scene.draw(
-            &self.gpu.queue,
-            &mut encoder,
-            &frame.texture.create_view(&Default::default()),
-            self.config.width,
-            self.config.height,
-            self.start.elapsed().as_secs_f32(),
-        );
+        let target = frame.texture.create_view(&Default::default());
+        let seconds = self.start.elapsed().as_secs_f32();
+        match &mut self.scene {
+            Scene::Diagnostic(scene) => scene.draw(
+                &self.gpu.queue,
+                &mut encoder,
+                &target,
+                self.config.width,
+                self.config.height,
+                seconds,
+            ),
+            Scene::Model(scene) => scene.draw(
+                &self.gpu,
+                &mut encoder,
+                &target,
+                self.config.width,
+                self.config.height,
+                seconds,
+                self.camera.as_ref().expect("model camera"),
+            )?,
+        }
         self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.gpu.queue.present(frame);
@@ -180,6 +258,7 @@ struct Application {
     options: Options,
     state: Option<WindowState>,
     failure: Option<anyhow::Error>,
+    asset: Option<Arc<ModelAsset>>,
 }
 
 impl Application {
@@ -192,7 +271,12 @@ impl Application {
 impl ApplicationHandler for Application {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
-            match pollster::block_on(WindowState::new(&self.instance, event_loop, &self.options)) {
+            match pollster::block_on(WindowState::new(
+                &self.instance,
+                event_loop,
+                &self.options,
+                self.asset.as_deref(),
+            )) {
                 Ok(state) => {
                     state.window.request_redraw();
                     self.state = Some(state);
@@ -226,6 +310,49 @@ impl ApplicationHandler for Application {
                     && event.logical_key == Key::Named(NamedKey::Escape) =>
             {
                 event_loop.exit()
+            }
+            WindowEvent::MouseInput {
+                state: button,
+                button: MouseButton::Left,
+                ..
+            } => {
+                state.dragging = button == ElementState::Pressed;
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                if let (Some((x, y)), Some(camera)) = (state.last_cursor, state.camera.as_mut())
+                    && state.dragging
+                {
+                    camera.orbit((position.x - x) as f32, (position.y - y) as f32);
+                }
+                state.last_cursor = Some((position.x, position.y));
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                if let Some(camera) = state.camera.as_mut() {
+                    camera.zoom(match delta {
+                        MouseScrollDelta::LineDelta(_, y) => y,
+                        MouseScrollDelta::PixelDelta(p) => p.y as f32 / 60.0,
+                    });
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if let Some(camera) = state.camera.as_mut() {
+                    match event.logical_key {
+                        Key::Named(NamedKey::ArrowLeft) => camera.orbit(-8.0, 0.0),
+                        Key::Named(NamedKey::ArrowRight) => camera.orbit(8.0, 0.0),
+                        Key::Named(NamedKey::ArrowUp) => camera.orbit(0.0, 5.0),
+                        Key::Named(NamedKey::ArrowDown) => camera.orbit(0.0, -5.0),
+                        Key::Character(key) if key.eq_ignore_ascii_case("r") => {
+                            if let Some(asset) = self.asset.as_ref() {
+                                *camera = OrbitCamera::new(asset);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            WindowEvent::Focused(false) => {
+                state.dragging = false;
+                state.last_cursor = None;
             }
             WindowEvent::Resized(size) => {
                 state.resize(size);
@@ -274,11 +401,39 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
+    let asset = options.model.as_ref().map(|path| {
+        let asset = ModelAsset::load(path, &LoadOptions {
+            game_dir: options.game_dir.clone(),
+            texture_dir: options.texture_dir.clone(),
+            untextured: options.untextured,
+            single_mesh: options.single_mesh,
+        })?;
+        eprintln!("Loaded {} geometry files, {} draw meshes, {} textures, {} static sails, {} triangles",
+            asset.geometry_files, asset.meshes.len(), asset.textures.len() - 1,
+            asset.sails, asset.meshes.iter().map(|m| m.indices.len() / 3).sum::<usize>());
+        Ok::<_, anyhow::Error>(Arc::new(asset))
+    }).transpose()?;
     if let Some(path) = &options.headless {
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();
         eprintln!("GPU: {} ({:?})", info.name, info.backend);
-        render_offscreen(&gpu, options.width, options.height, 0.0)?.save_png(path)?;
+        let frame = if let Some(asset) = &asset {
+            let mut camera = OrbitCamera::new(asset);
+            if let Some(yaw) = options.yaw {
+                camera.yaw = yaw.to_radians();
+            }
+            render_model_offscreen(
+                &gpu,
+                asset,
+                &camera,
+                options.width,
+                options.height,
+                options.time,
+            )?
+        } else {
+            render_offscreen(&gpu, options.width, options.height, options.time)?
+        };
+        frame.save_png(path)?;
         eprintln!(
             "Saved {}x{} frame to {}",
             options.width,
@@ -293,6 +448,7 @@ fn main() -> Result<()> {
         options,
         state: None,
         failure: None,
+        asset,
     };
     event_loop
         .run_app(&mut application)

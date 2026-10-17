@@ -5,13 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
 use storm_formats::{GmHeader, TxHeader};
 
 #[derive(Parser)]
-#[command(about = "Inspect original Storm GM/TX metadata without running the game")]
+#[command(about = "Inspect or decode original Storm GM/TX files without running the game")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -21,6 +21,8 @@ struct Args {
 enum Command {
     /// Inspect one .gm or .tx file's header and minimum table length.
     Inspect { file: PathBuf },
+    /// Decode static render geometry or every 2D mip into CPU memory and report validation.
+    Decode { file: PathBuf },
     /// Check GM/TX headers recursively, skipping symbolic links.
     Scan { directory: PathBuf },
 }
@@ -70,6 +72,41 @@ fn inspect(path: &Path) -> Result<Value> {
         }),
     };
     Ok(json!({"file": path.display().to_string(), "metadata": metadata}))
+}
+
+fn decode(path: &Path) -> Result<Value> {
+    use storm_formats::{geometry::Geometry, texture::Texture};
+    let file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.take(256 * 1024 * 1024 + 1).read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() <= 256 * 1024 * 1024,
+        "asset exceeds the 256 MiB input limit"
+    );
+    let decoded = match extension(path).as_str() {
+        "gm" => {
+            let model = Geometry::read(&bytes)?;
+            json!({
+                "kind": "gm", "objects": model.objects.len(),
+                "vertices": model.buffers.iter().map(Vec::len).sum::<usize>(),
+                "triangles": model.triangles.len(), "textures": model.textures,
+                "materials": model.materials.iter().map(|m| &m.name).collect::<Vec<_>>(),
+                "labels": model.labels.len(),
+                "validation": "static render data and BSP byte/index ranges; collision traversal not implemented",
+            })
+        }
+        "tx" => {
+            let texture = Texture::read(&bytes)?;
+            json!({
+                "kind": "tx", "format": texture.header.format_name(),
+                "mips": texture.mips.iter().map(|m| json!({
+                    "width": m.width, "height": m.height, "rgba_bytes": m.rgba.len(),
+                })).collect::<Vec<_>>(),
+            })
+        }
+        _ => bail!("expected a .gm or .tx file"),
+    };
+    Ok(json!({"file":path.display().to_string(),"decoded":decoded}))
 }
 
 fn asset_paths(root: &Path) -> Result<Vec<PathBuf>> {
@@ -133,6 +170,7 @@ fn scan(root: &Path) -> Result<(Value, bool)> {
 fn main() -> Result<()> {
     let (result, passed) = match Args::parse().command {
         Command::Inspect { file } => (inspect(&file)?, true),
+        Command::Decode { file } => (decode(&file)?, true),
         Command::Scan { directory } => scan(&directory)?,
     };
     println!("{}", serde_json::to_string_pretty(&result)?);

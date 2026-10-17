@@ -1,8 +1,12 @@
-//! Header inspection for Storm's original GM geometry and TX textures.
+//! Readers for Storm's original GM geometry and TX textures.
 //!
 //! Layouts follow `src/libs/geometry/src/rdf.h` and
 //! `src/libs/renderer/src/texture.h`. These readers validate metadata and
-//! minimum file lengths; they do not decode vertices, mip pixels, or BSP data.
+//! minimum file lengths. The geometry/texture modules decode static meshes
+//! and 2D mip pixels; animation and BSP collision remain separate work.
+
+pub mod geometry;
+pub mod texture;
 
 use std::{error::Error, fmt};
 
@@ -119,7 +123,7 @@ impl TxHeader {
     pub const CUBEMAP: u32 = 2;
 
     /// Read metadata and check that at least mip zero and its palette fit.
-    /// Subsequent mip/face offsets and pixel data are not decoded yet.
+    /// Use `texture::Texture::read` to decode and validate all 2D mip pixels.
     pub fn read(bytes: &[u8], file_len: u64) -> Result<Self, FormatError> {
         if bytes.len() < Self::SIZE {
             return Err(FormatError("truncated TX header"));

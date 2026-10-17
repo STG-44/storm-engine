@@ -13,6 +13,7 @@ path = "src/bin/storm-assets.rs"
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+encoding_rs.workspace = true
 serde_json.workspace = true
 
 [lints]

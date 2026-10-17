@@ -5,6 +5,7 @@ use std::{fs::File, io::BufWriter, path::Path, sync::mpsc, time::Duration};
 use wgpu::util::DeviceExt;
 
 pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
+pub mod model;
 
 /// Reject unavailable backends instead of silently selecting a different API.
 pub fn create_instance(backends: wgpu::Backends) -> Result<wgpu::Instance> {
@@ -167,6 +168,34 @@ impl Frame {
 
 /// Render through the window's scene pipeline, then read back RGBA8 without row padding.
 pub fn render_offscreen(gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Result<Frame> {
+    let scene = DiagnosticScene::new(&gpu.device, wgpu::TextureFormat::Rgba8UnormSrgb);
+    render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
+        scene.draw(&gpu.queue, encoder, target, width, height, seconds);
+        Ok(())
+    })
+}
+
+pub fn render_model_offscreen(
+    gpu: &Gpu,
+    asset: &model::ModelAsset,
+    camera: &model::OrbitCamera,
+    width: u32,
+    height: u32,
+    seconds: f32,
+) -> Result<Frame> {
+    let mut scene = model::ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, asset)?;
+    render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
+        scene.draw(gpu, encoder, target, width, height, seconds, camera)
+    })
+}
+
+fn render_offscreen_with(
+    gpu: &Gpu,
+    width: u32,
+    height: u32,
+    seconds: f32,
+    draw: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView) -> Result<()>,
+) -> Result<Frame> {
     let limits = gpu.device.limits();
     ensure!(width > 0 && height > 0, "frame dimensions must be nonzero");
     ensure!(
@@ -205,16 +234,8 @@ pub fn render_offscreen(gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Res
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
-    let scene = DiagnosticScene::new(&gpu.device, wgpu::TextureFormat::Rgba8UnormSrgb);
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    scene.draw(
-        &gpu.queue,
-        &mut encoder,
-        &texture.create_view(&Default::default()),
-        width,
-        height,
-        seconds,
-    );
+    draw(&mut encoder, &texture.create_view(&Default::default()))?;
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
         wgpu::TexelCopyBufferInfo {
@@ -271,13 +292,15 @@ mod tests {
 
     #[test]
     fn diagnostic_shader_validates_without_a_gpu() {
-        let module = naga::front::wgsl::parse_str(DIAGNOSTIC_SHADER).expect("valid WGSL");
-        naga::valid::Validator::new(
-            naga::valid::ValidationFlags::all(),
-            naga::valid::Capabilities::empty(),
-        )
-        .validate(&module)
-        .expect("portable shader capabilities");
+        for shader in [DIAGNOSTIC_SHADER, model::MODEL_SHADER, model::OCEAN_SHADER] {
+            let module = naga::front::wgsl::parse_str(shader).expect("valid WGSL");
+            naga::valid::Validator::new(
+                naga::valid::ValidationFlags::all(),
+                naga::valid::Capabilities::empty(),
+            )
+            .validate(&module)
+            .expect("portable shader capabilities");
+        }
     }
 
     #[test]
@@ -298,5 +321,57 @@ mod tests {
         assert!(render_offscreen(&gpu, 0, 33, 0.0).is_err());
         assert!(render_offscreen(&gpu, 65, 33, f32::NAN).is_err());
         assert!(render_offscreen(&gpu, u32::MAX, 33, 0.0).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn original_mesh_rasterizes_textures_depth_and_orbit() {
+        use model::{LoadOptions, ModelAsset, OrbitCamera};
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tools/modding-tool/Meshes/cannon_x.gm");
+        let mut asset = ModelAsset::load(
+            &path,
+            &LoadOptions {
+                untextured: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        asset.textures[0].mips[0].rgba = vec![255, 0, 0, 255];
+        let instance = create_instance(wgpu::Backends::PRIMARY).unwrap();
+        let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+        let mut camera = OrbitCamera::new(&asset);
+        let frame = render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).unwrap();
+        let red = frame
+            .rgba
+            .chunks_exact(4)
+            .filter(|p| p[0] > 100 && p[1] < 20 && p[2] < 20)
+            .count();
+        if red <= 50 {
+            let path = std::env::temp_dir().join("storm-model-failed.png");
+            frame.save_png(&path).unwrap();
+            eprintln!("Failed frame: {}", path.display());
+        }
+        assert!(
+            red > 50,
+            "mesh/texture/depth pipeline did not produce red geometry: {red}"
+        );
+        assert_eq!(frame.rgba.len(), 167 * 93 * 4);
+        let background = ModelAsset {
+            meshes: vec![],
+            textures: vec![],
+            center: asset.center,
+            radius: asset.radius,
+            geometry_files: 0,
+            sails: 0,
+        };
+        let sky = render_model_offscreen(&gpu, &background, &camera, 167, 93, 0.0).unwrap();
+        assert_ne!(frame.rgba, sky.rgba, "model must alter the background");
+        camera.orbit(90.0, 12.0);
+        camera.zoom(1.0);
+        let moved = render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).unwrap();
+        assert_ne!(frame.rgba, moved.rgba);
+        camera.distance = f32::NAN;
+        assert!(render_model_offscreen(&gpu, &asset, &camera, 167, 93, 0.0).is_err());
     }
 }
