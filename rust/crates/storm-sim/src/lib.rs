@@ -1,7 +1,9 @@
-//! First planar sailing model. New approximate dynamics, not Storm gameplay parity.
+//! Approximate sailing and wave response, not Storm gameplay parity.
 //! Units: metres, seconds, kilograms, radians. Heading 0 points +Z, +pi/2 points +X.
 use glam::DVec2;
 use std::{error::Error, fmt};
+mod waves;
+pub use waves::{HullMotion, WaveComponent, Waves};
 
 pub const STEP_SECONDS: f64 = 1.0 / 120.0;
 
@@ -130,6 +132,8 @@ impl ShipState {
 
 pub struct Sailing {
     state: ShipState,
+    motion: HullMotion,
+    waves: Waves,
     config: ShipConfig,
     wind: Wind,
     helm: Helm,
@@ -156,6 +160,8 @@ impl Sailing {
         state.heading = wrap(state.heading);
         Ok(Self {
             state,
+            motion: HullMotion::default(),
+            waves: Waves::default(),
             config,
             wind,
             helm: Helm::default(),
@@ -165,6 +171,17 @@ impl Sailing {
     }
     pub fn state(&self) -> ShipState {
         self.state
+    }
+    pub fn motion(&self) -> HullMotion {
+        self.motion
+    }
+    pub fn waves(&self) -> Waves {
+        self.waves
+    }
+    pub fn set_waves(&mut self, waves: Waves) -> Result<()> {
+        waves.validate()?;
+        self.waves = waves;
+        Ok(())
     }
     pub fn helm(&self) -> Helm {
         self.helm
@@ -234,6 +251,21 @@ impl Sailing {
         next.yaw_rate += torque / (inertia / 12.0) * STEP_SECONDS;
         next.heading = wrap(next.heading + next.yaw_rate * STEP_SECONDS);
         next.validate()?;
+        let forward = next.forward();
+        let right = DVec2::new(forward.y, -forward.x);
+        let half_length = self.config.length_m * 0.4;
+        let half_beam = self.config.length_m * 0.125;
+        let time = (self.ticks + 1) as f64 * STEP_SECONDS;
+        let sample = |offset| self.waves.sample(next.position + offset, time).0;
+        let bow = sample(forward * half_length);
+        let stern = sample(-forward * half_length);
+        let starboard = sample(right * half_beam);
+        let port = sample(-right * half_beam);
+        self.motion.step([
+            (sample(DVec2::ZERO) * 2.0 + bow + stern + starboard + port) / 6.0,
+            (bow - stern).atan2(2.0 * half_length),
+            (starboard - port).atan2(2.0 * half_beam),
+        ]);
         self.state = next;
         Ok(())
     }
@@ -254,6 +286,43 @@ mod tests {
     }
     fn sim() -> Sailing {
         Sailing::new(ShipConfig::default(), wind(), 0.0).unwrap()
+    }
+
+    #[test]
+    fn wave_response_is_damped_bounded_and_independent_of_frame_partition() {
+        let mut a = sim();
+        let mut b = sim();
+        let waves = Waves {
+            height_m: 4.0,
+            direction: 1.1,
+        };
+        a.set_waves(waves).unwrap();
+        b.set_waves(waves).unwrap();
+        a.advance(60.0).unwrap();
+        for _ in 0..3600 {
+            b.advance(1.0 / 60.0).unwrap();
+        }
+        assert_eq!(a.state(), b.state());
+        assert_eq!(a.motion(), b.motion());
+        let mut peaks = [0.0_f64; 3];
+        for _ in 0..3540 {
+            a.advance(1.0).unwrap();
+            let m = a.motion();
+            assert!(m.heave_m.is_finite() && m.heave_m.abs() < 3.0);
+            assert!(m.pitch.is_finite() && m.pitch.abs() < 0.4);
+            assert!(m.roll.is_finite() && m.roll.abs() < 0.4);
+            for (peak, value) in peaks.iter_mut().zip([m.heave_m, m.pitch, m.roll]) {
+                *peak = peak.max(value.abs());
+            }
+        }
+        assert!(peaks[0] > 0.1 && peaks[1] > 0.01 && peaks[2] > 0.01);
+        a.set_waves(Waves::default()).unwrap();
+        a.advance(60.0).unwrap();
+        let m = a.motion();
+        assert!(m.heave_m.abs() + m.pitch.abs() + m.roll.abs() < 1e-10);
+        let mut flat = sim();
+        flat.advance(60.0).unwrap();
+        assert_eq!(flat.motion(), HullMotion::default());
     }
 
     #[test]

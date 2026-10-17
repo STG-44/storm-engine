@@ -11,6 +11,7 @@ anyhow.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
 storm-formats = { path = "../storm-formats" }
+storm-sim = { path = "../storm-sim" }
 png.workspace = true
 wgpu.workspace = true
 

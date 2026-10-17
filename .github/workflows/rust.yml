@@ -66,8 +66,10 @@ jobs:
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --wind-speed 16 --wind-direction -90 --time 2 --headless sail-preview.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --paused --frames 3
-          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --time 40 --rudder 0.6 --headless sailing-preview.png --state-json sailing-state.json --width 641 --height 361
-          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --time 10 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0 --time 40 --rudder 0.6 --headless sailing-preview.png --state-json sailing-state.json --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0 --time 10 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0.15 --wave-direction 115 --time 12 --headless waves-preview.png --state-json waves-state.json --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0.15 --time 12 --paused --frames 3
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -113,4 +115,13 @@ jobs:
           path: |
             sailing-preview.png
             sailing-state.json
+          if-no-files-found: error
+      - name: Upload wave transform fixture and simulation state
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: waves-vulkan
+          path: |
+            waves-preview.png
+            waves-state.json
           if-no-files-found: error

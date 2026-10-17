@@ -33,6 +33,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Display an original ship with textures, static sails, preview water, and an orbit camera on local macOS Metal.
 - [x] Add triangular sails, deterministic preview wind deformation, and pause/wind controls.
 - [x] Add a fixed-step planar sailing prototype with wind drive, rudder, water resistance, and physical-key input.
+- [x] Share an analytic sea between CPU/GPU and add damped heave, pitch and roll.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -43,7 +44,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 
 The renderer foundation is implemented in `rust/`; see [run and validation commands](../rust/README.md).
 The diagnostic sea is new test code, separate from the original Storm sea simulation.
-Static ship preview and approximate planar sailing are implemented. Original
+Static ship preview, approximate sailing and damped wave response are implemented. Original
 game loading, calibrated ship simulation, and gameplay remain pending.
 
 Verified locally on 2026-10-17:
@@ -116,3 +117,10 @@ also passes all four GPU tests through software Vulkan, a sailing transform
 capture with JSON state, and three frames in its paused native window.
 [Sailing notes](SAILING_PROTOTYPE.md) record controls, reproducible cases, and
 the difference between this approximate prototype and original gameplay parity.
+
+[Wave response notes](WAVE_RESPONSE.md) describe the shared height/gradient
+field, hull surface fit, rigid pitch/roll, water depth and remaining limitations.
+The local original-ship capture includes all 12 sails. Local validation passes
+24 CPU tests and six Metal GPU tests, including CPU/WGSL agreement and an
+emerging/submerged geometry check. CI adds a separate wave capture/state export
+and paused native window using the small upstream cannon fixture.

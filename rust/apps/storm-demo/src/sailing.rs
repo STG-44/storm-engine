@@ -2,7 +2,7 @@ use super::Options;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use storm_render::model::{ModelPose, SailWind};
-use storm_sim::{Helm, Sailing, ShipConfig, Wind};
+use storm_sim::{Helm, Sailing, ShipConfig, Waves, Wind};
 use winit::{event::ElementState, keyboard::KeyCode};
 
 pub struct Session {
@@ -42,6 +42,16 @@ impl Session {
             sail: f64::from(options.sail_setting),
             rudder: f64::from(options.rudder),
         })?;
+        simulation.set_waves(Waves {
+            height_m: f64::from(options.wave_height.unwrap_or(1.5)),
+            direction: f64::from(
+                options
+                    .wave_direction
+                    .unwrap_or(options.wind_direction)
+                    .rem_euclid(360.0)
+                    .to_radians(),
+            ),
+        })?;
         simulation.advance(f64::from(options.time))?;
         Ok(Some(Self {
             simulation,
@@ -63,10 +73,18 @@ impl Session {
 
     pub fn pose(&self) -> ModelPose {
         let state = self.simulation.state();
+        let motion = self.simulation.motion();
         ModelPose {
-            translation: [state.position.x as f32, 0.0, state.position.y as f32],
+            translation: [
+                state.position.x as f32,
+                motion.heave_m as f32,
+                state.position.y as f32,
+            ],
             // Storm bows point +Z; the static loader reflects Z into renderer coordinates.
             yaw: (state.heading + std::f64::consts::PI) as f32,
+            pitch: motion.pitch as f32,
+            // After the Z reflection, model +X is port in the heading frame.
+            roll: -motion.roll as f32,
         }
     }
 
@@ -120,11 +138,16 @@ impl Session {
         let helm = self.simulation.helm();
         let config = self.simulation.config();
         let wind = self.simulation.wind();
-        json!({ "model": "new approximate planar sailing dynamics", "step_seconds": storm_sim::STEP_SECONDS,
+        let waves = self.simulation.waves();
+        let motion = self.simulation.motion();
+        json!({ "model": "new approximate sailing and damped wave response", "step_seconds": storm_sim::STEP_SECONDS,
             "simulation_seconds": self.simulation.time(), "position_xz_m": s.position.to_array(),
             "velocity_xz_mps": s.velocity.to_array(), "speed_knots": s.speed_knots(),
             "heading_degrees": s.heading.to_degrees().rem_euclid(360.0),
             "yaw_rate_radians_per_second": s.yaw_rate,
+            "hull_motion": { "heave_m": motion.heave_m, "pitch_degrees_bow_up": motion.pitch.to_degrees(),
+                "roll_degrees_starboard_up": motion.roll.to_degrees(), "rates_mps_radps": motion.rates },
+            "waves": { "envelope_height_m": waves.height_m, "direction_degrees": waves.direction.to_degrees().rem_euclid(360.0) },
             "sail_setting": helm.sail, "rudder": helm.rudder,
             "wind": { "speed_mps": wind.speed_mps, "direction_degrees": wind.direction.to_degrees().rem_euclid(360.0) },
             "config": { "mass_kg": config.mass_kg, "length_m": config.length_m, "sail_area_m2": config.sail_area_m2 },

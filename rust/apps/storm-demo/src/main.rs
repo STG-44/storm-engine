@@ -6,7 +6,7 @@ mod timeline;
 use storm_render::{
     DiagnosticScene, Gpu, create_instance,
     model::{LoadOptions, ModelAsset, ModelPose, ModelScene, OrbitCamera, SailWind},
-    render_model_offscreen_at_pose, render_offscreen,
+    render_offscreen, render_sailing_offscreen,
 };
 use timeline::Timeline;
 use winit::{
@@ -84,7 +84,7 @@ struct Options {
     /// Initial orbit angle in degrees.
     #[arg(long, requires = "preview", value_parser = finite, allow_negative_numbers = true)]
     yaw: Option<f32>,
-    /// Preview wind speed, 0..=40 m/s. This does not drive ship physics yet.
+    /// Wind speed, 0..=40 m/s; drives cloth and optional sailing physics.
     #[arg(long, requires = "preview", default_value_t = 8.0, value_parser = wind_speed)]
     wind_speed: f32,
     /// Wind travel direction: 0 degrees is +Z, 90 degrees is +X.
@@ -108,6 +108,21 @@ struct Options {
     /// Save headless simulation state as JSON, alongside the rendered PNG.
     #[arg(long, requires_all = ["sail", "headless"])]
     state_json: Option<PathBuf>,
+    /// Crest-to-trough wave envelope, 0..=4 metres (default in sailing mode: 1.5).
+    #[arg(long, requires = "sail", value_parser = wave_height)]
+    wave_height: Option<f32>,
+    /// Wave travel direction in degrees (default: initial wind direction).
+    #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
+    wave_direction: Option<f32>,
+}
+
+fn wave_height(value: &str) -> std::result::Result<f32, String> {
+    let v = finite(value)?;
+    if (0.0..=4.0).contains(&v) {
+        Ok(v)
+    } else {
+        Err("wave height must be 0..=4 metres".into())
+    }
 }
 
 fn sail_setting(value: &str) -> std::result::Result<f32, String> {
@@ -341,16 +356,22 @@ impl WindowState {
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let target = frame.texture.create_view(&Default::default());
         let seconds = self.timeline.seconds();
+        let mut frame_seconds = seconds;
         let mut frame_wind = self.wind;
         if let Some(sailing) = &mut self.sailing {
             sailing.update(seconds, self.wind)?;
+            frame_seconds = sailing.simulation.time() as f32;
             let pose = sailing.pose();
             frame_wind = sailing.cloth_wind(self.wind);
             if let Scene::Model(scene) = &mut self.scene {
                 scene.set_pose(pose)?;
+                scene.set_waves(sailing.simulation.waves())?;
             }
             if let Some(camera) = &mut self.camera {
-                camera.target = pose.transform_point(self.model_center.into())?;
+                // Follow horizontal travel without rolling the camera with the hull.
+                camera.target = self.model_center.into();
+                camera.target.x += pose.translation[0];
+                camera.target.z += pose.translation[2];
             }
         }
         if seconds - self.last_title_time >= 0.25 {
@@ -372,7 +393,7 @@ impl WindowState {
                 &target,
                 self.config.width,
                 self.config.height,
-                seconds,
+                frame_seconds,
                 self.camera.as_ref().expect("model camera"),
                 frame_wind,
             )?,
@@ -627,19 +648,26 @@ fn main() -> Result<()> {
             let pose = sailing
                 .as_ref()
                 .map_or_else(ModelPose::default, sailing::Session::pose);
-            camera.target = pose.transform_point(asset.center)?;
+            camera.target = asset.center;
+            camera.target.x += pose.translation[0];
+            camera.target.z += pose.translation[2];
             let wind = sailing
                 .as_ref()
                 .map_or_else(|| options.wind(), |s| s.cloth_wind(options.wind()));
-            render_model_offscreen_at_pose(
+            render_sailing_offscreen(
                 &gpu,
                 asset,
                 &camera,
                 wind,
                 pose,
+                sailing
+                    .as_ref()
+                    .map_or_else(storm_sim::Waves::default, |s| s.simulation.waves()),
                 options.width,
                 options.height,
-                options.time,
+                sailing
+                    .as_ref()
+                    .map_or(options.time, |s| s.simulation.time() as f32),
             )?
         } else {
             render_offscreen(&gpu, options.width, options.height, options.time)?

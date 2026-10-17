@@ -40,15 +40,32 @@ struct Pixel {
     output.color = vec4(sky(ray), 1.0);
     output.depth = 1.0;
     if ray.y < -0.0001 && eye.y > 0.0 {
-        let distance = -eye.y / ray.y;
+        // Bracket the ray in the full crest/trough envelope, then bisect the
+        // actual height field. This also supplies water depth for hull occlusion.
+        let amplitude = waves.components[0].w + waves.components[1].w;
+        var near = max(0.0, (amplitude - eye.y) / ray.y);
+        var far_distance = (-amplitude - eye.y) / ray.y;
+        if amplitude > 0.0 {
+            for (var i = 0u; i < 18u; i += 1u) {
+                let middle = (near + far_distance) * 0.5;
+                let point = eye + ray * middle;
+                if point.y > wave_surface(point.xz, camera.eye_time.w).x {
+                    near = middle;
+                } else {
+                    far_distance = middle;
+                }
+            }
+        }
+        let distance = (near + far_distance) * 0.5;
         let p = eye + ray * distance;
         let time = camera.eye_time.w;
         let fade = 1.0 - smoothstep(camera.light.w * 3.0, camera.light.w * 12.0, distance);
+        let surface = wave_surface(p.xz, time);
         let normal = normalize(vec3(
-            fade * (0.055 * cos(p.x * 0.6 + p.z * 0.28 - time * 1.1)
+            fade * (-surface.y + 0.055 * cos(p.x * 0.6 + p.z * 0.28 - time * 1.1)
                 + 0.025 * sin(p.z * 1.9 + time)),
             1.0,
-            fade * 0.06 * cos(p.z * 0.7 + p.x * 0.18 - time * 0.8),
+            fade * (-surface.z + 0.06 * cos(p.z * 0.7 + p.x * 0.18 - time * 0.8)),
         ));
         let fresnel = 0.025 + 0.975 * pow(1.0 - max(dot(-ray, normal), 0.0), 5.0);
         let reflection = sky(reflect(ray, normal));

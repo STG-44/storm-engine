@@ -116,7 +116,7 @@ Child models follow the original `geometry` locators and filename convention.
 `sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
 deterministic kinematic code, with every boundary point pinned and normals
 recomputed each frame. Ropes, original rigging, furling, sail damage, and ship
-physics beyond the new planar prototype remain pending. The water is a new
+physics beyond the new sailing/wave prototype remain pending. The water is a new
 preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
 
@@ -147,8 +147,12 @@ For a reproducible turn, add `--sail --wind-speed 12 --wind-direction 180
 --heading 180 --rudder 0.6 --time 40 --headless sailing.png --state-json state.json`.
 The interval is replayed from rest with constant controls. The new CPU model
 includes apparent wind, leeway, water resistance, yaw damping, and a 120 Hz step.
-Visual furling, vertical motion, wave forces, collisions, and original game
-balance remain pending. See [sailing details and validation](../docs/SAILING_PROTOTYPE.md).
+The hull now heaves, pitches and rolls on a shared CPU/GPU wave surface. Sailing
+defaults to a 1.5 m envelope; `--wave-height 0` restores flat water. Try
+`--wave-height 3 --wave-direction 115` for a rougher cross sea. The camera keeps
+a level horizon. See [wave controls, model and validation](../docs/WAVE_RESPONSE.md).
+Visual furling, horizontal wave forces, collisions and original game balance
+remain pending. See [sailing details](../docs/SAILING_PROTOTYPE.md).
 
 The `storm-formats` crate provides header inspection and full static render-data
 decoding through the native `storm-assets` tool:

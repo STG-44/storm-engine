@@ -5,6 +5,10 @@ water resists motion, and rudder force turns it. The renderer moves the entire
 hull/rig with one rigid transform and keeps cloth in the model frame. These are
 new approximate dynamics, not original Storm gameplay parity.
 
+[Wave response](WAVE_RESPONSE.md) adds heave, pitch and roll to this planar
+model, using the same sea surface on CPU and GPU. Sailing now defaults to a
+1.5 m wave envelope; use `--wave-height 0` for the original flat-water case.
+
 ## Play
 
 ```sh
@@ -67,13 +71,14 @@ so model yaw adds pi to the simulated course. Cloth receives apparent wind in
 the local model frame, capped at 40 m/s for rendering. Lighting normals rotate
 with the hull; static geometry is not re-uploaded.
 
-There is no vertical buoyancy, wave force, heel/roll, physical wake, collision,
+There is no horizontal wave force, wind-induced heel, physical wake, collision,
 island navigation, original furling/rigging, damage, AI, or gameplay scripts.
 The water remains diagnostic. Simulation is independent of GPU/window code.
 
 ## Validation
 
-Local macOS Intel / Radeon Pro 555X passes 21 CPU tests and four Metal GPU tests.
+The first planar milestone passed 21 CPU tests and four Metal GPU tests on
+local macOS Intel / Radeon Pro 555X; current wave checks are recorded separately.
 Physics checks cover calm/headwind, drive, reduced/zero sails, resistance,
 opposite helm turns, rudder at rest, frame partition, invalid inputs, and one
 hour at maximum wind. Input checks cover release, opposing keys, focus loss,

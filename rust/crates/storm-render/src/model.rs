@@ -1,6 +1,8 @@
 //! Native model preview: original mesh hierarchy/textures, preview cloth and water.
 mod assets;
 mod sails;
+#[cfg(test)]
+mod tests;
 use crate::Gpu;
 use anyhow::{Result, ensure};
 pub use assets::{LoadOptions, Mesh, ModelAsset, read_asset_bytes};
@@ -9,7 +11,8 @@ pub use sails::{SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
 pub const MODEL_SHADER: &str = include_str!("model.wgsl");
-pub const OCEAN_SHADER: &str = include_str!("ocean.wgsl");
+pub const OCEAN_SHADER: &str =
+    concat!(include_str!("waves.wgsl"), "\n", include_str!("ocean.wgsl"));
 
 const MODEL_ATTRIBUTES: [wgpu::VertexAttribute; 4] =
     wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Float32x4];
@@ -28,15 +31,23 @@ pub struct ModelVertex {
 pub struct ModelPose {
     pub translation: [f32; 3],
     pub yaw: f32,
+    /// Right-handed rotations about local X then Z: T * Ry * Rx * Rz.
+    pub pitch: f32,
+    pub roll: f32,
 }
 impl ModelPose {
     fn matrix(self) -> Result<Mat4> {
         ensure!(
-            self.translation.iter().all(|v| v.is_finite()) && self.yaw.is_finite(),
+            self.translation.iter().all(|v| v.is_finite())
+                && [self.yaw, self.pitch, self.roll]
+                    .iter()
+                    .all(|v| v.is_finite()),
             "invalid model pose"
         );
         Ok(Mat4::from_translation(Vec3::from_array(self.translation))
-            * Mat4::from_rotation_y(self.yaw))
+            * Mat4::from_rotation_y(self.yaw)
+            * Mat4::from_rotation_x(self.pitch)
+            * Mat4::from_rotation_z(self.roll))
     }
     pub fn transform_point(self, point: Vec3) -> Result<Vec3> {
         Ok(self.matrix()?.transform_point3(point))
@@ -119,6 +130,35 @@ struct CameraUniform {
     eye_time: [f32; 4],
     light: [f32; 4],
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct WaveUniform {
+    // X/Z wave numbers, angular frequency, amplitude; phase in a separate vec4.
+    components: [[f32; 4]; 2],
+    phases: [f32; 4],
+}
+impl From<storm_sim::Waves> for WaveUniform {
+    fn from(waves: storm_sim::Waves) -> Self {
+        let components = waves.components();
+        Self {
+            components: components.map(|c| {
+                [
+                    c.k.x as f32,
+                    c.k.y as f32,
+                    c.omega as f32,
+                    c.amplitude as f32,
+                ]
+            }),
+            phases: [
+                components[0].phase as f32,
+                components[1].phase as f32,
+                0.0,
+                0.0,
+            ],
+        }
+    }
+}
 struct DrawMesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -133,6 +173,8 @@ pub struct ModelScene {
     camera_buffer: wgpu::Buffer,
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
+    waves: storm_sim::Waves,
+    wave_buffer: wgpu::Buffer,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
     meshes: Vec<DrawMesh>,
@@ -185,6 +227,16 @@ impl ModelScene {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -219,6 +271,11 @@ impl ModelScene {
             contents: bytemuck::bytes_of(&Mat4::IDENTITY.to_cols_array_2d()),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        let wave_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Shared wave coefficients"),
+            contents: bytemuck::bytes_of(&WaveUniform::from(storm_sim::Waves::default())),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let camera_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Model camera"),
             layout: &camera_layout,
@@ -230,6 +287,10 @@ impl ModelScene {
                 wgpu::BindGroupEntry {
                     binding: 1,
                     resource: pose_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wave_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -421,6 +482,8 @@ impl ModelScene {
             camera_buffer,
             pose_buffer,
             pose: ModelPose::default(),
+            waves: storm_sim::Waves::default(),
+            wave_buffer,
             camera_group,
             textures,
             meshes,
@@ -431,6 +494,11 @@ impl ModelScene {
     pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
         pose.matrix()?;
         self.pose = pose;
+        Ok(())
+    }
+    pub fn set_waves(&mut self, waves: storm_sim::Waves) -> Result<()> {
+        waves.validate()?;
+        self.waves = waves;
         Ok(())
     }
     #[allow(clippy::too_many_arguments)]
@@ -447,9 +515,13 @@ impl ModelScene {
     ) -> Result<()> {
         let uniform = camera.uniform(width, height, seconds)?;
         wind.validate()?;
+        // Cloth currently accepts horizontal wind only: project the inverse rigid
+        // rotation into local XZ, including pitch/roll, rather than subtracting yaw.
+        let direction = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos());
+        let local = self.pose.matrix()?.inverse().transform_vector3(direction) * wind.speed;
         let local_wind = SailWind {
-            direction: wind.direction - self.pose.yaw,
-            ..wind
+            direction: local.x.atan2(local.z),
+            speed: local.x.hypot(local.z).min(40.0),
         };
         for mesh in &mut self.meshes {
             if let Some((patch, vertices)) = &mut mesh.sail {
@@ -464,6 +536,11 @@ impl ModelScene {
         }
         gpu.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&uniform));
+        gpu.queue.write_buffer(
+            &self.wave_buffer,
+            0,
+            bytemuck::bytes_of(&WaveUniform::from(self.waves)),
+        );
         gpu.queue.write_buffer(
             &self.pose_buffer,
             0,

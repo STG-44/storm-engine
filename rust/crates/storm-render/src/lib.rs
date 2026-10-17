@@ -207,8 +207,35 @@ pub fn render_model_offscreen_at_pose(
     height: u32,
     seconds: f32,
 ) -> Result<Frame> {
+    render_sailing_offscreen(
+        gpu,
+        asset,
+        camera,
+        wind,
+        pose,
+        storm_sim::Waves::default(),
+        width,
+        height,
+        seconds,
+    )
+}
+
+/// Offscreen model with the same analytic sea as the CPU hull response.
+#[allow(clippy::too_many_arguments)]
+pub fn render_sailing_offscreen(
+    gpu: &Gpu,
+    asset: &model::ModelAsset,
+    camera: &model::OrbitCamera,
+    wind: model::SailWind,
+    pose: model::ModelPose,
+    waves: storm_sim::Waves,
+    width: u32,
+    height: u32,
+    seconds: f32,
+) -> Result<Frame> {
     let mut scene = model::ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, asset)?;
     scene.set_pose(pose)?;
+    scene.set_waves(waves)?;
     render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
         scene.draw(gpu, encoder, target, width, height, seconds, camera, wind)
     })
@@ -543,7 +570,7 @@ mod tests {
         let at_rest = capture(ModelPose::default()).unwrap();
         let moved = capture(ModelPose {
             translation: [0.25, 0.0, 0.0],
-            yaw: 0.0,
+            ..Default::default()
         })
         .unwrap();
         let turned = capture(ModelPose {
@@ -564,6 +591,22 @@ mod tests {
         };
         assert!(centroid(&moved) > centroid(&at_rest) + 10.0);
         assert_ne!(at_rest.rgba, turned.rgba);
+        for pose in [
+            ModelPose {
+                translation: [0.0, 0.15, 0.0],
+                ..Default::default()
+            },
+            ModelPose {
+                pitch: 0.2,
+                ..Default::default()
+            },
+            ModelPose {
+                roll: 0.3,
+                ..Default::default()
+            },
+        ] {
+            assert_ne!(at_rest.rgba, capture(pose).unwrap().rgba);
+        }
         assert_eq!(
             &at_rest.rgba[..257 * 4],
             &moved.rgba[..257 * 4],
