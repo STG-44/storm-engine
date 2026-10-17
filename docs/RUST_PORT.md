@@ -87,3 +87,13 @@ The [first original-resource inspection results](ASSET_VALIDATION.md) record
 4,129 accepted GM headers, 5,732 accepted TX headers, and seven GM compatibility
 cases. The inspector's [four-platform CI run](https://github.com/STG-44/storm-engine/actions/runs/39004859635)
 passed for code commit `ca6a70b6`.
+
+The [original-model preview CI run](https://github.com/STG-44/storm-engine/actions/runs/39006901573)
+passed all four jobs for code commit `096c2519` on 2026-10-17. All platforms pass
+formatting, Clippy, 11 CPU tests, upstream cannon decoding, and native builds.
+Linux additionally passes both GPU tests on software Vulkan (Mesa llvmpipe),
+captures both scenes at 641 x 361, and presents three frames in each scene under
+Xvfb. [The asset evidence](ASSET_VALIDATION.md#first-native-ship-preview-2026-10-17)
+includes the CI cannon capture. Native executables and the inspector for each
+platform are available as workflow artifacts. Original ship rendering has only
+been verified locally through Metal; original resources stay outside Git/CI.

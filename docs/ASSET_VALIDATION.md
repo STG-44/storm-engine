@@ -2,7 +2,8 @@
 
 The first local resource sample is from Sea Dogs: To Each His Own. Resources
 remain outside Git; only the inspection code and these results are published.
-This records metadata compatibility, not game loading or rendering support.
+The collection scan below records metadata compatibility. Native rendering
+evidence is limited to the explicitly listed model samples.
 
 ## First native ship preview, 2026-10-17
 
@@ -22,6 +23,19 @@ test texture, including a geometric-normal fallback for its zero vertex normals.
 Commercial assets and the ship capture are not committed. The results below
 remain header-only checks across the collection; they do not imply full decoding
 of every resource.
+
+The upstream cannon fixture rendered in Linux CI through software Vulkan
+(Mesa llvmpipe), with a plain white material and the new preview water:
+
+![Upstream cannon fixture rendered through Vulkan](images/cannon-vulkan.png)
+
+The [CI run for preview commit 096c2519](https://github.com/STG-44/storm-engine/actions/runs/39006901573)
+passed on all four platforms. Each job runs 11 CPU tests, decodes the upstream
+cannon, and builds the inspector and preview. Linux also passes both GPU tests,
+PNG readback, and three native window frames for each scene on software Vulkan.
+Windows and hosted macOS jobs establish compilation/CPU compatibility; they do
+not establish physical GPU compatibility. The original ship was tested locally
+on Metal, separately from the redistributable CI fixture.
 
 ## Rust header scan, 2026-10-17
 

@@ -70,6 +70,10 @@ captures the diagnostic and upstream cannon, and opens both scenes under Xvfb.
 Hosted macOS/Windows builds alone do not establish
 GPU or gameplay compatibility; physical-device checks remain necessary.
 
+The [preview CI run for code commit 096c2519](https://github.com/STG-44/storm-engine/actions/runs/39006901573)
+passed all four jobs. [Validation details and the Vulkan fixture capture](../docs/ASSET_VALIDATION.md#first-native-ship-preview-2026-10-17)
+record the tested scenes and limits.
+
 The inherited C++ workflows do not run on pushes or pull requests targeting
 `rust-port`; the Rust workflow owns checks on that integration branch. The
 original C++ workflows remain available on other branches.
