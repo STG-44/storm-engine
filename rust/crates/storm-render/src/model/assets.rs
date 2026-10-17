@@ -401,7 +401,12 @@ impl ModelAsset {
             full_only_weight: 0.0,
             missing_weight: 0.0,
         };
-        for patch in self.meshes.iter().filter_map(|m| m.sail.as_ref()) {
+        for (index, patch) in self
+            .meshes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.sail.as_ref().map(|p| (i, p)))
+        {
             if patch.origin.as_ref().is_some_and(|o| {
                 self.ship
                     .fallen_mast(&o.node, state)
@@ -410,9 +415,11 @@ impl ModelAsset {
                 layout.missing_weight += patch.weight;
                 continue;
             }
+            let intact = patch.intact_fraction(state.sail_holes.get(&index).copied().unwrap_or(0));
+            layout.missing_weight += patch.weight * (1.0 - intact);
             match patch.tier {
-                storm_sim::SailTier::Normal => layout.normal_weight += patch.weight,
-                storm_sim::SailTier::FullOnly => layout.full_only_weight += patch.weight,
+                storm_sim::SailTier::Normal => layout.normal_weight += patch.weight * intact,
+                storm_sim::SailTier::FullOnly => layout.full_only_weight += patch.weight * intact,
             }
         }
         layout

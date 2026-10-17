@@ -6,10 +6,10 @@ pub fn report(asset: &ModelAsset) -> Value {
     let sails = asset
         .meshes
         .iter()
-        .filter_map(|m| m.sail.as_ref())
-        .map(|patch| {
+        .enumerate().filter_map(|(i,m)| m.sail.as_ref().map(|p|(i,p)))
+        .map(|(index,patch)| {
             let origin = patch.origin.as_ref();
-            json!({ "group": origin.map(|o| &o.group), "node": origin.map(|o| &o.node),
+            json!({ "mesh":index,"hole_mask":asset.ship_state.sail_holes.get(&index).copied().unwrap_or(0),"damage_sections":patch.section_count(),"intact_fraction":patch.intact_fraction(asset.ship_state.sail_holes.get(&index).copied().unwrap_or(0)), "group": origin.map(|o| &o.group), "node": origin.map(|o| &o.node),
             "parent": origin.map(|o| &o.parent), "tier": patch.tier.name(),
             "triangular": patch.is_triangle(), "original_size_weight": patch.weight })
         })
@@ -44,7 +44,7 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
     json!({"crew_count":asset.ship.crew_count,"crew_visible":state.crew_visible,"waypoint_counts":asset.ship.waypoint_counts,"waypoint_missing_links":asset.ship.waypoint_missing_links,"crew_source":asset.ship.crew_source,
         "masts":asset.ship.masts(),"hulls":asset.ship.hulls(),
         "fire_points":asset.ship.fires.iter().map(|p|json!({"node":p.node,"name":p.name,"position":p.position.to_array()})).collect::<Vec<_>>(),
-        "broken_masts":state.broken_masts,"broken_hulls":state.broken_hulls,"fire_started":state.fire_started,"seconds":seconds,
+        "sail_holes":state.sail_holes,"broken_masts":state.broken_masts,"broken_hulls":state.broken_hulls,"fire_started":state.fire_started,"seconds":seconds,
         "crew_positions":asset.meshes.iter().filter_map(|m|match &m.dynamic {
             Some(storm_render::model::DynamicMesh::Crew(c))=>{let(p,_)=c.route.sample(seconds+c.phase);Some([p.x,p.y,-p.z])},_=>None
         }).collect::<Vec<_>>()})

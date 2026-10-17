@@ -3,7 +3,9 @@ mod assets;
 mod crew;
 mod effects;
 mod rigging;
+mod sail_damage;
 mod sails;
+pub use sail_damage::SailImpact;
 mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
@@ -82,6 +84,18 @@ impl OrbitCamera {
             radius: asset.radius,
         }
     }
+    /// Centre-screen swept test shot; the camera and target are world positions.
+    pub fn shot_segment(&self) -> (Vec3, Vec3) {
+        let direction = Vec3::new(
+            self.yaw.sin() * self.pitch.cos(),
+            self.pitch.sin(),
+            self.yaw.cos() * self.pitch.cos(),
+        );
+        (
+            self.target + direction * self.distance,
+            self.target - direction * self.radius * 2.0,
+        )
+    }
     pub fn orbit(&mut self, dx: f32, dy: f32) {
         self.yaw += dx * 0.008;
         self.pitch = (self.pitch + dy * 0.008).clamp(0.08, 1.4);
@@ -140,6 +154,22 @@ struct CameraUniform {
     eye_time: [f32; 4],
     light: [f32; 4],
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct ObjectUniform {
+    matrix: [[f32; 4]; 4],
+    damage: [u32; 4],
+}
+impl ObjectUniform {
+    fn new(matrix: Mat4, mask: u16, triangle: bool) -> Self {
+        Self {
+            matrix: matrix.to_cols_array_2d(),
+            damage: [u32::from(mask), u32::from(triangle), 0, 0],
+        }
+    }
+}
+const OBJECT_BYTES: usize = std::mem::size_of::<ObjectUniform>();
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -223,8 +253,17 @@ fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
 impl ModelScene {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, asset: &ModelAsset) -> Result<Self> {
         asset.ship_state.validate(&asset.ship)?;
+        sail_damage::validate_holes(
+            &asset.ship_state,
+            asset
+                .meshes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, m)| m.sail.as_ref().map(|p| (i, p))),
+        )?;
         ensure!(asset.meshes.len() <= 4096, "too many model draw meshes");
-        let pose_stride = 64_u32.div_ceil(gpu.device.limits().min_uniform_buffer_offset_alignment)
+        let pose_stride = (OBJECT_BYTES as u32)
+            .div_ceil(gpu.device.limits().min_uniform_buffer_offset_alignment)
             * gpu.device.limits().min_uniform_buffer_offset_alignment;
         let pose_bytes = vec![0u8; pose_stride as usize * (asset.meshes.len() + 1)];
         let device = &gpu.device;
@@ -243,7 +282,7 @@ impl ModelScene {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: true,
@@ -314,7 +353,7 @@ impl ModelScene {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &pose_buffer,
                         offset: 0,
-                        size: std::num::NonZeroU64::new(64),
+                        size: std::num::NonZeroU64::new(OBJECT_BYTES as u64),
                     }),
                 },
                 wgpu::BindGroupEntry {
@@ -589,6 +628,13 @@ impl ModelScene {
     }
     pub fn set_ship_state(&mut self, state: ShipState) -> Result<()> {
         state.validate(&self.ship)?;
+        sail_damage::validate_holes(
+            &state,
+            self.meshes
+                .iter()
+                .enumerate()
+                .filter_map(|(i, m)| m.sail.as_ref().map(|(p, _)| (i, p))),
+        )?;
         self.ship_state = state;
         Ok(())
     }
@@ -683,7 +729,8 @@ impl ModelScene {
             bytemuck::bytes_of(&WaveUniform::from(self.waves)),
         );
         let base = self.pose.matrix()?;
-        self.pose_bytes[..64].copy_from_slice(bytemuck::bytes_of(&base.to_cols_array_2d()));
+        self.pose_bytes[..OBJECT_BYTES]
+            .copy_from_slice(bytemuck::bytes_of(&ObjectUniform::new(base, 0, false)));
         for (i, mesh) in self.meshes.iter().enumerate() {
             let transform = mesh
                 .ship_node
@@ -691,8 +738,13 @@ impl ModelScene {
                 .and_then(|n| self.ship.transform(n, &self.ship_state, seconds))
                 .unwrap_or_default();
             let offset = (i + 1) * self.pose_stride as usize;
-            self.pose_bytes[offset..offset + 64]
-                .copy_from_slice(bytemuck::bytes_of(&(base * transform).to_cols_array_2d()));
+            self.pose_bytes[offset..offset + OBJECT_BYTES].copy_from_slice(bytemuck::bytes_of(
+                &ObjectUniform::new(
+                    base * transform,
+                    self.ship_state.sail_holes.get(&i).copied().unwrap_or(0),
+                    mesh.sail.as_ref().is_some_and(|(p, _)| p.is_triangle()),
+                ),
+            ));
         }
         gpu.queue
             .write_buffer(&self.pose_buffer, 0, &self.pose_bytes);

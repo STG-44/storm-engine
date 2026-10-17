@@ -35,6 +35,9 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Add a fixed-step planar sailing prototype with wind drive, rudder, water resistance, and physical-key input.
 - [x] Share an analytic sea between CPU/GPU and add damped heave, pitch and roll.
 - [x] Gather/unfurl both sail topologies and drive the ship with actual deployment.
+- [x] Restore original three sail sets, locator ropes/shrouds and national flags.
+- [x] Preview original animated deck crew, fire, mast/hull damage and persistent sail holes.
+- [x] Complete the current ship/sailing prototype audit and record its gameplay gaps.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
@@ -84,7 +87,7 @@ see [the asset commands](../rust/README.md#original-game-resources).
 table lengths. `decode` additionally reads static geometry, names, materials,
 labels, vertices, indices, and complete 2D mip pixels. Supported layouts and
 explicit limits are documented in the run instructions. BSP collision traversal,
-animated geometry, older GM versions, original material/sea effects, original
+animation beyond the crew subset, older GM versions, original material/sea effects, original
 rigging dynamics, full ship physics, and gameplay remain pending. Full decoding has been exercised on
 all 40 available ship roots and the upstream fixture; the previous whole-resource scan remains
 header-only evidence.
@@ -163,3 +166,11 @@ tests. Character/group lookup and gameplay script integration remain pending.
 The [flag-selection CI run](https://github.com/STG-44/storm-engine/actions/runs/39047481959)
 passes all four platform jobs, including 41 CPU tests per platform and ten
 Vulkan GPU tests plus national-flag capture/window checks on Linux.
+
+
+[Ship presentation](SHIP_PRESENTATION.md) adds bounded AN/two-bone GM readers,
+original walking crew/routes, fireplace flame/smoke, mast grouping and hull
+sections. Swept test shots damage persistent 10/12-sector sail masks and reduce
+absolute propulsion area. Before proceeding to entities and the script VM,
+validate ships and sailing together and record the remaining combat/physics
+scope. This does not establish original battle or sailor AI parity.

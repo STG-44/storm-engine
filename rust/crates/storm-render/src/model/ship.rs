@@ -45,6 +45,8 @@ pub fn mast_falls_with(broken: u32, candidate: u32) -> bool {
 }
 #[derive(Clone, Debug)]
 pub struct ShipState {
+    /// Draw-mesh index -> original 10/12-sector bitmask.
+    pub sail_holes: BTreeMap<usize, u16>,
     pub broken_masts: BTreeMap<u32, f32>,
     pub broken_hulls: BTreeMap<String, f32>,
     pub fire_started: Option<f32>,
@@ -53,6 +55,7 @@ pub struct ShipState {
 impl Default for ShipState {
     fn default() -> Self {
         Self {
+            sail_holes: BTreeMap::new(),
             broken_masts: BTreeMap::new(),
             broken_hulls: BTreeMap::new(),
             fire_started: None,

@@ -156,6 +156,9 @@ struct Options {
     /// Detach a named original shatter hull node, for example shatter4.
     #[arg(long, requires = "preview")]
     break_hull: Vec<String>,
+    /// Fire reproducible swept test shots into N sections of every deployed sail.
+    #[arg(long,requires="preview",value_parser=clap::value_parser!(u32).range(1..=12))]
+    sail_volley: Option<u32>,
     /// Focus the initial camera on the original deck walking network.
     #[arg(long, requires = "preview")]
     deck_view: bool,
@@ -622,7 +625,50 @@ impl ApplicationHandler for Application {
                         .sailing
                         .as_ref()
                         .map_or_else(|| state.timeline.seconds(), |s| s.simulation.time() as f32);
-                    if ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds) {
+                    let changed = if code == KeyCode::KeyX {
+                        let pose = state
+                            .sailing
+                            .as_ref()
+                            .map_or_else(Default::default, |s| s.pose());
+                        let rig = state.sailing.as_ref().map_or_else(
+                            || {
+                                storm_sim::RigState::for_mode(
+                                    storm_sim::SailMode::from_setting(f64::from(
+                                        self.options.sail_setting,
+                                    ))
+                                    .expect("validated sail set"),
+                                )
+                            },
+                            |s| s.simulation.rig(),
+                        );
+                        let wind = state
+                            .sailing
+                            .as_ref()
+                            .map_or_else(|| state.wind, |s| s.cloth_wind(state.wind));
+                        let (from, to) =
+                            state.camera.as_ref().expect("model camera").shot_segment();
+                        match asset.trace_sail_shot(
+                            &mut state.ship_state,
+                            from,
+                            to,
+                            wind,
+                            seconds,
+                            rig,
+                            pose,
+                        ) {
+                            Ok(hits) => {
+                                eprintln!("Cannonball segment: {} sail intersections", hits.len());
+                                !hits.is_empty()
+                            }
+                            Err(error) => {
+                                self.fail(event_loop, error);
+                                return;
+                            }
+                        }
+                    } else {
+                        ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds)
+                    };
+                    if changed {
                         if let Scene::Model(scene) = &mut state.scene
                             && let Err(error) = scene.set_ship_state(state.ship_state.clone())
                         {
@@ -781,6 +827,25 @@ fn main() -> Result<()> {
             bail!("this model has no fireplace locators; use --ship-demo for a generated fixture");
         }
         asset.ship_state.validate(&asset.ship)?;
+        if let Some(sections) = options.sail_volley {
+            let mut damage = asset.ship_state.clone();
+            let hits = asset.sail_volley(
+                &mut damage,
+                sections,
+                options.wind(),
+                0.0,
+                storm_sim::RigState::for_mode(
+                    storm_sim::SailMode::from_setting(f64::from(options.sail_setting))
+                        .expect("validated sail set"),
+                ),
+            )?;
+            eprintln!(
+                "Test cannonball segments: {} intersections, {} newly damaged sections",
+                hits.len(),
+                hits.iter().filter(|h| h.new_damage).count()
+            );
+            asset.ship_state = damage;
+        }
         eprintln!(
             "Ship: {} visible crew, {} fire points, masts {:?}, hull nodes {:?}",
             asset.ship.crew_count,

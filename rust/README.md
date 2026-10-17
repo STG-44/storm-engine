@@ -76,7 +76,7 @@ checks the original intermediate set: normal sails stay full, full-only sails ga
 They require a native graphics adapter or a software Vulkan implementation.
 
 The Rust workflow builds and runs CPU checks on Linux, Windows, macOS Apple
-Silicon, and macOS Intel. Linux also runs all nine GPU tests with software Vulkan,
+Silicon, and macOS Intel. Linux also runs all explicit GPU tests with software Vulkan,
 captures the diagnostic, upstream cannon, and procedural sails, and opens all
 three scenes under Xvfb (sails start paused).
 It also captures a sailing transform and state JSON using the upstream cannon
@@ -123,7 +123,7 @@ Child models follow the original `geometry` locators and filename convention.
 `sailx`/`sailn` groups produce four-corner cloth. Shape changes use new,
 deterministic kinematic code, with every boundary point pinned and normals
 recomputed each frame. Locator-built ropes, shrouds and flags are implemented;
-original rigging dynamics, sail damage, and ship physics beyond the new
+original rigging dynamics and ship physics beyond the new
 sailing/wave prototype remain pending. The water is a new
 preview shader. Materials use the first base texture and new lighting, without
 COL lighting, normal maps, or original material effects.
@@ -184,9 +184,9 @@ JSON, and exits unsuccessfully if any inspected file fails. It preserves unknown
 TX format codes for future decoders. It reads at most 72 bytes per asset.
 
 `decode` reads the full file (256 MiB input limit), validates static GM 1.05
-buffers/types 0–3, local indices, material/texture/name references, finite render
-values, and declared BSP byte/index ranges. Collision traversal and animated
-buffers are not implemented. Unknown older GM versions remain errors.
+buffers/types 0–4, local indices, material/texture/name references, finite render
+values, and declared BSP byte/index ranges. Two-bone GM buffers (kind 4) and float-quaternion AN animation are supported for
+the crew preview. Collision traversal remains pending. Unknown older GM versions remain errors.
 
 TX decoding validates every declared mip and supports DXT1–5, A8R8G8B8,
 X8R8G8B8, R5G6B5, A1R5G5B5, A4R4G4B4, and L8, producing portable RGBA8 with a
@@ -205,3 +205,12 @@ The tested original ship loads its rigging textures/atlas settings from
 `RESOURCE/INI/rigging.ini`. [Ship flag selection](../docs/FLAG_SELECTION.md)
 adds `--flag-nation`, `--flag-role`, `--surrendered` and `--pirate-flag` with
 physical F/G/H/J controls. Character lookup and script execution remain pending.
+
+
+[Ship crew and damage](../docs/SHIP_PRESENTATION.md) adds original animated
+sailors and deck paths, fireplace flame/smoke, falling mast groups, detachable
+hull sections and persistent 10/12-sector sail holes. Use `--ship-demo` for a
+resource-free scene. `--sail-volley 3` sends reproducible test shots and reduces
+sailing drive. C/B/M/P/X/0 control crew, fire, masts, hull pieces, a camera-centre
+test shot and preview restoration. `--crew 12 --deck-view` focuses an original
+ship's deck. Full battle/crew AI and projectile ballistics remain pending.

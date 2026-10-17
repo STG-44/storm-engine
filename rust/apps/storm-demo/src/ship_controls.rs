@@ -64,4 +64,48 @@ mod tests {
         );
         assert_eq!(asset.rig_layout_at(&state, 3.0).missing_weight, 0.0);
     }
+    #[test]
+    fn holes_and_mast_loss_reduce_the_same_sailing_session_and_repair_restores_drive() {
+        use clap::Parser;
+        let options = crate::Options::try_parse_from([
+            "storm-demo",
+            "--ship-demo",
+            "--sail",
+            "--wave-height",
+            "0",
+            "--time",
+            "40",
+        ])
+        .unwrap();
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let mut state = ShipState::default();
+        let healthy = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
+            .unwrap()
+            .unwrap();
+        asset
+            .sail_volley(
+                &mut state,
+                3,
+                storm_render::model::SailWind::default(),
+                0.0,
+                storm_sim::RigState::uniform(1.0),
+            )
+            .unwrap();
+        let holed = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
+            .unwrap()
+            .unwrap();
+        assert!(holed.simulation.state().speed_knots() < healthy.simulation.state().speed_knots());
+        key(&asset.ship, &mut state, KeyCode::KeyM, 0.0);
+        key(&asset.ship, &mut state, KeyCode::KeyM, 0.0);
+        let dismasted = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(dismasted.simulation.sail_deployed(), 0.0);
+        assert_eq!(dismasted.simulation.state().speed_knots(), 0.0);
+        key(&asset.ship, &mut state, KeyCode::Digit0, 0.0);
+        let repaired = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
+            .unwrap()
+            .unwrap();
+        assert_eq!(healthy.report(), repaired.report());
+    }
 }

@@ -1,0 +1,127 @@
+# Ship crew and damage preview
+
+The Rust preview now loads original deck routes, low-detail sailors, skeletal
+walking animation, fireplace textures, mast ownership, hull sections and sail
+damage. This is an interactive presentation and sailing prototype. Original
+battle logic, sailor AI and the script VM have not been ported.
+
+## Run and controls
+
+```sh
+cargo run -p storm-demo --locked -- --ship-demo --fire --sail-volley 3
+cargo run -p storm-demo --locked -- --ship-demo --break-mast 2 --break-hull shatter1 --time 2
+cargo run -p storm-demo --locked -- --sail-demo --sail-volley 4
+```
+
+For an installed game, use the original model command in [the run guide](../rust/README.md),
+optionally adding `--crew 12 --deck-view`. Default crew is five when a matching
+`RESOURCE/MODELS/Ships/SAILORSPOINTS/<ship>.ini` exists. `--crew 0` disables them;
+explicitly requesting sailors without an original route is an error. The limit
+is 50. Missing routes do not cause invented paths.
+
+Physical keys work with any keyboard layout:
+
+| Key | Preview action |
+| --- | --- |
+| C | Hide/show the sailors |
+| B | Toggle flame/smoke at fireplace locators |
+| M | Break the next mast/topmast |
+| P | Detach the next original `shatter` hull section |
+| X | Send a test cannonball segment through the centre of the camera view |
+| 0 | Restore the preview ship, including all damaged sail sectors |
+| Space | Pause/resume the shared scene clock; camera and controls remain usable |
+
+`--fire`, repeatable `--break-mast ID` and `--break-hull NAME` initialize damage
+at time zero. `--sail-volley N` sends deterministic short swept test shots into
+N sectors of every deployed sail at time zero, using the same collision path as
+X. N is 1..12 (triangular sails have ten sectors). Crossings of nearby overlapping
+cloth can damage more sectors. This is a repeatable test, not an original cannon
+or enemy AI implementation. `--rig-report report.json` exports metadata and masks
+without creating a GPU device; `--headless frame.png --sail --state-json state.json`
+also exports remaining drive area and sailing state.
+
+## Original formats and behavior
+
+References are the retained C++ source in this repository:
+
+- `src/libs/geometry/src` and `src/libs/animation/src`: GM buffer kind 4 has
+  two byte bone indices and one blend weight. AN stores float quaternions per
+  bone/frame, parents, bind translations and root positions. The bounded reader
+  rejects bad sizes, cycles, bone indices, nonfinite data and invalid clips.
+- `src/libs/sailors/src/sailors_way_points.cpp`: SIZE / POINT_DATA / LINK_DATA.
+  Point kinds 5..9 are mast routes. The new deck patrol uses the original links
+  at 1.3 m/s, excluding mast climbing. It retains self/repeated edges. If an INI
+  declares more trailing links than it contains, only recorded edges are used
+  and the discrepancy is explicitly reported. Missing interior links still fail.
+- Original `Lo_Man.an`, `[walk]` from `Lo_Man.ani`, and six `Lowcharacters/Lo_man*`
+  models supply the walking sailors. CPU quaternion interpolation and two-bone
+  skinning reuse GPU buffers. Ship pose transforms both crew and deck.
+- `src/libs/ship/src/ship.cpp`, `src/libs/rigging/src/mast.cpp` and `hull.cpp`:
+  mast numeric grouping (mast2 includes mast201 etc.) and node subtrees determine
+  which yards/sails/flags fall. The fall is new kinematic motion about the
+  original node pivot. Cross-mast ropes and shrouds are cut; ropes entirely on
+  the detached mast follow it. Named hull sections are hidden after detachment.
+- Original `fireplace` / `fireplaces` locators and texture names from
+  `RESOURCE/INI/particles/ship_fire.ini` provide flame/smoke. New prewarmed
+  deterministic billboard particles use camera-facing quads, alpha blending,
+  depth testing and persistent vertex buffers. The complete INI/XPS particle
+  interpreter has not been ported.
+- `src/libs/rigging/src/sailone.cpp`, SSailTrace / TSailTrace / SetAllHole:
+  quad sails use twelve sectors (3 x 4), triangular sails ten (four rows).
+  `sail.cpp::GetSailSpeed` reduces drive by hole count / sector count with
+  dependency 1.0. The prototype retains that sector count and loss rule.
+
+## Persistent sail holes and sailing
+
+A swept world-space segment is transformed into the hull's frame and intersected
+with actual wind-deformed triangles, double sided. Barycentric interpolation
+finds the fabric UV and damaged sector. Penetrating hits are sorted along the
+segment; bundled sails and fallen masts are excluded. Each sail records a bounded
+10/12-bit mask. Repeated hits in the same sector do not add drive loss. Rays
+through the visible cutouts can pass through to cloth behind them.
+
+The new jagged cutout is evaluated in fabric UV in the fragment shader. It
+follows flutter and furling; it does not slide across the cloth. It is not a
+reproduction of the original `parus_hole.tga` visual. CPU collision uses the same
+cutout equation. GPU object uniforms carry each mask independently of its rigid
+transform. Repair restores both the mask and the exact rendered frame.
+
+Damaged and missing sail weights enter `RigLayout.missing_weight`. Surviving
+sails keep the original total denominator; losing a mast cannot normalize the
+remaining sails back to full thrust. Hole damage and mast loss are not counted
+twice. Live controls update the existing sailing session and renderer together.
+
+## Validation and remaining scope
+
+Local checks include malformed AN/GM/routes, real original resources, route
+edges and speed, skeleton interpolation, mast groups, cut rigging, alpha
+billboards, deformed cloth intersections, persistence and reduced drive. GPU
+tests exercise one persistent scene, damage/repair, cloth flutter/furling and
+crew visibility. Public CI adds generated fixtures only; commercial resources
+and their frames remain outside Git.
+
+The whole fleet audit checks full textured decoding, original route counts,
+sail classification and test shots. It is not all-ship visual/gameplay parity.
+The audit separately reports ships without matching deck paths, fireplace
+locators or detachable hull pieces.
+
+Still pending: original sailor orders, climbing, combat/reloading and avoidance;
+full detached-mast rigid-body motion/collision; projectile meshes, gravity,
+cannon firing/reload and hull occlusion; hull HP/decal selection, fire spread,
+extinguishing and damage over time; sound; per-ship original balance and scripts;
+collision, boarding, sinking and saved damage state. Current ships use the same
+approximate sailing configuration. These limits must remain visible when
+planning the game entity and script runtime integration.
+
+
+The local 2026-10-17 audit passes all 40 roots (776 ship GM nodes, 368 sails).
+37 ships have matching deck networks and load five sailors each; Boat,
+Flyingdutchman_l1 and Polacre_q1 have no matching network at the original ship
+path and show no crew. Sloop1 declares 36 links but contains 34. Three other
+networks contain original self-links, which remain valid. All sails receive
+three test-sector hits through the deformed collision path. Separate local
+checks pass 56 CPU tests and 13 Metal GPU tests. A flat-water 40-second generated
+fixture reaches 2.744 knots intact and 2.193 knots after six damaged sectors;
+remaining drive area is 72.964%. Those figures describe the prototype, not game
+balance. The Rust workflow repeats CPU checks on four platforms and GPU/native
+fixture checks through software Vulkan on Linux.
