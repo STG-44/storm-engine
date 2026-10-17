@@ -98,3 +98,10 @@ Xvfb. [The asset evidence](ASSET_VALIDATION.md#first-native-ship-preview-2026-10
 includes the CI cannon capture. Native executables and the inspector for each
 platform are available as workflow artifacts. Original ship rendering has only
 been verified locally through Metal; original resources stay outside Git/CI.
+
+The [wind preview CI run](https://github.com/STG-44/storm-engine/actions/runs/39008381018)
+passed all four jobs for code commit `83ea00e1`. It adds 15 CPU tests and three
+GPU tests, including persistent cloth buffer updates through software Vulkan.
+The procedural quad/triangle fixture also renders a PNG and presents three
+paused native window frames on Linux. [Sail notes](SAIL_PREVIEW.md) include the
+native Metal animation and the remaining rigging/physics scope.

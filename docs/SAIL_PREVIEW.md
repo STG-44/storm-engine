@@ -5,6 +5,12 @@ GM locators, and deforms them each frame under adjustable wind. This is new
 kinematic preview code; the original rigging simulation and ship forces have
 not been ported.
 
+![Native Metal sail fixture at changing wind directions](images/sails-metal.gif)
+
+Native Metal captures of the procedural fixture at 24 wind directions, 16 m/s,
+fixed time 0. Only the wind parameter changes; the edges remain attached. The
+GIF assembles the application's PNG captures, without game resources.
+
 ## Run without game resources
 
 ```sh
@@ -55,8 +61,8 @@ textures and heraldry remain pending.
 
 ## Validation
 
-On local macOS Intel / AMD Radeon Pro 555X, Metal passes 15 CPU tests and three
-explicit GPU tests. CPU tests check surface coverage/winding, finite unit normals,
+On local macOS Intel / AMD Radeon Pro 555X, 15 CPU tests and three explicit Metal
+GPU tests pass. CPU tests check surface coverage/winding, finite unit normals,
 fixed boundaries, reversed/calm wind, repeatability, original locator/UV order,
 parent transforms, malformed input, and pause/resume timing. The new GPU test
 reuses one scene across changing times/winds and compares only cloth pixels, so
@@ -67,3 +73,12 @@ fallback, and 12 sails including its two previously omitted triangular jibs:
 34 draw meshes, 8,343 total triangles. A 1280 x 720 frame was rendered locally;
 commercial assets and that capture stay outside Git. The Linux workflow also
 captures the procedural sail fixture and smoke-tests its paused native window.
+
+The [CI run for code commit 83ea00e1](https://github.com/STG-44/storm-engine/actions/runs/39008381018)
+passed all four jobs on 2026-10-17: Windows 2025, Ubuntu 24.04, macOS 15 Apple
+Silicon, and macOS 15 Intel. All run 15 CPU tests, Clippy, formatting, upstream
+fixture decoding, and native builds. Linux also passes all three GPU tests on
+Vulkan/Mesa llvmpipe, PNG captures, and three frames in each of the diagnostic,
+cannon, and paused sail windows under Xvfb. Executables, inspector binaries, and
+the Linux fixture capture are workflow artifacts. Hosted Windows/macOS builds
+establish CPU/build compatibility; physical GPU validation is still needed there.

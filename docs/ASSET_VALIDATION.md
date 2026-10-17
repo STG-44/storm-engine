@@ -37,8 +37,6 @@ Windows and hosted macOS jobs establish compilation/CPU compatibility; they do
 not establish physical GPU compatibility. The original ship was tested locally
 on Metal, separately from the redistributable CI fixture.
 
-## Rust header scan, 2026-10-17
-
 ## Wind preview follow-up, 2026-10-17
 
 The current preview also reads the two `sailt` groups on Barkentine1's forward
@@ -48,6 +46,12 @@ Metal headless rendering and three native window frames pass locally. Wind
 deformation, pinned boundaries, pause, and the resource-free fixture are
 documented in [the sail preview notes](SAIL_PREVIEW.md). This remains a preview,
 without original rigging or ship physics.
+
+The [wind preview CI run](https://github.com/STG-44/storm-engine/actions/runs/39008381018)
+passed all four platform jobs for code commit `83ea00e1`. The resource-free
+fixture passes all three GPU tests through software Vulkan, plus headless
+capture and a paused native window. [Sail validation details and a native Metal
+animation](SAIL_PREVIEW.md) distinguish the tested behavior from pending rigging.
 
 ## Rust header scan, 2026-10-17
 
