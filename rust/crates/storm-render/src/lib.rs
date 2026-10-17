@@ -422,6 +422,7 @@ mod tests {
         );
         assert_eq!(frame.rgba.len(), 167 * 93 * 4);
         let background = ModelAsset {
+            sail_damage: None,
             ship: Default::default(),
             ship_state: Default::default(),
             meshes: vec![],

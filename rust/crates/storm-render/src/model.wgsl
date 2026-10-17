@@ -34,20 +34,31 @@ struct Output {
     return output;
 }
 
-fn sail_cutout(uv:vec2<f32>)->bool {
-    if object.damage.x==0u {return false;}
-    var cell=uv*vec2(3.0,4.0);
-    var section=u32(clamp(floor(cell.x),0.0,2.0))*4u+u32(clamp(floor(cell.y),0.0,3.0));
-    if object.damage.y!=0u {
-        cell=vec2(uv.x*4.0,(uv.x+uv.y-1.0)*4.0);
-        let row=u32(clamp(floor(cell.x),0.0,3.0));
-        section=row*(row+1u)/2u+u32(clamp(floor(cell.y),0.0,f32(row)));
-    }
-    if (object.damage.x & (1u<<section))==0u {return false;}
-    let p=fract(cell);
-    let d=(p-vec2(0.5))/0.42;
-    let edge=1.0+0.12*sin(p.x*43.0+p.y*31.0)*sin(p.y*37.0-p.x*29.0);
-    return dot(d,d)<edge;
+@group(1) @binding(2) var sail_mask:texture_2d<f32>;
+@group(1) @binding(3) var mask_wrap:sampler;
+@group(1) @binding(4) var mask_mirror_u:sampler;
+fn sail_mask_uv(uv:vec2<f32>)->vec2<f32> {
+    // SAILONE::SetTexGrid tu3/tv3. V offset distinguishes the two topologies.
+    return vec2(1.0+uv.x*0.5,uv.y*0.5+select(0.0,0.5,object.damage.y!=0u));
+}
+fn shade(input:Output,texel:vec4<f32>,alpha:f32)->vec4<f32> {
+    let face_normal=cross(dpdx(input.world_position),dpdy(input.world_position));
+    let candidate=select(face_normal,input.normal,dot(input.normal,input.normal)>1e-8);
+    let normal=candidate*inverseSqrt(max(dot(candidate,candidate),1e-12));
+    let light=0.35+0.65*abs(dot(normal,normalize(camera.light.xyz)));
+    return vec4(texel.rgb*input.color.rgb*light*vec3(1.02,1.0,0.96),alpha);
+}
+@fragment fn sail_intact_fragment(input:Output)->@location(0) vec4<f32> {
+    let texel=textureSample(surface,surface_sampler,input.uv);
+    let alpha=texel.a*textureSample(sail_mask,mask_wrap,sail_mask_uv(input.uv)).a;
+    if alpha<=160.0/255.0 {discard;}
+    return shade(input,texel,alpha);
+}
+@fragment fn sail_hole_fragment(input:Output)->@location(0) vec4<f32> {
+    let texel=textureSample(surface,surface_sampler,input.uv);
+    let alpha=texel.a*textureSample(sail_mask,mask_mirror_u,sail_mask_uv(input.uv)).a;
+    if alpha<=160.0/255.0 {discard;}
+    return shade(input,texel,alpha);
 }
 @fragment fn fragment_main(input: Output) -> @location(0) vec4<f32> {
     // Some original models (including cannon_x.gm) contain only zero normals.
@@ -55,7 +66,7 @@ fn sail_cutout(uv:vec2<f32>)->bool {
     let candidate = select(face_normal, input.normal, dot(input.normal, input.normal) > 1e-8);
     let normal = candidate * inverseSqrt(max(dot(candidate, candidate), 1e-12));
     let texel = textureSample(surface, surface_sampler, input.uv);
-    if texel.a < 0.25 || sail_cutout(input.uv) {
+    if texel.a < 0.25 {
         discard;
     }
     let light = 0.35 + 0.65 * abs(dot(normal, normalize(camera.light.xyz)));

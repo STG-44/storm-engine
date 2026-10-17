@@ -16,6 +16,7 @@ png.workspace = true
 wgpu.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 naga = { version = "30.0", features = ["wgsl-in"] }
 pollster.workspace = true
 

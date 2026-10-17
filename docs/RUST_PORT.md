@@ -187,3 +187,10 @@ route files. See [the presentation scope](SHIP_PRESENTATION.md) for missing
 routes, locator diagnostics and combat/physics limits. The current prototype
 validation gate is complete; game entities/messages and the script runtime are
 next, with the remaining gameplay work explicitly recorded.
+
+
+[Original sail damage](ORIGINAL_SAIL_DAMAGE.md) replaces the initial procedural
+circles with the game's alpha mask, original full-resolution index partition,
+UV/sampler rules and coarse collision behavior. A retained-C++ reference checks
+7,934 cases independently of Rust. Script events and original wind/rolling
+integration remain separate work; this change does not claim full sail/VM parity.

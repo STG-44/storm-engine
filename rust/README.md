@@ -214,3 +214,10 @@ resource-free scene. `--sail-volley 3` sends reproducible test shots and reduces
 sailing drive. C/B/M/P/X/0 control crew, fire, masts, hull pieces, a camera-centre
 test shot and preview restoration. `--crew 12 --deck-view` focuses an original
 ship's deck. Full battle/crew AI and projectile ballistics remain pending.
+
+
+[Original sail damage](../docs/ORIGINAL_SAIL_DAMAGE.md) now uses the supplied
+`Ships/parus_hole.tga.tx` rather than procedural cutouts. The original texture
+coordinates, wrap/mirror addressing, alpha test, full-resolution sector index
+ranges and coarse collision rules are preserved. Metadata reports the mask
+source and `[SAILS]` damage coefficients. A missing original mask is an error.

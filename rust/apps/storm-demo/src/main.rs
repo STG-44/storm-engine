@@ -369,7 +369,7 @@ impl WindowState {
         state.resize(size);
         state.refresh_title();
         eprintln!(
-            "Controls: drag/arrows orbit, scroll zoom, R camera, Space pause, +/- wind speed, ,/. wind direction; physical F nation, G flag role, H hide flags, J surrender, C crew, B fire, M break next mast, P break next hull piece, 0 repair/reset; Esc close"
+            "Controls: drag/arrows orbit, scroll zoom, R camera, Space pause, +/- wind speed, ,/. wind direction; physical F nation, G flag role, H hide flags, J surrender, C crew, B fire, M break next mast, P break next hull piece, X test shot, 0 repair/reset; Esc close"
         );
         if state.sailing.is_some() {
             eprintln!(

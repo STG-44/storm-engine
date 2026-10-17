@@ -5,7 +5,7 @@ mod effects;
 mod rigging;
 mod sail_damage;
 mod sails;
-pub use sail_damage::SailImpact;
+pub use sail_damage::{SailDamageMaterial, SailDamageSettings, SailImpact};
 mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
@@ -200,6 +200,8 @@ impl From<storm_sim::Waves> for WaveUniform {
     }
 }
 struct DrawMesh {
+    damage_mask: u16,
+    normal_count: u32,
     ship_node: Option<String>,
     dynamic: Option<(DynamicMesh, Vec<ModelVertex>)>,
     vertices: wgpu::Buffer,
@@ -211,6 +213,7 @@ struct DrawMesh {
 }
 
 pub struct ModelScene {
+    sail_pipelines: [wgpu::RenderPipeline; 2],
     particle_pipeline: wgpu::RenderPipeline,
     ship: ShipAsset,
     ship_state: ShipState,
@@ -248,6 +251,54 @@ fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
             view_formats: &[],
         })
         .create_view(&Default::default())
+}
+
+fn upload_model_texture(
+    gpu: &Gpu,
+    source: &storm_formats::texture::Texture,
+) -> Result<wgpu::TextureView> {
+    let h = source.header;
+    ensure!(
+        h.width <= gpu.device.limits().max_texture_dimension_2d
+            && h.height <= gpu.device.limits().max_texture_dimension_2d,
+        "model texture exceeds GPU dimensions"
+    );
+    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Decoded original texture"),
+        size: wgpu::Extent3d {
+            width: h.width,
+            height: h.height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: source.mips.len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (level, mip) in source.mips.iter().enumerate() {
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: level as u32,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &mip.rgba,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(mip.width * 4),
+                rows_per_image: Some(mip.height),
+            },
+            wgpu::Extent3d {
+                width: mip.width,
+                height: mip.height,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+    Ok(texture.create_view(&Default::default()))
 }
 
 impl ModelScene {
@@ -321,6 +372,28 @@ impl ModelScene {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -379,61 +452,36 @@ impl ModelScene {
             lod_max_clamp: 0.0,
             ..Default::default()
         });
+        let fallback_mask = SailDamageMaterial::fixture();
+        let mask_view = upload_model_texture(
+            gpu,
+            asset
+                .sail_damage
+                .as_ref()
+                .map_or(&fallback_mask.texture, |m| &m.texture),
+        )?;
+        let hole_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Original damaged sail mirror-U sampler"),
+            address_mode_u: wgpu::AddressMode::MirrorRepeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
         for (texture_id, source) in asset.textures.iter().enumerate() {
             let is_flag = asset
                 .meshes
                 .iter()
                 .any(|m| m.texture == texture_id && matches!(m.rigging, Some(RigMesh::Flag(_))));
-            let header = source.header;
-            ensure!(
-                header.width <= device.limits().max_texture_dimension_2d
-                    && header.height <= device.limits().max_texture_dimension_2d,
-                "model texture exceeds GPU dimensions"
-            );
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Decoded Storm TX"),
-                size: wgpu::Extent3d {
-                    width: header.width,
-                    height: header.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: source.mips.len() as u32,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            for (level, mip) in source.mips.iter().enumerate() {
-                gpu.queue.write_texture(
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &texture,
-                        mip_level: level as u32,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &mip.rgba,
-                    wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(mip.width * 4),
-                        rows_per_image: Some(mip.height),
-                    },
-                    wgpu::Extent3d {
-                        width: mip.width,
-                        height: mip.height,
-                        depth_or_array_layers: 1,
-                    },
-                );
-            }
+            let view = upload_model_texture(gpu, source)?;
             textures.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Model material"),
                 layout: &texture_layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(
-                            &texture.create_view(&Default::default()),
-                        ),
+                        resource: wgpu::BindingResource::TextureView(&view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
@@ -442,6 +490,18 @@ impl ModelScene {
                         } else {
                             &sampler
                         }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&mask_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: wgpu::BindingResource::Sampler(&hole_sampler),
                     },
                 ],
             }));
@@ -495,6 +555,44 @@ impl ModelScene {
             multiview_mask: None,
             cache: None,
         });
+        let make_sail_pipeline = |entry: &str| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(entry),
+                layout: Some(&layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vertex_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<ModelVertex>() as u64,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &MODEL_ATTRIBUTES,
+                    })],
+                },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: depth.clone(),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(entry),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let sail_pipelines = [
+            make_sail_pipeline("sail_intact_fragment"),
+            make_sail_pipeline("sail_hole_fragment"),
+        ];
         let particle_target = Some(wgpu::ColorTargetState {
             format,
             blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -574,6 +672,8 @@ impl ModelScene {
                 "invalid model draw"
             );
             meshes.push(DrawMesh {
+                damage_mask: 0,
+                normal_count: source.indices.len() as u32,
                 vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("GM vertices"),
                     contents: vertices,
@@ -590,7 +690,12 @@ impl ModelScene {
                 indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("GM triangles"),
                     contents: indices,
-                    usage: wgpu::BufferUsages::INDEX,
+                    usage: wgpu::BufferUsages::INDEX
+                        | if source.sail.is_some() {
+                            wgpu::BufferUsages::COPY_DST
+                        } else {
+                            wgpu::BufferUsages::empty()
+                        },
                 }),
                 count: source.indices.len() as u32,
                 texture: source.texture,
@@ -601,6 +706,7 @@ impl ModelScene {
             });
         }
         Ok(Self {
+            sail_pipelines,
             particle_pipeline,
             ship: asset.ship.clone(),
             ship_state: asset.ship_state.clone(),
@@ -697,13 +803,25 @@ impl ModelScene {
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }
         }
-        for mesh in &mut self.meshes {
+        for (index, mesh) in self.meshes.iter_mut().enumerate() {
             if let Some((patch, vertices)) = &mut mesh.sail {
-                patch.deform_with_setting(
+                let mask = self.ship_state.sail_holes.get(&index).copied().unwrap_or(0);
+                if mask != mesh.damage_mask {
+                    let topology = patch.original_indices(mask);
+                    mesh.normal_count = topology.normal_count;
+                    mesh.damage_mask = mask;
+                    gpu.queue.write_buffer(
+                        &mesh.indices,
+                        0,
+                        bytemuck::cast_slice(&topology.indices),
+                    );
+                }
+                patch.deform_with_damage(
                     vertices,
                     local_wind,
                     seconds,
                     self.rig.deployed(patch.tier) as f32,
+                    mask,
                 )?;
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
@@ -811,7 +929,24 @@ impl ModelScene {
                 );
                 pass.set_vertex_buffer(0, mesh.vertices.slice(..));
                 pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..mesh.count, 0, 0..1);
+                if mesh.sail.is_some() {
+                    // SAIL::Realize draws the damaged region with mirror U first.
+                    if mesh.normal_count < mesh.count {
+                        pass.set_pipeline(&self.sail_pipelines[1]);
+                        pass.draw_indexed(mesh.normal_count..mesh.count, 0, 0..1);
+                    }
+                    if mesh.normal_count > 0 {
+                        pass.set_pipeline(&self.sail_pipelines[0]);
+                        pass.draw_indexed(0..mesh.normal_count, 0, 0..1);
+                    }
+                } else {
+                    pass.set_pipeline(if particles {
+                        &self.particle_pipeline
+                    } else {
+                        &self.pipeline
+                    });
+                    pass.draw_indexed(0..mesh.count, 0, 0..1);
+                }
             }
         }
         Ok(())

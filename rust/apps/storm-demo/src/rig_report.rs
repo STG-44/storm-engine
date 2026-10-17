@@ -11,7 +11,7 @@ pub fn report(asset: &ModelAsset) -> Value {
             let origin = patch.origin.as_ref();
             json!({ "mesh":index,"hole_mask":asset.ship_state.sail_holes.get(&index).copied().unwrap_or(0),"damage_sections":patch.section_count(),"intact_fraction":patch.intact_fraction(asset.ship_state.sail_holes.get(&index).copied().unwrap_or(0)), "group": origin.map(|o| &o.group), "node": origin.map(|o| &o.node),
             "parent": origin.map(|o| &o.parent), "tier": patch.tier.name(),
-            "triangular": patch.is_triangle(), "original_size_weight": patch.weight })
+            "triangular": patch.is_triangle(), "original_size_weight": patch.weight,"damage_settings":{"speed_depend":patch.damage_settings.speed_depend,"triangle_flex":patch.damage_settings.triangle_flex,"quad_flex":patch.damage_settings.quad_flex},"damage_grid_vertices":patch.vertex_count() })
         })
         .collect::<Vec<_>>();
     let normal = asset
@@ -29,7 +29,7 @@ pub fn report(asset: &ModelAsset) -> Value {
             Some(json!({"node":origin.map(|o|&o.node),"group":origin.map(|o|&o.group),"special":origin.is_some_and(|o|o.special),"atlas":f.atlas_size(),"cell":cell,"visible":f.is_visible()}))
         },_=>None
     }).collect::<Vec<_>>();
-    json!({ "geometry_files": asset.geometry_files, "sail_count": sails.len(),
+    json!({ "sail_damage_texture":asset.sail_damage.as_ref().map(|m|&m.source),"geometry_files": asset.geometry_files, "sail_count": sails.len(),
         "normal_count": normal, "full_only_count": sails.len()-normal,
         "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight,"missing_sail_weight":layout.missing_weight,
         "normal_mode_fraction": RigState::for_mode(SailMode::Normal).fraction(layout), "sails": sails, "flags":flags,

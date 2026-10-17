@@ -43,6 +43,7 @@ impl Mesh {
 }
 
 pub struct ModelAsset {
+    pub sail_damage: Option<super::sail_damage::SailDamageMaterial>,
     pub ship: super::ShipAsset,
     pub ship_state: super::ShipState,
     pub meshes: Vec<Mesh>,
@@ -343,6 +344,7 @@ impl ModelAsset {
             })
             .collect();
         Ok(Self {
+            sail_damage: Some(super::sail_damage::SailDamageMaterial::fixture()),
             ship: Default::default(),
             ship_state: Default::default(),
             meshes: vec![Mesh::sail(quad, 0)?, Mesh::sail(triangle, 0)?],
@@ -458,6 +460,7 @@ impl ModelAsset {
         };
         let mut builder = Builder {
             asset: Self {
+                sail_damage: None,
                 ship: Default::default(),
                 ship_state: Default::default(),
                 meshes: Vec::new(),
@@ -490,6 +493,20 @@ impl ModelAsset {
         )?;
         if !options.single_mesh {
             builder.add_rigging()?;
+            if builder.asset.sails > 0 {
+                if let Some(files) = &builder.files {
+                    let path = files.find("ships/parus_hole.tga")?;
+                    let texture = Texture::read(&read_asset_bytes(&path)?)?;
+                    builder.reserve(texture.mips.iter().map(|m| m.rgba.len()).sum())?;
+                    builder.asset.sail_damage = Some(super::sail_damage::SailDamageMaterial {
+                        texture,
+                        source: Some(path.display().to_string()),
+                    });
+                } else {
+                    builder.asset.sail_damage =
+                        Some(super::sail_damage::SailDamageMaterial::fixture());
+                }
+            }
         }
         ensure!(
             !builder.asset.meshes.is_empty(),
@@ -541,6 +558,10 @@ impl Builder {
             {
                 let text = String::from_utf8_lossy(&read_asset_bytes(&ini)?).into_owned();
                 config = RiggingConfig::from_ini(&text)?;
+                let settings = super::sail_damage::SailDamageSettings::from_ini(&text)?;
+                for patch in self.asset.meshes.iter_mut().filter_map(|m| m.sail.as_mut()) {
+                    patch.damage_settings = settings;
+                }
             }
         }
         let patches = self

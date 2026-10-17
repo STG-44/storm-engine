@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 use storm_formats::geometry::Label;
 use storm_sim::SailTier;
 
-const SEGMENTS: u32 = 12;
+const SEGMENTS: u32 = 16;
+const QUAD_COLUMNS: u32 = 12;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SailWind {
@@ -59,6 +60,7 @@ pub struct SailPatch {
     pub tier: SailTier,
     pub weight: f64,
     pub origin: Option<SailOrigin>,
+    pub damage_settings: super::sail_damage::SailDamageSettings,
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +105,7 @@ impl SailPatch {
             tier: SailTier::Normal,
             weight: f64::from(weight),
             origin: None,
+            damage_settings: Default::default(),
         })
     }
 
@@ -140,40 +143,13 @@ impl SailPatch {
         if self.is_triangle() {
             n * (n + 1) / 2
         } else {
-            n * n
+            n * (QUAD_COLUMNS as usize + 1)
         }
     }
 
     /// Generate topology once; a triangular grid has no duplicated/degenerate tip.
     pub fn indices(&self) -> Vec<u32> {
-        let mut indices = Vec::new();
-        if self.is_triangle() {
-            for row in 0..SEGMENTS {
-                let a = row * (row + 1) / 2;
-                let b = (row + 1) * (row + 2) / 2;
-                for col in 0..=row {
-                    indices.extend([a + col, b + col, b + col + 1]);
-                    if col < row {
-                        indices.extend([a + col, b + col + 1, a + col + 1]);
-                    }
-                }
-            }
-        } else {
-            for y in 0..SEGMENTS {
-                for x in 0..SEGMENTS {
-                    let a = y * (SEGMENTS + 1) + x;
-                    indices.extend([
-                        a,
-                        a + 1,
-                        a + SEGMENTS + 1,
-                        a + 1,
-                        a + SEGMENTS + 2,
-                        a + SEGMENTS + 1,
-                    ]);
-                }
-            }
-        }
-        indices
+        self.original_indices(0).indices
     }
 
     pub fn vertices(&self, wind: SailWind, seconds: f32) -> Result<Vec<ModelVertex>> {
@@ -195,6 +171,43 @@ impl SailPatch {
         seconds: f32,
         deployed: f32,
     ) -> Result<()> {
+        self.deform_frame(vertices, wind, seconds, deployed, 1.0, 1.0)
+    }
+    pub fn deform_with_damage(
+        &self,
+        vertices: &mut [ModelVertex],
+        wind: SailWind,
+        seconds: f32,
+        deployed: f32,
+        mask: u16,
+    ) -> Result<()> {
+        let count = (mask & ((1 << self.section_count()) - 1)).count_ones() as f32;
+        let flex = 1.0
+            - count
+                * if self.is_triangle() {
+                    self.damage_settings.triangle_flex
+                } else {
+                    self.damage_settings.quad_flex
+                };
+        self.deform_frame(
+            vertices,
+            wind,
+            seconds,
+            deployed,
+            flex,
+            if self.is_triangle() { flex } else { 1.0 },
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn deform_frame(
+        &self,
+        vertices: &mut [ModelVertex],
+        wind: SailWind,
+        seconds: f32,
+        deployed: f32,
+        flex: f32,
+        flutter_scale: f32,
+    ) -> Result<()> {
         ensure!(
             deployed.is_finite() && (0.0..=1.0).contains(&deployed),
             "invalid sail deployment"
@@ -206,25 +219,37 @@ impl SailPatch {
             "invalid sail vertex count"
         );
         let pressure = wind.speed * wind.speed / (64.0 + wind.speed * wind.speed)
-            * self.normal.dot(wind.vector());
-        let flutter = 0.025 * wind.speed / (8.0 + wind.speed);
+            * self.normal.dot(wind.vector())
+            * flex;
+        let flutter = 0.025 * wind.speed / (8.0 + wind.speed) * flutter_scale;
         // Reduce in f64 before converting to f32, including very large finite times.
         let phase = (f64::from(seconds) * (1.8 + f64::from(wind.speed) * 0.12))
             .rem_euclid(std::f64::consts::TAU) as f32;
-        let mut index = 0;
-        for row in 0..=SEGMENTS {
-            let columns = if self.is_triangle() { row } else { SEGMENTS };
-            for col in 0..=columns {
-                let (u, v) = if self.is_triangle() {
-                    (
+        if self.is_triangle() {
+            for row in 0..=SEGMENTS {
+                for col in 0..=row {
+                    vertices[(row * (row + 1) / 2 + col) as usize] = self.vertex(
                         (row - col) as f32 / SEGMENTS as f32,
                         col as f32 / SEGMENTS as f32,
-                    )
-                } else {
-                    (col as f32 / SEGMENTS as f32, row as f32 / SEGMENTS as f32)
-                };
-                vertices[index] = self.vertex(u, v, pressure, flutter, phase, deployed);
-                index += 1;
+                        pressure,
+                        flutter,
+                        phase,
+                        deployed,
+                    );
+                }
+            }
+        } else {
+            for col in 0..=QUAD_COLUMNS {
+                for row in 0..=SEGMENTS {
+                    vertices[(col * (SEGMENTS + 1) + row) as usize] = self.vertex(
+                        col as f32 * (1.0 / QUAD_COLUMNS as f32),
+                        row as f32 / SEGMENTS as f32,
+                        pressure,
+                        flutter,
+                        phase,
+                        deployed,
+                    );
+                }
             }
         }
         ensure!(
@@ -426,11 +451,16 @@ mod tests {
                     assert_eq!(v.uv, original.uv);
                     assert!((Vec3::from_array(v.normal).length() - 1.0).abs() < 1e-5);
                 }
-                for i in 0..=SEGMENTS as usize {
+                for i in 0..=if patch.is_triangle() {
+                    SEGMENTS
+                } else {
+                    QUAD_COLUMNS
+                } as usize
+                {
                     let index = if patch.is_triangle() {
                         i * (i + 1) / 2
                     } else {
-                        i
+                        i * (SEGMENTS as usize + 1)
                     };
                     assert!(
                         Vec3::from_array(vertices[index].position)
@@ -497,7 +527,7 @@ mod tests {
             }
             let expected = if patch.is_triangle() { 12.0 } else { 24.0 };
             assert!((area - expected).abs() < 0.001, "surface area {area}");
-            assert_eq!(vertices.len(), if patch.is_triangle() { 91 } else { 169 });
+            assert_eq!(vertices.len(), if patch.is_triangle() { 153 } else { 221 });
         }
     }
 
@@ -611,8 +641,8 @@ mod tests {
         let vertices = tri.vertices(SailWind::default(), 3.0).unwrap();
         for (index, point, uv) in [
             (0, Vec3::ZERO, [0.0, 1.0]),
-            (78, Vec3::X, [1.0, 0.0]),
-            (90, Vec3::X + Vec3::Y, [1.0, 1.0]),
+            (136, Vec3::X, [1.0, 0.0]),
+            (152, Vec3::X + Vec3::Y, [1.0, 1.0]),
         ] {
             assert!(
                 Vec3::from_array(vertices[index].position)

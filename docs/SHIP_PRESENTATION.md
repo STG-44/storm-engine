@@ -73,18 +73,16 @@ References are the retained C++ source in this repository:
 
 ## Persistent sail holes and sailing
 
-A swept world-space segment is transformed into the hull's frame and intersected
-with actual wind-deformed triangles, double sided. Barycentric interpolation
-finds the fabric UV and damaged sector. Penetrating hits are sorted along the
-segment; bundled sails and fallen masts are excluded. Each sail records a bounded
-10/12-bit mask. Repeated hits in the same sector do not add drive loss. Rays
-through the visible cutouts can pass through to cloth behind them.
+The initial procedural circles were rejected during visual review. They have
+been replaced by the original damage material and drawing/collision rules;
+see [original sail damage](ORIGINAL_SAIL_DAMAGE.md) for source correspondence,
+reproducible C++ comparison and current integration limits.
 
-The new jagged cutout is evaluated in fabric UV in the fragment shader. It
-follows flutter and furling; it does not slide across the cloth. It is not a
-reproduction of the original `parus_hole.tga` visual. CPU collision uses the same
-cutout equation. GPU object uniforms carry each mask independently of its rigid
-transform. Repair restores both the mask and the exact rendered frame.
+A swept segment uses the original fifteen/twenty-point coarse collision grid
+and records a 10/12-bit mask. Repeated hits still collide with damaged sectors,
+as in the original. High-resolution triangles are partitioned into intact and
+damaged draw ranges, with original `SetTexGrid` coordinates and wrap/mirror-U
+samplers for `Ships/parus_hole.tga.tx`. Repair restores the mask and image.
 
 Damaged and missing sail weights enter `RigLayout.missing_weight`. Surviving
 sails keep the original total denominator; losing a mast cannot normalize the
