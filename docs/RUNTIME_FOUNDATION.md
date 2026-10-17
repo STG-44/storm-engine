@@ -44,8 +44,9 @@ References: `rigging/src/sailone.cpp::SSailTrace/TSailTrace`,
 Events also fire for repeated hits in already damaged sectors, as in the original.
 No-hit segments emit nothing. Character indices are explicit preview inputs;
 the default target `-1` suppresses `DoSailHole`, while `ShpSailDamage` still carries
-the unknown character. Generated sails have no original locator identity and
-therefore only produce `ShpSailDamage`.
+the unknown character. The generated ship fixture has explicitly labeled
+synthetic nodes and produces both events. The simpler `--sail-demo` fixture has
+no locator identity and therefore only produces `ShpSailDamage`.
 
 The observer is new diagnostic code, not an original game entity. It keeps a total
 count and the latest 256 payloads. `--event-report` saves these as JSON, without
@@ -80,5 +81,12 @@ bounded history. The hash constants were checked by compiling the retained
 
 The workspace has 65 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
+The generated ship fixture produces six `DoSailHole` and six `ShpSailDamage`
+callbacks for three shots per sail. A local audit of all 40 original ship roots
+checks 368 sails and 2,204 emitted events; every final per-sail event mask matches
+the loaded ship state. Barkentine1 contributes 36 per-sail callbacks and 35
+nearest-hit callbacks across the fixture segments. Its textured Metal capture
+also succeeds. These resource-dependent reports and captures remain outside Git.
+
 The archived C++ CI skips PRs from the `rust-port` integration branch as it already
 skips its pushes; PRs from other branches retain the existing C++ checks.
