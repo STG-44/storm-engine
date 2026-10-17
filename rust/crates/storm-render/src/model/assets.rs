@@ -222,9 +222,9 @@ impl ModelAsset {
             ("flag1", "f2", Vec3::new(3.0, 10.0, 0.0)),
             ("flag1", "f3", Vec3::new(3.0, 9.0, 0.0)),
             ("flag1", "f4", Vec3::new(0.0, 9.0, 0.0)),
-            ("flag2", "f1", Vec3::new(-4.0, 8.0, 0.0)),
-            ("flag2", "f2", Vec3::new(-1.0, 7.6, 0.0)),
-            ("flag2", "f3", Vec3::new(-4.0, 7.2, 0.0)),
+            ("sflag2", "f1", Vec3::new(-4.0, 8.0, 0.0)),
+            ("sflag2", "f2", Vec3::new(-1.0, 7.6, 0.0)),
+            ("sflag2", "f3", Vec3::new(-4.0, 7.2, 0.0)),
         ]
         .map(|(group, name, p)| Label {
             group: group.into(),
@@ -232,11 +232,7 @@ impl ModelAsset {
             matrix: Mat4::from_translation(p).to_cols_array(),
         });
         collector.add(&labels, Mat4::IDENTITY, "fixture");
-        let config = RiggingConfig {
-            flag_columns: 1,
-            flag_rows: 1,
-            ..Default::default()
-        };
+        let config = RiggingConfig::default();
         let (ropes, flags, stats) = collector.build(&[], &config)?;
         asset.rigging_stats = stats;
         asset.textures.push(Texture {
@@ -254,6 +250,41 @@ impl ModelAsset {
                 rgba: vec![255; 4],
             }],
         });
+        // Each cell has a distinct color; this fixture contains no game artwork.
+        let rgba = (0..128)
+            .flat_map(|y| {
+                (0..64).flat_map(move |x| {
+                    let base = [
+                        [240u8, 40, 40],
+                        [40, 220, 40],
+                        [40, 40, 240],
+                        [230, 210, 30],
+                    ][x / 16];
+                    let scale = 1.0 - (y / 16) as f32 * 0.07;
+                    [
+                        (base[0] as f32 * scale) as u8,
+                        (base[1] as f32 * scale) as u8,
+                        (base[2] as f32 * scale) as u8,
+                        255,
+                    ]
+                })
+            })
+            .collect();
+        asset.textures.push(Texture {
+            header: TxHeader {
+                flags: 0,
+                width: 64,
+                height: 128,
+                mips: 1,
+                format: 21,
+                mip0_bytes: 64 * 128 * 4,
+            },
+            mips: vec![Mip {
+                width: 64,
+                height: 128,
+                rgba,
+            }],
+        });
         let mut append = |rigging: RigMesh, texture| -> Result<()> {
             let vertices =
                 rigging.vertices(SailWind::default(), 0.0, storm_sim::RigState::uniform(1.0))?;
@@ -268,8 +299,9 @@ impl ModelAsset {
             Ok(())
         };
         append(RigMesh::Ropes(ropes), 1)?;
-        for flag in flags {
-            append(RigMesh::Flag(flag), 0)?;
+        for mut flag in flags {
+            flag.set_texture_size(64, 128)?;
+            append(RigMesh::Flag(flag), 2)?;
         }
         asset.center = Vec3::new(0.0, 5.0, 0.0);
         asset.radius = 8.0;
@@ -328,6 +360,23 @@ impl ModelAsset {
             .iter()
             .filter(|m| m.sail.as_ref().is_some_and(SailPatch::is_triangle))
             .count()
+    }
+    pub fn set_flags(&mut self, selection: storm_sim::FlagSelection) -> Result<()> {
+        rigging::select_flags(
+            self.meshes.iter_mut().filter_map(|m| m.rigging.as_mut()),
+            selection,
+        )?;
+        for mesh in &mut self.meshes {
+            if let Some(rigging @ RigMesh::Flag(_)) = &mesh.rigging {
+                rigging.deform(
+                    &mut mesh.vertices,
+                    SailWind::default(),
+                    0.0,
+                    storm_sim::RigState::default(),
+                )?;
+            }
+        }
+        Ok(())
     }
     pub fn rig_layout(&self) -> storm_sim::RigLayout {
         let mut layout = storm_sim::RigLayout {
@@ -470,7 +519,11 @@ impl Builder {
         }
         if !flags.is_empty() {
             let texture = self.texture(&config.flag_texture)?;
-            for flag in flags {
+            for mut flag in flags {
+                if self.files.is_some() {
+                    let t = self.asset.textures[texture].header;
+                    flag.set_texture_size(t.width, t.height)?;
+                }
                 self.add_rig_mesh(RigMesh::Flag(flag), texture)?;
             }
         }

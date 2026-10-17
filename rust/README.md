@@ -202,4 +202,6 @@ classification from GM node/parent names. [Rules and the 40-model audit](../docs
 [Rigging preview](../docs/RIGGING_PREVIEW.md) adds locator-built ropes and
 shrouds plus wind-driven flags. Run `--rigging-demo` without game resources.
 The tested original ship loads its rigging textures/atlas settings from
-`RESOURCE/INI/rigging.ini`; flag nation/script selection remains pending.
+`RESOURCE/INI/rigging.ini`. [Ship flag selection](../docs/FLAG_SELECTION.md)
+adds `--flag-nation`, `--flag-role`, `--surrendered` and `--pirate-flag` with
+physical F/G/H/J controls. Character lookup and script execution remain pending.

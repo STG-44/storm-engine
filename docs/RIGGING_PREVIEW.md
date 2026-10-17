@@ -29,9 +29,9 @@ segment length, shroud rope count and flag atlas dimensions. The tested game use
 `sail_rope.tga` and `flags/flagall_ship_b.tga`, with a 4-by-8 flag atlas. Texture
 pixels stay in the external game installation. The first atlas cell is selected,
 matching the C++ fallback when `GetRiggingData` supplies no texture coordinates.
-Character nation, pirate/special flag selection and flag-changing scripts remain
-unimplemented. Seeing a flag does not establish that gameplay nation selection
-has been ported.
+[Ship flag selection](FLAG_SELECTION.md) now provides explicit TEHO nation,
+role, surrender and pirate-variant rules, plus live flag changes. Character and
+group lookup, script events and gameplay reactions remain unimplemented.
 
 Incomplete endpoint groups are counted and omitted. Repeated points use the last
 locator, as the original initializer does. Invalid original rope lengths are

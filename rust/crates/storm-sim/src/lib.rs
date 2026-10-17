@@ -2,7 +2,9 @@
 //! Units: metres, seconds, kilograms, radians. Heading 0 points +Z, +pi/2 points +X.
 use glam::DVec2;
 use std::{error::Error, fmt};
+mod flags;
 mod rig;
+pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 mod waves;
 pub use rig::{RigLayout, RigState, SailMode, SailTier};
 pub use waves::{HullMotion, WaveComponent, Waves};

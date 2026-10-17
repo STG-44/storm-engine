@@ -5,7 +5,7 @@ use super::*;
 fn flags_wave_in_persistent_buffers_and_stay_visible_when_sails_are_furled() {
     let mut asset = ModelAsset::rigging_demo().unwrap();
     asset.meshes.retain(|m| m.sail.is_none());
-    asset.textures[0].mips[0]
+    asset.textures[2].mips[0]
         .rgba
         .chunks_exact_mut(4)
         .for_each(|p| p.copy_from_slice(&[255, 0, 0, 255]));
@@ -59,6 +59,77 @@ fn flags_wave_in_persistent_buffers_and_stay_visible_when_sails_are_furled() {
         mask(&capture(0.0, 0.0, storm_sim::SailMode::Full)),
         mask(&capture(5.0, 0.0, storm_sim::SailMode::Full))
     );
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn persistent_flag_atlas_switches_nations_and_hides_without_rebuilding_the_scene() {
+    use storm_sim::{FlagNation, FlagSelection, FlagTexture, ShipFlagState};
+    let mut asset = ModelAsset::rigging_demo().unwrap();
+    asset
+        .meshes
+        .retain(|m| matches!(m.rigging, Some(RigMesh::Flag(_))));
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut camera = OrbitCamera::new(&asset);
+    camera.yaw = 0.0;
+    let mut capture = |selection| {
+        scene.set_flags(selection).unwrap();
+        crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+    };
+    let fallback = capture(FlagSelection::Fallback);
+    let dominant = |frame: &crate::Frame, channel: usize| {
+        frame
+            .rgba
+            .chunks_exact(4)
+            .filter(|p| {
+                p[channel] > 60
+                    && (0..3)
+                        .filter(|&i| i != channel)
+                        .all(|i| p[channel] as u16 > p[i] as u16 * 3)
+            })
+            .count()
+    };
+    assert!(dominant(&fallback, 0) > 30);
+    for (nation, channel) in [
+        (FlagNation::England, 1),
+        (FlagNation::France, 2),
+        (FlagNation::Holland, 0),
+    ] {
+        let frame = capture(FlagSelection::Ship(ShipFlagState {
+            nation,
+            ..Default::default()
+        }));
+        assert!(
+            dominant(&frame, channel) > 30,
+            "{} must sample its atlas column",
+            nation.name()
+        );
+        if channel != 0 {
+            assert_eq!(dominant(&frame, 0), 0);
+        }
+    }
+    let hidden = capture(FlagSelection::Override(FlagTexture::Hidden));
+    assert_eq!(dominant(&hidden, 0), 0);
+    assert_eq!(dominant(&hidden, 1), 0);
+    assert_eq!(dominant(&hidden, 2), 0);
+    assert_eq!(fallback.rgba, capture(FlagSelection::Fallback).rgba);
 }
 
 #[test]

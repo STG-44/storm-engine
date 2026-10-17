@@ -1,6 +1,74 @@
 use super::*;
 use crate::model::{SailOrigin, SailShape};
 use storm_sim::SailTier;
+use storm_sim::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
+
+#[test]
+fn named_flags_preserve_special_groups_and_sample_inside_the_selected_cell() {
+    let mut asset = crate::model::ModelAsset::rigging_demo().unwrap();
+    asset
+        .set_flags(FlagSelection::Ship(ShipFlagState {
+            nation: FlagNation::France,
+            role: ShipFlagRole::Merchant,
+            ..Default::default()
+        }))
+        .unwrap();
+    let mut count = 0;
+    for mesh in &asset.meshes {
+        if let Some(RigMesh::Flag(f)) = &mesh.rigging {
+            let o = f.origin.as_ref().unwrap();
+            let row = if o.special { 3 } else { 0 };
+            assert_eq!(o.special, o.group.starts_with("sflag"));
+            assert_eq!(f.texture(), FlagTexture::Cell(FlagCell { column: 2, row }));
+            assert!(mesh.vertices.iter().all(|v| v.uv[0] > 0.5
+                && v.uv[0] < 0.75
+                && v.uv[1] > row as f32 / 8.0
+                && v.uv[1] < (row + 1) as f32 / 8.0));
+            count += 1;
+        }
+    }
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn mixed_atlas_updates_reject_out_of_range_cells_atomically_and_hide_reversibly() {
+    let patch = |columns, rows| {
+        FlagPatch::new(
+            Vec3::Y,
+            Vec3::ZERO,
+            Vec3::new(3.0, 1.0, 0.0),
+            None,
+            columns,
+            rows,
+        )
+        .unwrap()
+    };
+    let mut meshes = [RigMesh::Flag(patch(4, 8)), RigMesh::Flag(patch(1, 1))];
+    let cell = FlagTexture::Cell(FlagCell { column: 2, row: 7 });
+    assert!(select_flags(meshes.iter_mut(), FlagSelection::Override(cell)).is_err());
+    for m in &meshes {
+        if let RigMesh::Flag(f) = m {
+            assert_eq!(f.texture(), FlagTexture::Cell(FlagCell::default()));
+        }
+    }
+    select_flags(
+        meshes.iter_mut(),
+        FlagSelection::Override(FlagTexture::Hidden),
+    )
+    .unwrap();
+    for m in &meshes {
+        if let RigMesh::Flag(f) = m {
+            assert!(!f.is_visible());
+        }
+    }
+    select_flags(meshes.iter_mut(), FlagSelection::Fallback).unwrap();
+    for m in &meshes {
+        if let RigMesh::Flag(f) = m {
+            assert!(f.is_visible());
+        }
+    }
+    assert!(patch(4, 8).set_texture_size(1, 1).is_err());
+}
 
 fn label(group: &str, name: &str, position: Vec3) -> Label {
     Label {

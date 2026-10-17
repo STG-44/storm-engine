@@ -4,7 +4,7 @@ use anyhow::{Result, ensure};
 use glam::{Mat4, Vec3};
 use std::collections::BTreeMap;
 use storm_formats::geometry::Label;
-use storm_sim::RigState;
+use storm_sim::{FlagCell, FlagSelection, FlagTexture, RigState};
 #[cfg(test)]
 mod tests;
 
@@ -265,13 +265,18 @@ impl Collector {
             }
             ensure!(lines.len() <= 20_000, "too many rigging lines");
         }
-        for (_, points) in flags {
+        for ((node, group), points) in flags {
             ensure!(cloth.len() < 512, "too many flags");
             if let [Some(a), Some(b), Some(c), d] = points {
                 // FLAG::SetAdd attaches quad f1/f4; f2/f3 are the free edge.
                 let (bottom, tip, lower) = d.map_or((c, b, None), |d| (d, b, Some(c)));
                 match FlagPatch::new(a, bottom, tip, lower, config.flag_columns, config.flag_rows) {
-                    Ok(flag) => {
+                    Ok(mut flag) => {
+                        flag.origin = Some(FlagOrigin {
+                            node,
+                            special: group.starts_with("sflag"),
+                            group,
+                        });
                         cloth.push(flag);
                         stats.flags += 1;
                     }
@@ -389,13 +394,23 @@ impl RopeLine {
 }
 
 #[derive(Clone, Debug)]
+pub struct FlagOrigin {
+    pub node: String,
+    pub group: String,
+    pub special: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct FlagPatch {
+    pub origin: Option<FlagOrigin>,
     top: Vec3,
     bottom: Vec3,
     tip: Vec3,
     lower: Option<Vec3>,
     columns: u32,
     rows: u32,
+    texture: FlagTexture,
+    inset: [f32; 2],
 }
 impl FlagPatch {
     pub fn new(
@@ -415,13 +430,46 @@ impl FlagPatch {
             "degenerate flag"
         );
         Ok(Self {
+            origin: None,
             top,
             bottom,
             tip,
             lower,
             columns,
             rows,
+            texture: FlagTexture::Cell(FlagCell::default()),
+            inset: [0.0; 2],
         })
+    }
+    pub fn texture(&self) -> FlagTexture {
+        self.texture
+    }
+    pub fn atlas_size(&self) -> [u32; 2] {
+        [self.columns, self.rows]
+    }
+    pub fn is_visible(&self) -> bool {
+        self.texture != FlagTexture::Hidden
+    }
+    pub fn set_texture_size(&mut self, width: u32, height: u32) -> Result<()> {
+        ensure!(
+            width >= self.columns && height >= self.rows,
+            "flag atlas has fewer pixels than cells"
+        );
+        self.inset = [0.5 / width as f32, 0.5 / height as f32];
+        Ok(())
+    }
+    fn check_texture(&self, texture: FlagTexture) -> Result<()> {
+        if let FlagTexture::Cell(cell) = texture {
+            ensure!(
+                cell.column < self.columns && cell.row < self.rows,
+                "flag cell ({}, {}) is outside {}x{} atlas",
+                cell.column,
+                cell.row,
+                self.columns,
+                self.rows
+            );
+        }
+        Ok(())
     }
     fn vertex_count(&self) -> usize {
         if self.lower.is_some() {
@@ -442,6 +490,10 @@ impl FlagPatch {
         indices
     }
     fn deform(&self, out: &mut [ModelVertex], wind: SailWind, seconds: f32) {
+        let cell = match self.texture {
+            FlagTexture::Cell(cell) => cell,
+            FlagTexture::Hidden => FlagCell::default(),
+        };
         let rest_vector = self
             .lower
             .map_or(self.tip - (self.top + self.bottom) * 0.5, |lower| {
@@ -484,7 +536,14 @@ impl FlagPatch {
             *vertex = ModelVertex {
                 position: position.to_array(),
                 normal: [0.0; 3],
-                uv: [u / self.columns as f32, across / self.rows as f32],
+                uv: [
+                    cell.column as f32 / self.columns as f32
+                        + self.inset[0]
+                        + u * (1.0 / self.columns as f32 - 2.0 * self.inset[0]),
+                    cell.row as f32 / self.rows as f32
+                        + self.inset[1]
+                        + across * (1.0 / self.rows as f32 - 2.0 * self.inset[1]),
+                ],
                 color: [1.0; 4],
             };
         }
@@ -500,6 +559,31 @@ impl FlagPatch {
             v.normal = Vec3::from_array(v.normal).normalize_or_zero().to_array();
         }
     }
+}
+
+/// Validate the complete update before changing any flag, including mixed atlases.
+pub(super) fn select_flags<'a>(
+    meshes: impl Iterator<Item = &'a mut RigMesh>,
+    selection: FlagSelection,
+) -> Result<()> {
+    let patches = meshes
+        .filter_map(|m| match m {
+            RigMesh::Flag(f) => Some(f),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let textures = patches
+        .iter()
+        .map(|p| {
+            let t = selection.texture(p.origin.as_ref().is_some_and(|o| o.special));
+            p.check_texture(t)?;
+            Ok(t)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    for (patch, texture) in patches.into_iter().zip(textures) {
+        patch.texture = texture;
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]

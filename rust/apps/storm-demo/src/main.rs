@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use clap::{ArgGroup, Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc};
+mod flags;
 mod rig_report;
 mod sailing;
 mod timeline;
@@ -124,6 +125,21 @@ struct Options {
     /// Export original per-sail set membership and exit without creating a GPU device.
     #[arg(long, requires = "preview", conflicts_with_all = ["headless", "frames", "gpu_info", "sail"])]
     rig_report: Option<PathBuf>,
+    /// TEHO ship nation: england, france, spain, holland or pirate.
+    #[arg(long, requires = "preview")]
+    flag_nation: Option<storm_sim::FlagNation>,
+    /// Special-flag role: personal (default), commander, naval or merchant.
+    #[arg(long, requires = "flag_nation")]
+    flag_role: Option<storm_sim::ShipFlagRole>,
+    /// Surrender changes non-pirate special flags to white.
+    #[arg(long, requires = "flag_nation")]
+    surrendered: bool,
+    /// Explicit pirate atlas column; character/group lookup is not running.
+    #[arg(long, requires="flag_nation",value_parser=clap::value_parser!(u32).range(0..=3))]
+    pirate_flag: Option<u32>,
+    /// Hide flag surfaces while retaining ropes, poles and sails.
+    #[arg(long, requires="preview", conflicts_with_all=["flag_nation","flag_role","surrendered","pirate_flag"])]
+    hide_flags: bool,
 }
 
 fn wave_height(value: &str) -> std::result::Result<f32, String> {
@@ -153,6 +169,20 @@ fn rudder(value: &str) -> std::result::Result<f32, String> {
 }
 
 impl Options {
+    fn flag_controls(&self) -> Result<flags::Controls> {
+        if self.pirate_flag.is_some() && self.flag_nation != Some(storm_sim::FlagNation::Pirate) {
+            bail!("--pirate-flag requires --flag-nation pirate");
+        }
+        Ok(flags::Controls::new(
+            self.flag_nation.map(|nation| storm_sim::ShipFlagState {
+                nation,
+                role: self.flag_role.unwrap_or_default(),
+                surrendered: self.surrendered,
+                pirate_variant: self.pirate_flag.unwrap_or(0),
+            }),
+            self.hide_flags,
+        ))
+    }
     fn wind(&self) -> SailWind {
         SailWind {
             speed: self.wind_speed,
@@ -202,6 +232,7 @@ struct WindowState {
     model_center: [f32; 3],
     last_title_time: f32,
     frames: u64,
+    flag_controls: flags::Controls,
 }
 
 impl WindowState {
@@ -298,15 +329,16 @@ impl WindowState {
             model_center: asset.map_or([0.0; 3], |a| a.center.to_array()),
             last_title_time: options.time,
             frames: 0,
+            flag_controls: options.flag_controls()?,
         };
         state.resize(size);
         state.refresh_title();
         eprintln!(
-            "Controls: drag/arrows orbit, scroll zoom, R reset, Space pause, +/- wind speed, ,/. wind direction, Esc close"
+            "Controls: drag/arrows orbit, scroll zoom, R reset, Space pause, +/- wind speed, ,/. wind direction, physical F nation, G flag role, H hide flags, J surrender, Esc close"
         );
         if state.sailing.is_some() {
             eprintln!(
-                "Sailing: physical W/S sail power, hold A/D rudder; release to centre (works with any keyboard layout)"
+                "Sailing: physical W/S select sail sets, hold A/D rudder; release to centre (works with any keyboard layout)"
             );
         }
         Ok(state)
@@ -331,8 +363,13 @@ impl WindowState {
             .sailing
             .as_ref()
             .map_or_else(String::new, sailing::Session::title);
+        let flags = if self.camera.is_some() {
+            self.flag_controls.title()
+        } else {
+            String::new()
+        };
         self.window
-            .set_title(&format!("{}{wind}{sailing}{pause}", self.title));
+            .set_title(&format!("{}{wind}{sailing}{flags}{pause}", self.title));
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -528,6 +565,19 @@ impl ApplicationHandler for Application {
                 state.refresh_title();
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if !event.repeat
+                    && let PhysicalKey::Code(code) = event.physical_key
+                    && matches!(&state.scene, Scene::Model(_))
+                    && state.flag_controls.key(code)
+                {
+                    if let Scene::Model(scene) = &mut state.scene
+                        && let Err(error) = scene.set_flags(state.flag_controls.selection())
+                    {
+                        self.fail(event_loop, error);
+                        return;
+                    }
+                    eprintln!("{}", state.flag_controls.title());
+                }
                 if event.logical_key == Key::Named(NamedKey::Space) && !event.repeat {
                     state.timeline.toggle();
                 }
@@ -617,7 +667,7 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&info)?);
         return Ok(());
     }
-    let asset = if options.rigging_demo {
+    let mut asset = if options.rigging_demo {
         Some(Arc::new(ModelAsset::rigging_demo()?))
     } else if options.sail_demo {
         Some(Arc::new(ModelAsset::sail_demo()?))
@@ -639,6 +689,12 @@ fn main() -> Result<()> {
             })
             .transpose()?
     };
+    let selection = options.flag_controls()?.selection();
+    if let Some(asset) = &mut asset {
+        Arc::get_mut(asset)
+            .expect("newly loaded unique asset")
+            .set_flags(selection)?;
+    }
     if let Some(asset) = &asset {
         let r = asset.rigging_stats;
         eprintln!(

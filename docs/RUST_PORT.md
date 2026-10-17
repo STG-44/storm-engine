@@ -155,3 +155,8 @@ All 40 available ship roots decode with generated rigging; local validation pass
 The [rigging CI run](https://github.com/STG-44/storm-engine/actions/runs/39026983401)
 passes all four jobs for `a132be4c`, with 35 CPU tests on each platform and nine
 software Vulkan GPU tests plus procedural rigging capture/window checks on Linux.
+
+[Ship flag selection](FLAG_SELECTION.md) adds the published TEHO national and
+special-flag rules, explicit context controls, bounds-checked atlas changes and
+live switching in the existing scene. Local checks pass 41 CPU/ten Metal GPU
+tests. Character/group lookup and gameplay script integration remain pending.

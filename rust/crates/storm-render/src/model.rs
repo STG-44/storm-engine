@@ -2,7 +2,7 @@
 mod assets;
 mod rigging;
 mod sails;
-pub use rigging::{FlagPatch, RigMesh, RiggingConfig, RiggingStats};
+pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
 #[cfg(test)]
 mod tests;
 use crate::Gpu;
@@ -308,7 +308,18 @@ impl ModelScene {
             ..Default::default()
         });
         let mut textures = Vec::new();
-        for source in &asset.textures {
+        let flag_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Flag atlas sampler without cross-cell mip bleeding"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            lod_max_clamp: 0.0,
+            ..Default::default()
+        });
+        for (texture_id, source) in asset.textures.iter().enumerate() {
+            let is_flag = asset
+                .meshes
+                .iter()
+                .any(|m| m.texture == texture_id && matches!(m.rigging, Some(RigMesh::Flag(_))));
             let header = source.header;
             ensure!(
                 header.width <= device.limits().max_texture_dimension_2d
@@ -362,7 +373,11 @@ impl ModelScene {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
+                        resource: wgpu::BindingResource::Sampler(if is_flag {
+                            &flag_sampler
+                        } else {
+                            &sampler
+                        }),
                     },
                 ],
             }));
@@ -507,6 +522,14 @@ impl ModelScene {
         self.waves = waves;
         Ok(())
     }
+    pub fn set_flags(&mut self, selection: storm_sim::FlagSelection) -> Result<()> {
+        rigging::select_flags(
+            self.meshes
+                .iter_mut()
+                .filter_map(|m| m.rigging.as_mut().map(|(r, _)| r)),
+            selection,
+        )
+    }
     pub fn set_rig_state(&mut self, rig: storm_sim::RigState) -> Result<()> {
         rig.validate()?;
         self.rig = rig;
@@ -595,6 +618,13 @@ impl ModelScene {
         pass.draw(0..3, 0..1);
         pass.set_pipeline(&self.pipeline);
         for mesh in &self.meshes {
+            if mesh
+                .rigging
+                .as_ref()
+                .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
+            {
+                continue;
+            }
             pass.set_bind_group(1, &self.textures[mesh.texture], &[]);
             pass.set_vertex_buffer(0, mesh.vertices.slice(..));
             pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
