@@ -182,7 +182,7 @@ fn malformed_or_unsupported_sources_fail_with_locations() {
         "int main(){return 1;",
         "int main(){return \"unclosed;}",
         "int main(){/* unclosed",
-        "object character;",
+        "void character;",
         "#include \"game.c\"",
         "int main(){return 0;}\0",
     ] {

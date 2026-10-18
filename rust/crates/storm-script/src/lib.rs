@@ -6,7 +6,10 @@ mod conversions;
 mod events;
 mod objects;
 pub mod preview;
+mod storage;
 mod value;
+pub use storage::Array;
+use storage::{Declaration, Slot, State};
 
 use anyhow::{Context, Result, bail, ensure};
 pub use events::Runtime;
@@ -57,12 +60,13 @@ impl Default for Limits {
 
 pub struct Program {
     functions: BTreeMap<String, Function>,
+    globals: Vec<Declaration>,
 }
 struct Function {
     parameters: usize,
     returns: Type,
     native: bool,
-    locals: Vec<Type>,
+    locals: Vec<Declaration>,
     code: Vec<Located>,
 }
 struct Located {
@@ -72,14 +76,15 @@ struct Located {
 }
 enum Instruction {
     Push(Value),
-    Load(usize),
-    Store(usize),
-    StoreDynamic(usize),
-    MakeRef(usize, usize),
-    MakeARef(usize),
-    Attribute(usize, Vec<Access>, bool),
+    Select(Slot),
+    Index,
+    Load(bool),
+    Store(bool),
+    MakeRef,
+    MakeARef,
+    Attribute(Vec<Access>, bool),
     WriteAttribute,
-    Increment(usize, bool),
+    Increment(bool),
     Binary(Op),
     Negate,
     Not,
@@ -92,12 +97,13 @@ enum Instruction {
 }
 enum Access {
     Literal(String),
-    Dynamic(usize),
+    Dynamic(Slot),
 }
 
 struct Execution<'a, H: Host> {
     host: &'a mut H,
     world: World,
+    state: &'a State,
     limits: Limits,
     fuel: u64,
     events: &'a mut events::Handlers,
@@ -117,6 +123,7 @@ impl Program {
         compile::compile(source)
     }
 
+    /// Execute with fresh globals and temporary event state. Use Runtime to persist them.
     pub fn call(
         &self,
         name: &str,
@@ -124,13 +131,14 @@ impl Program {
         host: &mut impl Host,
         limits: Limits,
     ) -> Result<Value> {
+        let state = State::new(self, host)?;
         self.execute(
             name,
             arguments,
             host,
             limits,
             &mut events::Handlers::default(),
-            None,
+            &state,
         )
     }
 
@@ -141,9 +149,9 @@ impl Program {
         host: &mut impl Host,
         limits: Limits,
         events: &mut events::Handlers,
-        message: Option<&storm_core::Message>,
+        state: &State,
     ) -> Result<Value> {
-        let mut execution = Self::execution(host, limits, events, message)?;
+        let mut execution = Self::execution(host, limits, events, None, state)?;
         self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
     }
 
@@ -152,16 +160,18 @@ impl Program {
         limits: Limits,
         events: &'a mut events::Handlers,
         message: Option<&storm_core::Message>,
+        state: &'a State,
     ) -> Result<Execution<'a, H>> {
         // Keep recursion and allocation bounded even if caller raises limits.
         ensure!(
             limits.frames > 0 && limits.frames <= 32 && limits.stack > 0 && limits.stack <= 1024,
             "runtime limits exceed supported bounds"
         );
-        let world = host.world();
+        let world = state.world.clone();
         Ok(Execution {
             host,
             world,
+            state,
             limits,
             fuel: limits.instructions,
             events,
@@ -214,17 +224,15 @@ impl Program {
             .locals
             .iter()
             .enumerate()
-            .map(|(i, kind)| -> Result<Variable> {
-                let value = if let Some(argument) = arguments.get(i) {
-                    argument.clone()
-                } else if *kind == Type::Object {
-                    Value::Object(execution.world.object(EntityId::INVALID)?)
+            .map(|(i, declaration)| -> Result<Variable> {
+                if let Some(argument) = arguments.get(i) {
+                    Ok(Variable::new(argument.clone()))
                 } else {
-                    kind.initial()
-                };
-                Ok(Variable::new(value))
+                    declaration.allocate(&execution.world, &execution.state.budget)
+                }
             })
             .collect::<Result<Vec<_>>>()?;
+        let mut targets: Vec<(Variable, bool)> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut ip = 0;
         loop {
@@ -239,26 +247,77 @@ impl Program {
                     |stack: &mut Vec<Value>| stack.pop().context("script operand stack underflow");
                 match &located.op {
                     Instruction::Push(value) => stack.push(value.clone()),
-                    Instruction::Load(index) => stack.push(locals[*index].load()?),
-                    Instruction::Store(index) | Instruction::StoreDynamic(index) => {
+                    Instruction::Select(slot) => targets.push((
+                        slot.variable(&locals, &execution.state.globals).clone(),
+                        false,
+                    )),
+                    Instruction::Index => {
+                        let index = pop(&mut stack)?.resolved()?;
+                        let Value::Int(index) = index else {
+                            bail!("array index requires integer");
+                        };
+                        let base = targets.pop().context("script target stack underflow")?;
+                        let indirect = base.1 || base.0.is_reference();
+                        let Value::Array(array) = base.0.value()? else {
+                            bail!("index on scalar");
+                        };
+                        targets.push((array.element(index)?, indirect));
+                    }
+                    Instruction::Load(keep) => {
+                        let target = if *keep {
+                            targets.last().cloned()
+                        } else {
+                            targets.pop()
+                        }
+                        .context("script target stack underflow")?;
+                        stack.push(if target.1 {
+                            target.0.reference()
+                        } else {
+                            target.0.load()?
+                        });
+                    }
+                    Instruction::Store(convert) => {
                         let v = pop(&mut stack)?;
-                        locals[*index].assign(v, matches!(located.op, Instruction::Store(_)))?;
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .0
+                            .assign(v, *convert)?;
                     }
-                    Instruction::MakeRef(destination, source) => {
-                        locals[*destination].bind(&locals[*source])?
+                    Instruction::MakeRef => {
+                        let source = targets.pop().context("script target stack underflow")?;
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .0
+                            .bind(&source.0)?;
                     }
-                    Instruction::MakeARef(destination) => {
+                    Instruction::MakeARef => {
                         let attribute = pop(&mut stack)?.attributes()?;
-                        locals[*destination].bind_attribute(attribute)?;
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .0
+                            .bind_attribute(attribute)?;
                     }
-                    Instruction::Attribute(index, path, create) => {
-                        let base = locals[*index].value()?.attributes()?;
+                    Instruction::Attribute(path, create) => {
+                        let base = targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .0
+                            .value()?
+                            .attributes()?;
                         let segments = path
                             .iter()
                             .map(|access| -> Result<_> {
                                 Ok(match access {
                                     Access::Literal(s) => (s.clone(), false),
-                                    Access::Dynamic(i) => (locals[*i].load()?.path_text()?, true),
+                                    Access::Dynamic(slot) => (
+                                        slot.variable(&locals, &execution.state.globals)
+                                            .load()?
+                                            .path_text()?,
+                                        true,
+                                    ),
                                 })
                             })
                             .collect::<Result<Vec<_>>>()?;
@@ -274,8 +333,12 @@ impl Program {
                         let attribute = pop(&mut stack)?.attributes()?;
                         attribute.write(&value, execution.host)?;
                     }
-                    Instruction::Increment(index, decrement) => {
-                        locals[*index].increment(*decrement)?;
+                    Instruction::Increment(decrement) => {
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .0
+                            .increment(*decrement)?;
                     }
                     Instruction::Binary(op) => {
                         let rhs = pop(&mut stack)?;
@@ -334,12 +397,15 @@ impl Program {
                             function.returns,
                             result.kind()
                         );
-                        ensure!(stack.is_empty(), "script return stack is not balanced");
+                        ensure!(
+                            stack.is_empty() && targets.is_empty(),
+                            "script return stack is not balanced"
+                        );
                         return Ok(Some(result));
                     }
                 }
                 ensure!(
-                    stack.len() <= execution.limits.stack,
+                    stack.len() + targets.len() <= execution.limits.stack,
                     "script operand stack limit"
                 );
                 Ok(None)
@@ -355,5 +421,7 @@ impl Program {
 
 #[cfg(test)]
 mod object_tests;
+#[cfg(test)]
+mod storage_tests;
 #[cfg(test)]
 mod tests;

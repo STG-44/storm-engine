@@ -268,3 +268,10 @@ Clippy and three executable script fixtures. Linux also passes 13 software Vulka
 GPU tests and native windows. All twelve downloaded source-fixture reports equal
 local results, with verified archive digests. The 40-ship event/layout audit
 remains identical to the earlier reports. See [scheduler evidence](SCHEDULED_EVENTS.md#four-platform-evidence-2026-10-18).
+
+[Persistent globals and arrays](SCRIPT_GLOBALS.md) support indexed characters,
+objects and checked references across calls, nested events and scheduler frames.
+The original GetArraySize/SetArraySize names operate through explicit refs.
+A retained-C++ scalar-array oracle checks 444 snapshots, and a fourth diagnostic
+script defers two characters' sail masks until a later frame before notifying
+the visible ship. Full original program/module loading remains pending.

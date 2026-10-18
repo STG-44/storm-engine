@@ -12,6 +12,7 @@ pub enum Type {
     Reference,
     AReference,
     Void,
+    Array,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +24,7 @@ pub enum Value {
     Reference(Reference),
     AReference(Option<AttributeReference>),
     Void,
+    Array(crate::storage::Array),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,7 +53,7 @@ impl Type {
             Self::String => Value::String(String::new()),
             Self::Reference => Value::Reference(Reference::default()),
             Self::AReference => Value::AReference(None),
-            Self::Object => unreachable!("objects require a world"),
+            Self::Array | Self::Object => unreachable!("objects require a world"),
             Self::Void => Value::Void,
         }
     }
@@ -67,6 +69,7 @@ impl Value {
             Self::Reference(_) => Type::Reference,
             Self::AReference(_) => Type::AReference,
             Self::Void => Type::Void,
+            Self::Array(_) => Type::Array,
         }
     }
 

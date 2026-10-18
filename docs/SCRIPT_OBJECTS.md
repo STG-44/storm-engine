@@ -83,7 +83,9 @@ interned as in the original codec. Source, string, call, stack and instruction
 limits from the initial runtime still apply. Copying between different worlds
 is rejected. Native handlers remain responsible for their own work and state.
 
-Still pending: globals, arrays, pointers, full entity/game API and entity-ID
+[Globals and arrays](SCRIPT_GLOBALS.md) now persist across calls and frames.
+
+Still pending: pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
 attribute assignments, numeric literal attribute segments, includes/defines,
 static event declarations and complete original game programs. Float-to-string `gcvt`

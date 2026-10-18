@@ -5,6 +5,8 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
+        "getarraysize" => (1, Type::Int),
+        "setarraysize" => (2, Type::Void),
         "checkattribute" => (2, Type::Int),
         "deleteattribute" | "copyattributes" => (2, Type::Void),
         "getattributesnum" => (1, Type::Int),
@@ -34,6 +36,23 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
         } else {
             value.convert(kind)
         };
+    }
+    if matches!(name, "getarraysize" | "setarraysize") {
+        ensure!(
+            matches!(arguments[0], Value::Reference(_)),
+            "array builtin requires ref"
+        );
+        let Value::Array(array) = value else {
+            anyhow::bail!("not array");
+        };
+        if name == "getarraysize" {
+            return Ok(Value::Int(array.len() as i32));
+        }
+        let Value::Int(count) = arguments[1].resolved()? else {
+            anyhow::bail!("array size requires integer");
+        };
+        array.resize(count)?;
+        return Ok(Value::Void);
     }
     let attribute = value.attributes()?;
     if name == "copyattributes" {

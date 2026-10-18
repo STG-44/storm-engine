@@ -15,7 +15,7 @@ the actual implemented scope.
 
 Working foundations include native builds, GPU rendering, original ship assets,
 sail sets/rigging/flags and damage presentation, approximate sailing, entities,
-messages, attribute trees and a bounded source-language runtime with events.
+messages, attribute trees and a bounded source-language runtime with events, persistent globals and one-dimensional arrays.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
 limited.

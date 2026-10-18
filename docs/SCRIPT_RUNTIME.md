@@ -105,7 +105,10 @@ them. This checks scalar results and exact float bits, not full original
 compiler/program execution. Source-level tests separately exercise precedence,
 short-circuit effects, calls/returns, loop control, native attributes and bounds.
 
-Still pending: globals, arrays, `ptr`, the remaining object/entity operations,
+[Globals and one-dimensional arrays](SCRIPT_GLOBALS.md) now persist in `Runtime`,
+including indexed objects and checked element references.
+
+Still pending: `ptr`, the remaining object/entity operations,
 the full game native API, includes/defines, segment loading,
 `for`, `switch`, `goto`, dynamic calls, static event declarations, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float

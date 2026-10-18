@@ -259,3 +259,17 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/timed_ev
 
 It produces four completed handlers and four entity attribute notifications;
 the two queued events fire on the third and fourth supplied frames.
+
+### Persistent script globals and arrays
+
+[Global declarations and one-dimensional arrays](../docs/SCRIPT_GLOBALS.md)
+include `Characters[i].ship` syntax, checked element references and array resizing.
+`Runtime` retains them between calls and events; `Program::call` starts fresh.
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/global_ships.c --frame-ms 0,0 --report global-script-state.json
+```
+
+This new diagnostic stores two characters' sail masks and counts six holes, then
+writes the visible ship on the second supplied frame: three entity notifications.
+It does not execute commercial game programs.

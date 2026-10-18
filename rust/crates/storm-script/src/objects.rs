@@ -348,9 +348,13 @@ impl Variable {
         }
         bail!("reference depth or cycle limit")
     }
+    pub(crate) fn is_reference(&self) -> bool {
+        matches!(*self.0.borrow(), Value::Reference(_))
+    }
     pub(crate) fn load(&self) -> Result<Value> {
         Ok(match &*self.0.borrow() {
             Value::Object(object) => Value::Object(object.copied()?),
+            Value::Array(_) => bail!("array value requires an explicit ref"),
             value => value.clone(),
         })
     }
@@ -380,6 +384,10 @@ impl Variable {
         }
         let target = self.resolved()?;
         let value = value.resolved()?;
+        ensure!(
+            !matches!(*target.0.borrow(), Value::Array(_)) && !matches!(value, Value::Array(_)),
+            "whole-array assignment is not supported"
+        );
         let kind = target.0.borrow().kind();
         let value = if convert { value.convert(kind)? } else { value };
         if let (Value::Object(destination), Value::Object(source)) = (&*target.0.borrow(), &value) {

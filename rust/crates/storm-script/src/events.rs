@@ -94,17 +94,19 @@ impl Handlers {
     }
 }
 
-/// A compiled program with persistent bounded event registration state.
-/// Embedders provide the World through Host, as with Program::call.
+/// A compiled program with persistent globals, objects and bounded event state.
+/// The first entry takes its World from Host; later calls and frames reuse it.
 pub struct Runtime {
     program: Program,
     handlers: Handlers,
+    state: Option<crate::State>,
 }
 impl Runtime {
     pub fn compile(source: &str) -> Result<Self> {
         Ok(Self {
             program: Program::compile(source)?,
             handlers: Handlers::default(),
+            state: None,
         })
     }
     pub fn call(
@@ -114,8 +116,21 @@ impl Runtime {
         host: &mut impl Host,
         limits: Limits,
     ) -> Result<Value> {
-        self.program
-            .execute(name, arguments, host, limits, &mut self.handlers, None)
+        self.prepare(host)?;
+        self.program.execute(
+            name,
+            arguments,
+            host,
+            limits,
+            &mut self.handlers,
+            self.state.as_ref().unwrap(),
+        )
+    }
+    fn prepare(&mut self, host: &impl Host) -> Result<()> {
+        if self.state.is_none() {
+            self.state = Some(crate::State::new(&self.program, host)?);
+        }
+        Ok(())
     }
     /// Advance statuses using S_EVENTTAB::ProcessFrame, including its index quirk.
     /// This legacy method advances handler statuses only. Use advance_frame for posted events.
@@ -136,7 +151,14 @@ impl Runtime {
         limits: Limits,
     ) -> Result<Option<Value>> {
         check_message(message)?;
-        let mut execution = Program::execution(host, limits, &mut self.handlers, Some(message))?;
+        self.prepare(host)?;
+        let mut execution = Program::execution(
+            host,
+            limits,
+            &mut self.handlers,
+            Some(message),
+            self.state.as_ref().unwrap(),
+        )?;
         let result = self.program.dispatch(name, &mut execution, 0);
         // Keep the caller's cursor observable even after nested/error paths.
         *message = execution.messages.remove(0);
@@ -160,7 +182,14 @@ impl Runtime {
         host: &mut impl Host,
         limits: Limits,
     ) -> Result<usize> {
-        let mut execution = Program::execution(host, limits, &mut self.handlers, None)?;
+        self.prepare(host)?;
+        let mut execution = Program::execution(
+            host,
+            limits,
+            &mut self.handlers,
+            None,
+            self.state.as_ref().unwrap(),
+        )?;
         execution.events.frame();
         let result = (|| {
             let mut fired = 0;

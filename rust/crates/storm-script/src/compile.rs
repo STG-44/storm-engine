@@ -1,3 +1,4 @@
+use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
 use crate::{Access, Function, Instruction, Located, Program, Type, Value, builtins, value::Op};
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeMap;
@@ -10,6 +11,7 @@ const MAX_LOCALS: usize = 128;
 enum Token {
     Word(String),
     Literal(Value),
+    Boolean(bool),
     Symbol(String),
     End,
 }
@@ -66,8 +68,8 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
             }
             let word = source[start..p].to_ascii_lowercase();
             Some(match word.as_str() {
-                "true" => Token::Literal(Value::Int(1)),
-                "false" => Token::Literal(Value::Int(0)),
+                "true" => Token::Boolean(true),
+                "false" => Token::Boolean(false),
                 _ => Token::Word(word),
             })
         } else if bytes[p].is_ascii_digit() {
@@ -118,7 +120,7 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
                 p += 2;
             } else {
                 ensure!(
-                    b"{}();.,+-*/%^=!<>".contains(&bytes[p]),
+                    b"{}[]();.,+-*/%^=!<>".contains(&bytes[p]),
                     "{line}:{column}: unsupported character"
                 );
                 p += 1;
@@ -163,7 +165,9 @@ struct Compiler {
     p: usize,
     code: Vec<Located>,
     locals: BTreeMap<String, usize>,
-    types: Vec<Type>,
+    types: Vec<Declaration>,
+    globals: BTreeMap<String, usize>,
+    declarations: Vec<Declaration>,
     loops: Vec<Loop>,
     nesting: usize,
 }
@@ -175,20 +179,79 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
         code: Vec::new(),
         locals: BTreeMap::new(),
         types: Vec::new(),
+        globals: BTreeMap::new(),
+        declarations: Vec::new(),
         loops: Vec::new(),
         nesting: 0,
     };
-    let mut functions = BTreeMap::new();
+    // The retained compiler registers globals before executing function bodies.
+    // Collect top-level declarations before resolving any function references.
+    let mut headers = Vec::new();
+    let mut names = BTreeMap::new();
     while c.current() != &Token::End {
-        ensure!(functions.len() < 128, "script function limit");
+        let start = c.p;
+        let native = c.take("native");
+        let kind = c.kind()?;
+        let name = c.word()?;
+        if c.take("(") {
+            ensure!(headers.len() < 128, "script function limit");
+            ensure!(
+                builtins::signature(&name).is_none(),
+                "builtin function cannot be redeclared: {name}"
+            );
+            ensure!(
+                names.insert(name.clone(), ()).is_none(),
+                "duplicate function {name}"
+            );
+            headers.push(start);
+            while !c.take(")") {
+                ensure!(c.current() != &Token::End, "unterminated parameter list");
+                c.p += 1;
+            }
+            if native {
+                c.expect(";")?;
+            } else {
+                c.expect("{")?;
+                let mut depth = 1;
+                while depth != 0 {
+                    ensure!(c.current() != &Token::End, "unterminated function body");
+                    if c.take("{") {
+                        depth += 1;
+                    } else if c.take("}") {
+                        depth -= 1;
+                    } else {
+                        c.p += 1;
+                    }
+                }
+            }
+        } else {
+            ensure!(!native && kind != Type::Void, "invalid global declaration");
+            let mut name = name;
+            loop {
+                ensure!(c.globals.len() < 128, "script global limit");
+                let elements = c.elements()?;
+                let initial = c.initializer(kind, elements)?;
+                ensure!(!c.globals.contains_key(&name), "duplicate global {name}");
+                c.globals.insert(name, c.declarations.len());
+                c.declarations.push(Declaration {
+                    kind,
+                    elements,
+                    initial,
+                });
+                if !c.take(",") {
+                    break;
+                }
+                name = c.word()?;
+            }
+            c.expect(";")?;
+        }
+    }
+    let mut functions = BTreeMap::new();
+    for start in headers {
+        c.p = start;
         let native = c.take("native");
         let returns = c.kind()?;
         let name = c.word()?;
-        ensure!(
-            builtins::signature(&name).is_none(),
-            "builtin function cannot be redeclared: {name}"
-        );
-        ensure!(!functions.contains_key(&name), "duplicate function {name}");
         c.expect("(")?;
         let mut parameters = 0;
         if !c.take(")") {
@@ -196,7 +259,7 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
                 let kind = c.kind()?;
                 ensure!(kind != Type::Void, "void parameter");
                 let name = c.word()?;
-                c.local(name, kind)?;
+                c.local(name, kind, 1)?;
                 parameters += 1;
                 if c.take(")") {
                     break;
@@ -253,7 +316,10 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
             }
         }
     }
-    Ok(Program { functions })
+    Ok(Program {
+        functions,
+        globals: c.declarations,
+    })
 }
 
 impl Compiler {
@@ -338,7 +404,7 @@ impl Compiler {
             _ => unreachable!(),
         }
     }
-    fn local(&mut self, name: String, kind: Type) -> Result<usize> {
+    fn local(&mut self, name: String, kind: Type, elements: usize) -> Result<usize> {
         ensure!(self.types.len() < MAX_LOCALS, "script local limit");
         ensure!(
             !self.locals.contains_key(&name),
@@ -347,7 +413,11 @@ impl Compiler {
         );
         let index = self.types.len();
         self.locals.insert(name, index);
-        self.types.push(kind);
+        self.types.push(Declaration {
+            kind,
+            elements,
+            initial: Vec::new(),
+        });
         Ok(index)
     }
     fn enter(&mut self) -> Result<()> {
@@ -389,23 +459,26 @@ impl Compiler {
                 self.expect("makeref")?;
             }
             self.expect("(")?;
-            let destination = self.variable()?;
+            let destination = self.target()?;
             self.expect(",")?;
-            let source = self.variable()?;
+            self.target()?;
             if attribute {
                 ensure!(
-                    matches!(self.types[destination], Type::Reference | Type::AReference),
+                    matches!(
+                        self.slot_type(destination),
+                        Type::Reference | Type::AReference
+                    ),
                     "makearef requires aref/ref destination"
                 );
                 let path = self.path()?;
-                self.emit(Instruction::Attribute(source, path, true));
-                self.emit(Instruction::MakeARef(destination));
+                self.emit(Instruction::Attribute(path, true));
+                self.emit(Instruction::MakeARef);
             } else {
                 ensure!(
-                    self.types[destination] == Type::Reference,
+                    self.slot_type(destination) == Type::Reference,
                     "makeref requires ref destination"
                 );
-                self.emit(Instruction::MakeRef(destination, source));
+                self.emit(Instruction::MakeRef);
             }
             self.expect(")")?;
             return self.expect(";");
@@ -478,10 +551,13 @@ impl Compiler {
             let kind = self.kind()?;
             loop {
                 let name = self.word()?;
-                let index = self.local(name, kind)?;
+                let elements = self.elements()?;
+                let index = self.local(name, kind, elements)?;
                 if self.take("=") {
+                    ensure!(elements <= 1, "local array initializer is not supported");
+                    self.emit(Instruction::Select(Slot::Local(index)));
                     self.expression(1)?;
-                    self.emit(Instruction::Store(index));
+                    self.emit(Instruction::Store(true));
                 }
                 if !self.take(",") {
                     break;
@@ -490,52 +566,58 @@ impl Compiler {
             return self.expect(";");
         }
         if let Token::Word(name) = self.current() {
-            let name = name.clone();
             let next = &self.tokens[self.p + 1].token;
-            if matches!(next, Token::Symbol(s) if s == ".") {
-                let index = self.variable()?;
-                let path = self.path()?;
-                self.emit(Instruction::Attribute(index, path, true));
-                self.expect("=")?;
-                self.expression(1)?;
-                self.emit(Instruction::WriteAttribute);
-                return self.expect(";");
-            }
-            if matches!(next, Token::Symbol(s) if ["=", "+=", "-=", "*=", "/=", "++", "--"].contains(&s.as_str()))
+            if self.lookup(name).is_some()
+                && matches!(next, Token::Symbol(s) if ["[", ".", "=", "+=", "-=", "*=", "/=", "++", "--"].contains(&s.as_str()))
             {
-                let index = *self
-                    .locals
-                    .get(&name)
-                    .with_context(|| format!("{}", self.error("undeclared local")))?;
-                self.p += 1;
-                if self.take("++") || self.take("--") {
+                let checkpoint = (self.p, self.code.len());
+                self.target()?;
+                let path = if self.is(".") {
+                    Some(self.path()?)
+                } else {
+                    None
+                };
+                if !["=", "+=", "-=", "*=", "/=", "++", "--"]
+                    .iter()
+                    .any(|s| self.is(s))
+                {
+                    self.p = checkpoint.0;
+                    self.code.truncate(checkpoint.1);
+                    self.expression(1)?;
+                    self.expect(";")?;
+                    self.emit(Instruction::Drop);
+                    return Ok(());
+                }
+                if let Some(path) = path {
+                    self.emit(Instruction::Attribute(path, true));
+                    self.expect("=")?;
+                    self.expression(1)?;
+                    self.emit(Instruction::WriteAttribute);
+                } else if self.take("++") || self.take("--") {
                     let decrement =
                         matches!(&self.tokens[self.p-1].token, Token::Symbol(s) if s == "--");
-                    self.emit(Instruction::Increment(index, decrement));
+                    self.emit(Instruction::Increment(decrement));
                 } else {
-                    let op = match self.current() {
-                        Token::Symbol(s) => match s.as_str() {
-                            "+=" => Some(Op::Add),
-                            "-=" => Some(Op::Sub),
-                            "*=" => Some(Op::Mul),
-                            "/=" => Some(Op::Div),
-                            _ => None,
-                        },
-                        _ => unreachable!(),
+                    let op = if self.take("+=") {
+                        Some(Op::Add)
+                    } else if self.take("-=") {
+                        Some(Op::Sub)
+                    } else if self.take("*=") {
+                        Some(Op::Mul)
+                    } else if self.take("/=") {
+                        Some(Op::Div)
+                    } else {
+                        self.expect("=")?;
+                        None
                     };
-                    self.p += 1;
                     if op.is_some() {
-                        self.emit(Instruction::Load(index));
+                        self.emit(Instruction::Load(true));
                     }
                     self.expression(1)?;
                     if let Some(op) = op {
                         self.emit(Instruction::Binary(op));
                     }
-                    self.emit(if op.is_some() {
-                        Instruction::StoreDynamic(index)
-                    } else {
-                        Instruction::Store(index)
-                    });
+                    self.emit(Instruction::Store(op.is_none()));
                 }
                 return self.expect(";");
             }
@@ -567,12 +649,93 @@ impl Compiler {
             _ => return None,
         })
     }
-    fn variable(&mut self) -> Result<usize> {
-        let name = self.word()?;
+    fn lookup(&self, name: &str) -> Option<Slot> {
         self.locals
-            .get(&name)
-            .copied()
-            .with_context(|| format!("{}", self.error("undeclared local")))
+            .get(name)
+            .map(|i| Slot::Local(*i))
+            .or_else(|| self.globals.get(name).map(|i| Slot::Global(*i)))
+    }
+    fn variable(&mut self) -> Result<Slot> {
+        let name = self.word()?;
+        self.lookup(&name)
+            .with_context(|| format!("{}", self.error("undeclared variable")))
+    }
+    fn slot_type(&self, slot: Slot) -> Type {
+        match slot {
+            Slot::Local(i) => self.types[i].kind,
+            Slot::Global(i) => self.declarations[i].kind,
+        }
+    }
+    fn target(&mut self) -> Result<Slot> {
+        let slot = self.variable()?;
+        self.emit(Instruction::Select(slot));
+        self.index()?;
+        Ok(slot)
+    }
+    fn index(&mut self) -> Result<()> {
+        if self.take("[") {
+            self.expression(1)?;
+            self.expect("]")?;
+            self.emit(Instruction::Index);
+        }
+        Ok(())
+    }
+    fn elements(&mut self) -> Result<usize> {
+        if !self.take("[") {
+            return Ok(1);
+        }
+        let Token::Literal(Value::Int(n)) = self.current() else {
+            return Err(self.error("array size requires integer literal"));
+        };
+        ensure!(
+            *n >= 0 && *n as usize <= MAX_ELEMENTS,
+            "script array size limit"
+        );
+        let n = *n as usize;
+        self.p += 1;
+        self.expect("]")?;
+        Ok(n)
+    }
+    fn initial_literal(&mut self, kind: Type, boolean: bool) -> Result<Value> {
+        let negative = self.take("-");
+        let value = match self.current() {
+            Token::Literal(value) => value.clone(),
+            Token::Boolean(value) if boolean && kind == Type::Int && !negative => {
+                Value::Int(i32::from(*value))
+            }
+            _ => return Err(self.error("unsupported global initializer literal")),
+        };
+        ensure!(value.kind() == kind, "global initializer type mismatch");
+        ensure!(
+            !negative || matches!(kind, Type::Int | Type::Float),
+            "invalid initializer sign"
+        );
+        self.p += 1;
+        if negative { value.negate() } else { Ok(value) }
+    }
+    fn initializer(&mut self, kind: Type, elements: usize) -> Result<Vec<Value>> {
+        if !self.take("=") {
+            return Ok(Vec::new());
+        }
+        if elements <= 1 {
+            return Ok(vec![self.initial_literal(kind, true)?]);
+        }
+        self.expect("{")?;
+        let mut values = Vec::new();
+        if !self.take("}") {
+            loop {
+                ensure!(values.len() < elements, "too many array initializers");
+                values.push(self.initial_literal(kind, false)?);
+                if self.take("}") {
+                    break;
+                }
+                self.expect(",")?;
+                if self.take("}") {
+                    break;
+                }
+            }
+        }
+        Ok(values)
     }
     fn path(&mut self) -> Result<Vec<Access>> {
         let mut result = Vec::new();
@@ -639,6 +802,12 @@ impl Compiler {
         Ok(())
     }
     fn atom(&mut self) -> Result<()> {
+        if let Token::Boolean(value) = self.current() {
+            let value = Value::Int(i32::from(*value));
+            self.p += 1;
+            self.emit(Instruction::Push(value));
+            return Ok(());
+        }
         if let Token::Literal(value) = self.current() {
             let value = value.clone();
             self.p += 1;
@@ -666,15 +835,16 @@ impl Compiler {
             }
             self.emit(Instruction::Call(name, arguments));
         } else {
-            let index = *self
-                .locals
-                .get(&name)
-                .with_context(|| format!("{}", self.error("undeclared local")))?;
+            let slot = self
+                .lookup(&name)
+                .with_context(|| format!("{}", self.error("undeclared variable")))?;
+            self.emit(Instruction::Select(slot));
+            self.index()?;
             if self.is(".") {
                 let path = self.path()?;
-                self.emit(Instruction::Attribute(index, path, false));
+                self.emit(Instruction::Attribute(path, false));
             } else {
-                self.emit(Instruction::Load(index));
+                self.emit(Instruction::Load(false));
             }
         }
         Ok(())
