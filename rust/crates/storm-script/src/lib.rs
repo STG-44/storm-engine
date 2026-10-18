@@ -6,7 +6,9 @@ mod conversions;
 mod events;
 mod objects;
 pub mod preview;
+mod source;
 mod storage;
+pub use source::{DirectorySource, SourceLoader};
 mod value;
 pub use storage::Array;
 use storage::{Declaration, Slot, State};
@@ -61,6 +63,7 @@ impl Default for Limits {
 pub struct Program {
     functions: BTreeMap<String, Function>,
     globals: Vec<Declaration>,
+    sources: Vec<String>,
 }
 struct Function {
     parameters: usize,
@@ -71,6 +74,7 @@ struct Function {
 }
 struct Located {
     op: Instruction,
+    file: std::rc::Rc<str>,
     line: usize,
     column: usize,
 }
@@ -120,7 +124,15 @@ pub(crate) fn spend(fuel: &mut u64) -> Result<()> {
 
 impl Program {
     pub fn compile(source: &str) -> Result<Self> {
-        compile::compile(source)
+        compile::compile(source::memory(source)?)
+    }
+
+    pub fn compile_with_loader(entry: &str, loader: &mut impl SourceLoader) -> Result<Self> {
+        compile::compile(source::load(entry, loader)?)
+    }
+    /// Normalized file names in original append order; in-memory source has one synthetic name.
+    pub fn sources(&self) -> &[String] {
+        &self.sources
     }
 
     /// Execute with fresh globals and temporary event state. Use Runtime to persist them.
@@ -410,9 +422,12 @@ impl Program {
                 );
                 Ok(None)
             })();
-            if let Some(value) =
-                result.with_context(|| format!("{name} {}:{}", located.line, located.column))?
-            {
+            if let Some(value) = result.with_context(|| {
+                format!(
+                    "{name} {}:{}:{}",
+                    located.file, located.line, located.column
+                )
+            })? {
                 return Ok(value);
             }
         }
@@ -425,3 +440,6 @@ mod object_tests;
 mod storage_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod source_tests;

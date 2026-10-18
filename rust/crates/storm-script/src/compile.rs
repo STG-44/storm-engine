@@ -1,29 +1,32 @@
 use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
 use crate::{Access, Function, Instruction, Located, Program, Type, Value, builtins, value::Op};
 use anyhow::{Context, Result, ensure};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 
-const MAX_TOKENS: usize = 16384;
+pub(crate) const MAX_TOKENS: usize = 16384;
 const MAX_NESTING: usize = 64;
 const MAX_LOCALS: usize = 128;
 
 #[derive(Clone, Debug, PartialEq)]
-enum Token {
+pub(crate) enum Token {
     Word(String),
     Literal(Value),
     Boolean(bool),
     Symbol(String),
+    Directive(String),
+    Definition(String, Value),
     End,
 }
 
 #[derive(Clone)]
-struct Lexeme {
-    token: Token,
-    line: usize,
-    column: usize,
+pub(crate) struct Lexeme {
+    pub token: Token,
+    pub file: Rc<str>,
+    pub line: usize,
+    pub column: usize,
 }
 
-fn lex(source: &str) -> Result<Vec<Lexeme>> {
+pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
     ensure!(
         source.len() <= 262144 && !source.contains('\0'),
         "script source limit or NUL"
@@ -50,6 +53,14 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
                 .with_context(|| format!("{line}:{column}: unterminated comment"))?;
             p += n + 2;
             None
+        } else if bytes[p] == b'#' {
+            p += 1;
+            let name = p;
+            while p < bytes.len() && (bytes[p].is_ascii_alphabetic() || bytes[p] == b'_') {
+                p += 1;
+            }
+            ensure!(p > name, "{line}:{column}: expected directive name");
+            Some(Token::Directive(source[name..p].to_ascii_lowercase()))
         } else if bytes[p] == b'"' {
             p += 1;
             let n = source[p..]
@@ -142,6 +153,7 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
             ensure!(result.len() < MAX_TOKENS, "script token limit");
             result.push(Lexeme {
                 token,
+                file: file.clone(),
                 line: location.0,
                 column: location.1,
             });
@@ -149,6 +161,7 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
     }
     result.push(Lexeme {
         token: Token::End,
+        file,
         line,
         column,
     });
@@ -168,19 +181,21 @@ struct Compiler {
     types: Vec<Declaration>,
     globals: BTreeMap<String, usize>,
     declarations: Vec<Declaration>,
+    constants: BTreeMap<String, (Value, usize)>,
     loops: Vec<Loop>,
     nesting: usize,
 }
 
-pub(crate) fn compile(source: &str) -> Result<Program> {
+pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     let mut c = Compiler {
-        tokens: lex(source)?,
+        tokens: sources.tokens,
         p: 0,
         code: Vec::new(),
         locals: BTreeMap::new(),
         types: Vec::new(),
         globals: BTreeMap::new(),
         declarations: Vec::new(),
+        constants: BTreeMap::new(),
         loops: Vec::new(),
         nesting: 0,
     };
@@ -189,6 +204,20 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
     let mut headers = Vec::new();
     let mut names = BTreeMap::new();
     while c.current() != &Token::End {
+        if let Token::Definition(name, value) = c.current().clone() {
+            ensure!(c.constants.len() < 1024, "script constant limit");
+            ensure!(
+                !c.constants.contains_key(&name),
+                "{}",
+                c.error("define redefinition")
+            );
+            c.constants.insert(name, (value, c.p));
+            c.p += 1;
+            continue;
+        }
+        if c.take(";") {
+            continue;
+        }
         let start = c.p;
         let native = c.take("native");
         let kind = c.kind()?;
@@ -214,7 +243,16 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
                 c.expect("{")?;
                 let mut depth = 1;
                 while depth != 0 {
-                    ensure!(c.current() != &Token::End, "unterminated function body");
+                    ensure!(
+                        c.current() != &Token::End,
+                        "{}",
+                        c.error("unterminated function body")
+                    );
+                    ensure!(
+                        !matches!(c.current(), Token::Definition(_, _)),
+                        "{}",
+                        c.error("function-scope #define is not supported")
+                    );
                     if c.take("{") {
                         depth += 1;
                     } else if c.take("}") {
@@ -296,8 +334,8 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
                         .get(callee)
                         .with_context(|| {
                             format!(
-                                "{name} {}:{}: undeclared function {callee}",
-                                instruction.line, instruction.column
+                                "{name} {}:{}:{}: undeclared function {callee}",
+                                instruction.file, instruction.line, instruction.column
                             )
                         })?
                         .parameters
@@ -308,7 +346,8 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
                     } else {
                         *arguments == expected
                     },
-                    "{name} {}:{}: {callee} expects {} arguments, got {arguments}",
+                    "{name} {}:{}:{}: {callee} expects {} arguments, got {arguments}",
+                    instruction.file,
                     instruction.line,
                     instruction.column,
                     expected
@@ -319,6 +358,7 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
     Ok(Program {
         functions,
         globals: c.declarations,
+        sources: sources.files,
     })
 }
 
@@ -328,7 +368,13 @@ impl Compiler {
     }
     fn error(&self, message: &str) -> anyhow::Error {
         let t = &self.tokens[self.p];
-        anyhow::anyhow!("{}:{}: {message}; found {:?}", t.line, t.column, t.token)
+        anyhow::anyhow!(
+            "{}:{}:{}: {message}; found {:?}",
+            t.file,
+            t.line,
+            t.column,
+            t.token
+        )
     }
     fn is(&self, word: &str) -> bool {
         matches!(self.current(), Token::Word(s) | Token::Symbol(s) if s == word)
@@ -386,10 +432,11 @@ impl Compiler {
         Ok(result)
     }
     fn emit(&mut self, op: Instruction) -> usize {
-        let token = &self.tokens[self.p];
+        let token = &self.tokens[self.p.saturating_sub(1)];
         let index = self.code.len();
         self.code.push(Located {
             op,
+            file: token.file.clone(),
             line: token.line,
             column: token.column,
         });
@@ -684,14 +731,31 @@ impl Compiler {
         if !self.take("[") {
             return Ok(1);
         }
-        let Token::Literal(Value::Int(n)) = self.current() else {
-            return Err(self.error("array size requires integer literal"));
+        let n = match self.current() {
+            Token::Literal(Value::Int(n)) => *n,
+            Token::Word(name) => {
+                let (value, position) = self
+                    .constants
+                    .get(name)
+                    .with_context(|| format!("{}", self.error("unknown array dimension")))?;
+                ensure!(
+                    *position < self.p,
+                    "{}",
+                    self.error("array dimension define must precede declaration")
+                );
+                let Value::Int(n) = value else {
+                    return Err(self.error("array dimension requires int define"));
+                };
+                *n
+            }
+            _ => return Err(self.error("array size requires integer literal or earlier define")),
         };
         ensure!(
-            *n >= 0 && *n as usize <= MAX_ELEMENTS,
-            "script array size limit"
+            n >= 0 && n as usize <= MAX_ELEMENTS,
+            "{}",
+            self.error("script array size limit")
         );
-        let n = *n as usize;
+        let n = n as usize;
         self.p += 1;
         self.expect("]")?;
         Ok(n)
@@ -835,9 +899,14 @@ impl Compiler {
             }
             self.emit(Instruction::Call(name, arguments));
         } else {
-            let slot = self
-                .lookup(&name)
-                .with_context(|| format!("{}", self.error("undeclared variable")))?;
+            let slot = if let Some(slot) = self.lookup(&name) {
+                slot
+            } else if let Some((value, _)) = self.constants.get(&name) {
+                self.emit(Instruction::Push(value.clone()));
+                return Ok(());
+            } else {
+                return Err(self.error("undeclared variable or constant"));
+            };
             self.emit(Instruction::Select(slot));
             self.index()?;
             if self.is(".") {

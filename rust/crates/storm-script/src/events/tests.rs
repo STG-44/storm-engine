@@ -202,7 +202,7 @@ fn failures_are_located_and_next_dispatch_has_fresh_message_state() -> Result<()
     let text = format!("{error:#}");
     assert!(
         text.contains("event e, handler read")
-            && text.contains("read 3:")
+            && text.contains("read <source>:3:")
             && text.contains("No (more) data"),
         "{text}"
     );

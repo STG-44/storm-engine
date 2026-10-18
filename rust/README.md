@@ -273,3 +273,18 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/global_s
 This new diagnostic stores two characters' sail masks and counts six holes, then
 writes the visible ship on the second supplied frame: three entity notifications.
 It does not execute commercial game programs.
+
+### Multi-file script sources
+
+[Source loading](../docs/SCRIPT_SOURCES.md) supports typed `#define` constants
+and `#include` files in Storm's append order. The default root is the entry
+file's directory; `--script-root` makes the entry path relative to an explicit
+program directory. Windows separators and ASCII case variants work on each host.
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/multi_ship/Main.c --frame-ms 0,0 --report multi-script-state.json
+```
+
+The four-file diagnostic reproduces the earlier global-character report and
+adds normalized file names in `script_sources`. It includes duplicate/cyclic
+paths, constants for array dimensions and event names, and a later-frame commit.

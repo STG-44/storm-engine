@@ -91,14 +91,15 @@ allocation bounds/error recovery and state shared by nested/posted events.
 
 ## Remaining scope
 
-Dimensions must currently be integer literals; named define constants await the
-preprocessor. Multidimensional arrays, local array initializer lists, whole-array
+Dimensions accept integer literals or earlier integer `#define` constants,
+following [source-registration order](SCRIPT_SOURCES.md). Multidimensional arrays,
+local array initializer lists, whole-array
 value loads/copies and boolean array initializer lists are explicit errors.
 Boolean global scalars work; the retained compiler's erroneous scalar Set calls
 for boolean array initializers are not emulated. Mismatched initializer types
 fail explicitly rather than reproducing silent ignored initializers.
 Reference-array container edge cases are not covered by the scalar C++ oracle;
-the checked Rust element behavior is tested separately. Modules/includes/defines,
+the checked Rust element behavior is tested separately. Dynamic modules,
 additional syntax, saved/cached programs, original native gameplay bindings and
 unmodified original game handlers remain pending. This phase adds no game assets.
 

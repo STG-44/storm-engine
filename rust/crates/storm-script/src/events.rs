@@ -109,6 +109,16 @@ impl Runtime {
             state: None,
         })
     }
+    pub fn compile_with_loader(entry: &str, loader: &mut impl crate::SourceLoader) -> Result<Self> {
+        Ok(Self {
+            program: Program::compile_with_loader(entry, loader)?,
+            handlers: Handlers::default(),
+            state: None,
+        })
+    }
+    pub fn sources(&self) -> &[String] {
+        self.program.sources()
+    }
     pub fn call(
         &mut self,
         name: &str,

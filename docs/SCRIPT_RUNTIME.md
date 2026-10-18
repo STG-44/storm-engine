@@ -69,7 +69,8 @@ The implementation follows `src/libs/core/src/token.cpp`, `expression.cpp`,
 
 ## Bounds and deliberate differences
 
-Source is limited to 256 KiB, 16,384 significant tokens, 128 functions,
+Source is limited to 256 KiB per file, 1 MiB and 16,384 significant tokens across
+at most 64 files, 1,024 typed constants, 128 functions,
 128 locals/parameters per function, 64 levels of compiler nesting and 4 KiB
 per string. Default execution allows 100,000 instruction steps, 32 call frames
 and 1,024 operands per frame. Call/operand limits can be reduced but not raised
@@ -105,11 +106,14 @@ them. This checks scalar results and exact float bits, not full original
 compiler/program execution. Source-level tests separately exercise precedence,
 short-circuit effects, calls/returns, loop control, native attributes and bounds.
 
+[Source loading](SCRIPT_SOURCES.md) adds typed `#define` constants and
+root-relative `#include` files in the retained append order.
+
 [Globals and one-dimensional arrays](SCRIPT_GLOBALS.md) now persist in `Runtime`,
 including indexed objects and checked element references.
 
 Still pending: `ptr`, the remaining object/entity operations,
-the full game native API, includes/defines, segment loading,
+the full game native API, dynamic segment loading/unloading,
 `for`, `switch`, `goto`, dynamic calls, static event declarations, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float
 concatenation, string-left float comparison and legacy non-ASCII comparison

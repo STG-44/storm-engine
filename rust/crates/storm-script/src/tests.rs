@@ -198,7 +198,7 @@ fn malformed_or_unsupported_sources_fail_with_locations() {
 fn runtime_errors_are_located_and_next_call_is_clean() -> Result<()> {
     for expression in ["1 / 0", "1.0 / 0.0", "7 % 0.5", "2147483648 / -1"] {
         let error = eval("int", expression).unwrap_err();
-        assert!(format!("{error:#}").contains("main 1:"));
+        assert!(format!("{error:#}").contains("main <source>:1:"));
     }
     let p = Program::compile("int main(int n){return 6/n;}")?;
     assert!(

@@ -1,12 +1,15 @@
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
-use std::{fs::File, io::Read, path::PathBuf};
-use storm_script::{Limits, Runtime, preview::AttributeHost};
+use std::path::{Path, PathBuf};
+use storm_script::{DirectorySource, Limits, Runtime, preview::AttributeHost};
 
 #[derive(Parser)]
 #[command(about = "Execute a bounded Storm source-language subset without a GPU")]
 struct Options {
     source: PathBuf,
+    /// With this option, source is a virtual path relative to this script directory.
+    #[arg(long)]
+    script_root: Option<PathBuf>,
     #[arg(long, default_value = "main")]
     entry: String,
     #[arg(long)]
@@ -20,14 +23,31 @@ struct Options {
 
 fn main() -> Result<()> {
     let options = Options::parse();
-    let mut source = String::new();
-    File::open(&options.source)
-        .context("open script source")?
-        .take(262145)
-        .read_to_string(&mut source)?;
-    ensure!(source.len() <= 262144, "script source limit");
     ensure!(options.frame_ms.len() <= 128, "scheduler frame count limit");
-    let mut program = Runtime::compile(&source).context("compile source-language subset")?;
+    let source = PathBuf::from(
+        options
+            .source
+            .to_str()
+            .context("script path is not UTF-8")?
+            .replace('\\', std::path::MAIN_SEPARATOR_STR),
+    );
+    let (root, entry) = if let Some(root) = &options.script_root {
+        (root.as_path(), source.as_path())
+    } else {
+        (
+            source
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new(".")),
+            Path::new(source.file_name().context("missing script file name")?),
+        )
+    };
+    let mut loader = DirectorySource::new(root)?;
+    let mut program = Runtime::compile_with_loader(
+        entry.to_str().context("script path is not UTF-8")?,
+        &mut loader,
+    )
+    .context("compile source-language subset")?;
     let mut host = AttributeHost::new()?;
     let result = program.call(
         &options.entry,
@@ -51,6 +71,9 @@ fn main() -> Result<()> {
         frames.push(serde_json::json!({"delta_ms":delta,"delivered_events":delivered}));
     }
     let mut report = host.report(&result);
+    if program.sources().len() > 1 {
+        report["script_sources"] = serde_json::json!(program.sources());
+    }
     if !frames.is_empty() || program.posted_events() != 0 || program.completed_handlers() != 0 {
         report["script_events"] = serde_json::json!({"frames":frames,
             "completed_handlers":program.completed_handlers(),"posted_events":program.posted_events(),

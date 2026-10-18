@@ -282,3 +282,12 @@ builds and four source fixtures. Linux additionally passes 13 software Vulkan
 GPU tests and native windows. All sixteen downloaded push-workflow source
 reports match local JSON, with four ZIP digests verified. The complete 40-ship
 event/layout audit remains unchanged. See [global storage evidence](SCRIPT_GLOBALS.md#four-platform-evidence-2026-10-18).
+
+[Multi-file source loading](SCRIPT_SOURCES.md) adds an explicit SourceLoader and
+rooted UTF-8 directory loader, typed define constants, append-order includes and
+source file/line diagnostics. Named array dimensions require earlier integer
+defines. A four-file ship diagnostic reproduces the preceding single-file state.
+An independent source-registration oracle runs unedited retained lexer/tables
+and extracted compiler include/define/append bodies in 21 cases under UBSan.
+Dynamic segment/native-library loading and complete original programs remain
+pending.
