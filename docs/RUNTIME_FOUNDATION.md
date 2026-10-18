@@ -2,7 +2,8 @@
 
 The Rust core now has a small native runtime foundation. It follows the retained
 C++ contracts below; it does not load or execute original game scripts.
-Development is tracked in [draft PR #1](https://github.com/STG-44/storm-engine/pull/1).
+Development is tracked in [PR #1](https://github.com/STG-44/storm-engine/pull/1),
+now open for review.
 The fork is public; the original storm-devs repository is archived.
 
 ## Compatibility contracts
@@ -87,6 +88,13 @@ checks 368 sails and 2,204 emitted events; every final per-sail event mask match
 the loaded ship state. Barkentine1 contributes 36 per-sail callbacks and 35
 nearest-hit callbacks across the fixture segments. Its textured Metal capture
 also succeeds. These resource-dependent reports and captures remain outside Git.
+
+At commit `402d469ee72885832cc3f4cec2a305faeb3866ec`, both
+[push CI](https://github.com/STG-44/storm-engine/actions/runs/39079242564) and
+[PR CI](https://github.com/STG-44/storm-engine/actions/runs/39079245316) pass
+formatting, Clippy, all 65 CPU tests, the event fixture and native builds on
+Ubuntu, Windows, macOS Intel and macOS Apple Silicon. Linux additionally passes
+all 13 explicit software Vulkan GPU tests and native-window fixtures.
 
 The archived C++ CI skips PRs from the `rust-port` integration branch as it already
 skips its pushes; PRs from other branches retain the existing C++ checks.

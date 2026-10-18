@@ -21,7 +21,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - `rust-port` is the integration branch for the port.
 - Work is recorded in focused commits with validation results. Completed milestones should have reproducible commands and platform evidence.
 - Upstream baseline: `a68f43df197a50c5177f40209abc109f01f4b114` from `storm-devs/storm-engine`.
-- Public development review: [draft PR #1](https://github.com/STG-44/storm-engine/pull/1) into this fork's `develop`; upstream is archived.
+- Public development review: [PR #1](https://github.com/STG-44/storm-engine/pull/1), ready for review into this fork's `develop`; upstream is archived.
 
 ## Milestones
 
