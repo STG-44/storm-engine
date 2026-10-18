@@ -1,60 +1,22 @@
-//! Native observer for original cannon/sail event payloads. No game scripts run here.
-use anyhow::{Result, bail};
+//! Original cannon/sail payloads executed by bounded diagnostic source handlers.
+mod script;
+use anyhow::Result;
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, collections::VecDeque, path::Path, rc::Rc};
-use storm_core::{
-    AttributeId, AttributeStore, Entity, EntityId, EntityManager, EventDispatcher, Message, Value,
-};
+use storm_core::{AttributeId, AttributeStore, Entity, Message, Value};
 use storm_render::model::{ModelAsset, SailImpact, ShipState};
+use storm_script::{Limits, Runtime};
 
 #[derive(Default)]
 struct Records {
     total: u64,
     recent: VecDeque<Json>,
     attribute_notifications: u64,
+    script_damage_calls: u64,
+    script_last_damage: Option<Json>,
 }
-struct Observer {
-    records: Rc<RefCell<Records>>,
-    attributes: Rc<RefCell<AttributeStore>>,
-    root: AttributeId,
-}
+struct Observer(Rc<RefCell<Records>>);
 impl Entity for Observer {
-    fn process_message(&mut self, m: &mut Message) -> Result<u64> {
-        let mut changed = None;
-        let record = match m.format() {
-            "llssllllf" => {
-                let owner = m.long()?;
-                let character = m.long()?;
-                let model = m.string()?.to_owned();
-                let node = m.string()?.to_owned();
-                let group = m.long()?;
-                let count = m.long()?;
-                let mask = m.long()?;
-                let maximum = m.long()?;
-                let fraction = m.float()?;
-                let mut attributes = self.attributes.borrow_mut();
-                let hd = attributes.create_path(
-                    self.root,
-                    &format!("characters.{character}.ship.sails.{node}.{group}.hd"),
-                )?;
-                attributes.set_value(hd, Some(&mask.to_string()))?;
-                changed = Some(hd);
-                json!({"name":"DoSailHole", "format":"llssllllf", "owner":owner,
-                    "character":character,"model":model,"node":node,"group":group,
-                    "hole_count":count,"hole_mask":mask,"max_holes":maximum,"sail_weight_fraction":fraction})
-            }
-            "lfffl" => json!({"name":"ShpSailDamage", "format":"lfffl", "character":m.long()?,
-                "position":[m.float()?,m.float()?,m.float()?],"owner":m.long()?}),
-            _ => bail!("unsupported native damage observer message"),
-        };
-        let mut records = self.records.borrow_mut();
-        records.total += 1;
-        if records.recent.len() == 256 {
-            records.recent.pop_front();
-        }
-        records.recent.push_back(record);
-        Ok(changed.map_or(0, AttributeId::raw))
-    }
     fn attribute_changed(
         &mut self,
         attributes: &AttributeStore,
@@ -64,58 +26,50 @@ impl Entity for Observer {
             attributes.name(changed) == Some("hd"),
             "unexpected damage attribute notification"
         );
-        self.records.borrow_mut().attribute_notifications += 1;
+        self.0.borrow_mut().attribute_notifications += 1;
         Ok(0)
     }
 }
 
 pub struct DamageEvents {
-    dispatcher: EventDispatcher,
+    runtime: Runtime,
     records: Rc<RefCell<Records>>,
-    observer: EntityId,
-    attributes: Rc<RefCell<AttributeStore>>,
-    root: AttributeId,
+    host: script::DamageHost,
 }
 impl DamageEvents {
     pub fn new() -> Result<Self> {
         let records = Rc::new(RefCell::new(Records::default()));
-        let mut attributes = AttributeStore::default();
-        let root = attributes.create_root()?;
-        let attributes = Rc::new(RefCell::new(attributes));
-        let mut entities = EntityManager::default();
-        let observer = entities.insert(
-            "preview_sail_damage_observer",
-            Observer {
-                records: records.clone(),
-                attributes: attributes.clone(),
-                root,
-            },
-        )?;
-        entities.bind_attributes(observer, &attributes.borrow(), Some(root))?;
-        let entities = Rc::new(RefCell::new(entities));
-        let mut dispatcher = EventDispatcher::default();
-        for name in ["DoSailHole", "ShpSailDamage"] {
-            let entities = entities.clone();
-            let attributes = attributes.clone();
-            dispatcher.register(name, move |message| {
-                let changed = entities.borrow_mut().send_message(observer, message)?;
-                if changed != 0 {
-                    entities.borrow_mut().notify_attribute_changed(
-                        observer,
-                        &attributes.borrow(),
-                        AttributeId::from_raw(changed),
-                    )?;
-                }
-                Ok(None)
-            })?;
-        }
+        let mut host = script::DamageHost::new(records.clone())?;
+        let mut runtime = Runtime::compile(include_str!("../fixtures/sail_events.c"))?;
+        runtime.call("InitSailEvents", &[], &mut host, Limits::default())?;
         Ok(Self {
-            dispatcher,
+            runtime,
             records,
-            observer,
-            attributes,
-            root,
+            host,
         })
+    }
+    fn emit(&mut self, name: &str, message: &mut Message) -> Result<()> {
+        self.runtime
+            .emit(name, message, &mut self.host, Limits::default())?;
+        message.move_to_start();
+        let record = match name {
+            "DoSailHole" => json!({"name":name,"format":message.format(),"owner":message.long()?,
+                "character":message.long()?,"model":message.string()?.to_owned(),"node":message.string()?.to_owned(),
+                "group":message.long()?,"hole_count":message.long()?,"hole_mask":message.long()?,
+                "max_holes":message.long()?,"sail_weight_fraction":message.float()?}),
+            "ShpSailDamage" => {
+                json!({"name":name,"format":message.format(),"character":message.long()?,
+                "position":[message.float()?,message.float()?,message.float()?],"owner":message.long()?})
+            }
+            _ => unreachable!(),
+        };
+        let mut records = self.records.borrow_mut();
+        records.total += 1;
+        if records.recent.len() == 256 {
+            records.recent.pop_front();
+        }
+        records.recent.push_back(record);
+        Ok(())
     }
     /// One swept segment: per-sail callbacks in model order, then one nearest-hit event.
     pub fn shot(
@@ -140,18 +94,21 @@ impl DamageEvents {
                     .is_some_and(|p| p.origin.is_some())
             })
         {
-            let mut attributes = self.attributes.borrow_mut();
-            let character_root =
-                attributes.create_path(self.root, &format!("characters.{character}"))?;
-            attributes.set_attribute(character_root, "index", Some(&character.to_string()))?;
-            let sails = attributes.create_path(character_root, "ship.sails")?;
+            let character_root = self
+                .host
+                .root()?
+                .create_path(&format!("characters.{character}"))?;
+            character_root
+                .create_path("index")?
+                .set_value(&character.to_string())?;
+            let sails = character_root.create_path("ship.sails")?;
             let max_holes: u32 = asset
                 .meshes
                 .iter()
                 .filter_map(|m| m.sail.as_ref())
                 .map(|p| p.section_count())
                 .sum();
-            attributes.set_value(sails, Some(&max_holes.to_string()))?;
+            sails.set_value(&max_holes.to_string())?;
         }
         ordered.sort_by_key(|h| h.mesh);
         for hit in ordered {
@@ -179,7 +136,7 @@ impl DamageEvents {
                         Value::Float(patch.weight as f32 / total_weight),
                     ],
                 )?;
-                self.dispatcher.emit("DoSailHole", &mut message)?;
+                self.emit("DoSailHole", &mut message)?;
             }
         }
         if let Some(hit) = hits.iter().min_by(|a, b| a.fraction.total_cmp(&b.fraction)) {
@@ -194,7 +151,7 @@ impl DamageEvents {
                     Value::Long(owner),
                 ],
             )?;
-            self.dispatcher.emit("ShpSailDamage", &mut message)?;
+            self.emit("ShpSailDamage", &mut message)?;
         }
         Ok(())
     }
@@ -203,14 +160,16 @@ impl DamageEvents {
         restored.sail_holes.clear();
         let restored_count = self.restore_sail_damage(asset, character, &mut restored)?;
         let records = self.records.borrow();
-        let attributes = self.attributes.borrow();
+        let attributes = self.host.root()?.inspect(attribute_tree)?;
         std::fs::write(
             path,
             serde_json::to_vec_pretty(&json!({
-                "observer_entity":self.observer.raw(),"script_vm":false,"total_events":records.total,
+                "observer_entity":self.host.observer.raw(),"script_vm":true,"original_game_scripts":false,
+                "script_handlers":self.runtime.completed_handlers(),"script_damage_calls":records.script_damage_calls,
+                "script_last_damage":records.script_last_damage,"total_events":records.total,
                 "retained_events":records.recent.len(),"events":records.recent,
                 "attribute_notifications":records.attribute_notifications,
-                "attributes":attribute_tree(&attributes,self.root),
+                "attributes":attributes,
                 "attribute_restored_sails":restored_count,"attribute_sail_masks":restored.sail_holes,
             }))?,
         )?;
@@ -218,49 +177,56 @@ impl DamageEvents {
     }
     /// The native 0-key repair must clear persistent damage as well as its mesh state.
     pub fn clear_sail_damage(&mut self, character: i32) -> Result<()> {
-        let mut attributes = self.attributes.borrow_mut();
-        if let Some(sails) =
-            attributes.find_path(self.root, &format!("characters.{character}.ship.sails"))?
-        {
-            attributes.delete_class(sails, sails)?;
-        }
+        self.host
+            .root()?
+            .delete_path(&format!("characters.{character}.ship.sails"))?;
         Ok(())
     }
     /// SetAllSails/FindSailFromData: exact node name, numeric group, hd's 10/12
-    /// low bits. The native observer supplies the tree; no scripts execute.
+    /// low bits. Script handlers populate the tree; restoration reads the same owned World.
     pub fn restore_sail_damage(
         &self,
         asset: &ModelAsset,
         character: i32,
         state: &mut ShipState,
     ) -> Result<usize> {
-        let attributes = self.attributes.borrow();
-        let Some(sails) =
-            attributes.lookup_path(self.root, &format!("characters.{character}.ship.sails"))?
-        else {
-            return Ok(0);
-        };
-        let mut restored = 0;
-        for node in attributes.get(sails).expect("live sails").children() {
-            let node_name = attributes.name(*node).expect("live node");
-            for group in attributes.get(*node).expect("live node").children() {
-                let Some(number) = decimal_group(attributes.name(*group).expect("live group"))
+        self.host
+            .root()?
+            .inspect(|attributes, root| -> Result<usize> {
+                let Some(sails) =
+                    attributes.lookup_path(root, &format!("characters.{character}.ship.sails"))?
                 else {
-                    continue;
+                    return Ok(0);
                 };
-                let Some((mesh, _)) = asset.meshes.iter().enumerate().find(|(_, m)| {
-                    m.sail
-                        .as_ref()
-                        .and_then(|p| p.origin.as_ref())
-                        .is_some_and(|o| o.node == node_name && original_group(&o.group) == number)
-                }) else {
-                    continue;
-                };
-                asset.set_sail_holes(state, mesh, attributes.as_dword(*group, Some("hd"), 0))?;
-                restored += 1;
-            }
-        }
-        Ok(restored)
+                let mut restored = 0;
+                for node in attributes.get(sails).expect("live sails").children() {
+                    let node_name = attributes.name(*node).expect("live node");
+                    for group in attributes.get(*node).expect("live node").children() {
+                        let Some(number) =
+                            decimal_group(attributes.name(*group).expect("live group"))
+                        else {
+                            continue;
+                        };
+                        let Some((mesh, _)) = asset.meshes.iter().enumerate().find(|(_, m)| {
+                            m.sail
+                                .as_ref()
+                                .and_then(|p| p.origin.as_ref())
+                                .is_some_and(|o| {
+                                    o.node == node_name && original_group(&o.group) == number
+                                })
+                        }) else {
+                            continue;
+                        };
+                        asset.set_sail_holes(
+                            state,
+                            mesh,
+                            attributes.as_dword(*group, Some("hd"), 0),
+                        )?;
+                        restored += 1;
+                    }
+                }
+                Ok(restored)
+            })?
     }
 }
 
@@ -316,6 +282,12 @@ mod tests {
         assert_eq!(hole["hole_mask"], 5);
         assert_eq!(records.recent[1]["position"], json!([1., 2., 3.]));
         assert_eq!(records.attribute_notifications, 1);
+        assert_eq!(records.script_damage_calls, 1);
+        assert_eq!(
+            records.script_last_damage,
+            Some(json!({"character":19,"position":[1.,2.,3.],"owner":7}))
+        );
+        assert_eq!(events.runtime.completed_handlers(), 2);
         drop(records);
         events.shot(&asset, &[hit], -1, -1)?;
         assert_eq!(events.records.borrow().total, 3);
@@ -374,6 +346,40 @@ mod tests {
         Ok(())
     }
     #[test]
+    fn script_assignment_drives_persistence_instead_of_the_observer() -> Result<()> {
+        let asset = ModelAsset::ship_demo()?;
+        let mesh = asset.meshes.iter().position(|m| m.sail.is_some()).unwrap();
+        let mut events = DamageEvents::new()?;
+        let source = include_str!("../fixtures/sail_events.c").replace(
+            "ship.ship.sails.(node).(group).hd = mask;",
+            "ship.ship.sails.(node).(group).hd = 3;",
+        );
+        events.runtime = Runtime::compile(&source)?;
+        events
+            .runtime
+            .call("InitSailEvents", &[], &mut events.host, Limits::default())?;
+        events.shot(
+            &asset,
+            &[SailImpact {
+                mesh,
+                section: 0,
+                fraction: 0.5,
+                uv: [0.; 2],
+                position: [1., 2., 3.],
+                new_damage: true,
+                hole_mask: 5,
+            }],
+            7,
+            19,
+        )?;
+        let mut restored = asset.ship_state.clone();
+        assert_eq!(events.restore_sail_damage(&asset, 19, &mut restored)?, 1);
+        assert_eq!(restored.sail_holes[&mesh], 3);
+        assert_eq!(events.records.borrow().recent[0]["hole_mask"], 5);
+        assert_eq!(events.records.borrow().attribute_notifications, 1);
+        Ok(())
+    }
+    #[test]
     fn original_hd_attributes_roundtrip_masks_and_mask_high_bits() -> Result<()> {
         let asset = ModelAsset::ship_demo()?;
         let mut state = asset.ship_state.clone();
@@ -389,23 +395,27 @@ mod tests {
         let mut restored = asset.ship_state.clone();
         assert_eq!(events.restore_sail_damage(&asset, 19, &mut restored)?, 2);
         assert_eq!(restored.sail_holes, state.sail_holes);
-        let attributes = events.attributes.borrow();
-        let character = attributes
-            .lookup_path(events.root, "characters.19")?
-            .unwrap();
-        assert_eq!(attributes.as_dword(character, Some("index"), 0), 19);
-        let sails = attributes.lookup_path(character, "ship.sails")?.unwrap();
-        assert_eq!(attributes.as_dword(sails, None, 0), 22);
-        let node = attributes.child_at(sails, 0).unwrap();
-        let group = attributes.child_at(node, 0).unwrap();
-        let hd = attributes.child(group, "hd").unwrap();
-        let node_name = attributes.name(node).unwrap().to_owned();
-        let number = decimal_group(attributes.name(group).unwrap()).unwrap();
-        drop(attributes);
+        let (node_name, number) =
+            events
+                .host
+                .root()?
+                .inspect(|attributes, root| -> Result<_> {
+                    let character = attributes.lookup_path(root, "characters.19")?.unwrap();
+                    assert_eq!(attributes.as_dword(character, Some("index"), 0), 19);
+                    let sails = attributes.lookup_path(character, "ship.sails")?.unwrap();
+                    assert_eq!(attributes.as_dword(sails, None, 0), 22);
+                    let node = attributes.child_at(sails, 0).unwrap();
+                    let group = attributes.child_at(node, 0).unwrap();
+                    Ok((
+                        attributes.name(node).unwrap().to_owned(),
+                        decimal_group(attributes.name(group).unwrap()).unwrap(),
+                    ))
+                })??;
         events
-            .attributes
-            .borrow_mut()
-            .set_value(hd, Some("4294967295"))?;
+            .host
+            .root()?
+            .create_path(&format!("characters.19.ship.sails.{node_name}.{number}.hd"))?
+            .set_value("4294967295")?;
         events.restore_sail_damage(&asset, 19, &mut restored)?;
         let (mesh, patch) = asset
             .meshes

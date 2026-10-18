@@ -25,13 +25,14 @@ Stamp exhaustion returns an error instead of wrapping into an old ID. Invalid
 layer indices and message types return errors instead of unchecked memory access.
 Class insertion currently accepts an already constructed native object. Factories,
 `Init`, class-query caching/order, whole-world reset and teardown that
-mutates the manager are not ported. Event handlers cannot yet register/delete
-handlers or recursively dispatch through the same dispatcher while executing.
+mutates the manager are not ported. The native callback dispatcher does not support handler mutation or recursive
+dispatch. The separate [script event runtime](SCRIPT_EVENTS.md) supports immediate
+registration/deletion while script handlers execute; nested events remain pending.
 
 ## First integration: sail damage events
 
 Both native X shots and each individual `--sail-volley` segment now dispatch
-through the native event dispatcher into a native observer entity:
+through the bounded script runtime into newly written source handlers:
 
 - `DoSailHole`, format `llssllllf`: attacker character, target character, `*`,
   original node name, original numeric sail group, current hole count, hole mask,
@@ -50,7 +51,9 @@ the unknown character. The generated ship fixture has explicitly labeled
 synthetic nodes and produces both events. The simpler `--sail-demo` fixture has
 no locator identity and therefore only produces `ShpSailDamage`.
 
-The observer is new diagnostic code, not an original game entity. It keeps a total
+The handlers and observer are new diagnostic code, not original game scripts or
+entities. The script writes sail masks and the observer counts attribute notifications.
+The report keeps a total
 count and the latest 256 payloads. `--event-report` saves these as JSON, without
 requiring a GPU when combined with `--rig-report`; native X shots update the file.
 `sail_volley_with` preserves individual segment boundaries instead of treating the
@@ -68,8 +71,8 @@ separately supplied resources instead of `--ship-demo`.
 These callbacks observe completed preview collision results. Original scripts,
 handler side effects during collision traversal, free-sail/ship group lifetime,
 delayed PostEvent, nested script events, projectile flight and combat integration
-remain pending. This is the first native path for original event payloads, not
-script VM or combat parity.
+remain pending. Immediate source handlers now execute these payloads; complete
+script VM and combat compatibility remain under development.
 
 ## Verification
 
@@ -81,13 +84,12 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 97 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 106 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
-The separate [script source subset](SCRIPT_RUNTIME.md) adds executable functions,
-expressions, loops and native attribute bindings; these damage callbacks are not
-yet routed through script handlers.
-The [object/reference subset](SCRIPT_OBJECTS.md) can notify a native entity from
-script attribute assignments; its ship fixture is separate from collision dispatch.
+The [script source subset](SCRIPT_RUNTIME.md) and [object/reference subset](SCRIPT_OBJECTS.md)
+now feed the [immediate event integration](SCRIPT_EVENTS.md). The generated
+fixture executes 12 script handlers, with six script attribute writes and six
+native damage callbacks. The observer performs no mask writes.
 The generated ship fixture produces six `DoSailHole` and six `ShpSailDamage`
 callbacks for three shots per sail. A local audit of all 40 original ship roots
 checks 368 sails and 2,204 emitted events; every final per-sail event mask matches

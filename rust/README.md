@@ -7,8 +7,8 @@ a window. An opt-in sailing prototype adds wind drive, water resistance,
 rudder control, and damped wave response. Original scripts, full ship physics, and the original sea
 simulation have not been ported.
 
-The [entity/message foundation](../docs/RUNTIME_FOUNDATION.md) includes a native
-sail damage observer. Add `--event-report events.json --shot-owner 7
+The [entity/message foundation](../docs/RUNTIME_FOUNDATION.md) now connects to
+sail damage script handlers. Add `--event-report events.json --shot-owner 7
 --ship-character 19` to a model preview or a GPU-free `--rig-report` command to
 inspect the original event payloads. Character indices are preview inputs;
 original character scripts are not running.
@@ -17,8 +17,9 @@ sail masks and their reconstruction through the original `ship.sails` layout.
 
 The [first script runtime subset](../docs/SCRIPT_RUNTIME.md) now executes typed
 functions, arithmetic, conditions and loops without a GPU. Its separate native
-attribute fixture writes and reads sail masks. Original game scripts and the
-preview's damage-event handlers are not yet connected to this runtime.
+attribute fixture writes and reads sail masks. The preview's damage events now
+execute [diagnostic source handlers](../docs/SCRIPT_EVENTS.md);
+complete original game handlers remain pending.
 
 [Object/ref/aref support](../docs/SCRIPT_OBJECTS.md) also executes original
 attribute syntax and internal attribute functions, with real entity notifications:

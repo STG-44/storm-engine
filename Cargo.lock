@@ -1758,6 +1758,7 @@ dependencies = [
  "serde_json",
  "storm-core",
  "storm-render",
+ "storm-script",
  "storm-sim",
  "wgpu",
  "winit",

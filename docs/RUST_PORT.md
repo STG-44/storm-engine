@@ -46,6 +46,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Port the [native attribute tree and entity bindings](ATTRIBUTES.md); roundtrip sail masks through original character attribute paths.
   - [x] Add a bounded executable source subset with native attribute bindings ([scope](SCRIPT_RUNTIME.md)).
   - [x] Add object/ref/aref expressions, first original attribute functions and entity notifications ([scope](SCRIPT_OBJECTS.md)).
+  - [x] Execute [immediate script handlers for sail damage](SCRIPT_EVENTS.md).
   - [ ] Port remaining attribute encodings/conversions, complete script compilation/execution, delayed events and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
@@ -234,3 +235,10 @@ from retained C++ methods, plus 13 Vulkan GPU tests and native fixtures on Linux
 Local Metal checks exercise the actual original mask; all 40 original ship roots
 load it and their INI settings. Original wind/rolling and script event integration
 remain distinct from the now-portable damage material/collision implementation.
+
+The [immediate script event integration](SCRIPT_EVENTS.md) routes preview shots
+through SetEventHandler/GetEventData handlers into persistent ship attributes.
+The native observer now counts notifications; source code writes the masks.
+A retained-C++ event-table oracle checks 521 status snapshots. Full original
+game handlers, nested/delayed events and side effects during collision traversal
+remain pending.

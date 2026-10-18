@@ -3,11 +3,13 @@
 mod builtins;
 mod compile;
 mod conversions;
+mod events;
 mod objects;
 pub mod preview;
 mod value;
 
 use anyhow::{Context, Result, bail, ensure};
+pub use events::Runtime;
 pub use objects::{AttributeReference, Object, Reference, Variable, World};
 use std::collections::BTreeMap;
 use storm_core::{AttributeId, AttributeStore, EntityId};
@@ -98,6 +100,9 @@ struct Execution<'a, H: Host> {
     world: World,
     limits: Limits,
     fuel: u64,
+    events: &'a mut events::Handlers,
+    message: Option<&'a mut storm_core::Message>,
+    break_events: bool,
 }
 
 pub(crate) fn spend(fuel: &mut u64) -> Result<()> {
@@ -118,22 +123,50 @@ impl Program {
         host: &mut impl Host,
         limits: Limits,
     ) -> Result<Value> {
+        self.execute(
+            name,
+            arguments,
+            host,
+            limits,
+            &mut events::Handlers::default(),
+            None,
+        )
+    }
+
+    fn execute(
+        &self,
+        name: &str,
+        arguments: &[Value],
+        host: &mut impl Host,
+        limits: Limits,
+        events: &mut events::Handlers,
+        message: Option<&mut storm_core::Message>,
+    ) -> Result<Value> {
+        let mut execution = Self::execution(host, limits, events, message)?;
+        self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
+    }
+
+    fn execution<'a, H: Host>(
+        host: &'a mut H,
+        limits: Limits,
+        events: &'a mut events::Handlers,
+        message: Option<&'a mut storm_core::Message>,
+    ) -> Result<Execution<'a, H>> {
         // Keep recursion and allocation bounded even if caller raises limits.
         ensure!(
             limits.frames > 0 && limits.frames <= 32 && limits.stack > 0 && limits.stack <= 1024,
             "runtime limits exceed supported bounds"
         );
-        for value in arguments {
-            value.validate()?;
-        }
         let world = host.world();
-        let mut execution = Execution {
+        Ok(Execution {
             host,
             world,
             limits,
             fuel: limits.instructions,
-        };
-        self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
+            events,
+            message,
+            break_events: false,
+        })
     }
 
     fn invoke(
@@ -145,6 +178,12 @@ impl Program {
     ) -> Result<Value> {
         spend(&mut execution.fuel)?;
         ensure!(depth < execution.limits.frames, "script call depth limit");
+        for value in arguments {
+            value.validate()?;
+        }
+        if events::signature(name).is_some() {
+            return self.event_builtin(name, arguments, execution);
+        }
         if builtins::signature(name).is_some() {
             return builtins::call(name, arguments);
         }

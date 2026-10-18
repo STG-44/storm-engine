@@ -3,7 +3,8 @@
 `storm-script` now supports `object`, `ref` and `aref`, original attribute
 expressions and a first set of original attribute/conversion functions. It
 extends the [bounded source runtime](SCRIPT_RUNTIME.md); it still does not load
-the game's complete programs or dispatch the preview's damage events to scripts.
+the game's complete programs. The separate [event integration](SCRIPT_EVENTS.md)
+now dispatches preview damage events to diagnostic source handlers.
 
 Run the new resource-free compatibility fixture:
 
@@ -85,7 +86,7 @@ is rejected. Native handlers remain responsible for their own work and state.
 Still pending: globals, arrays, pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
 attribute assignments, numeric literal attribute segments, includes/defines,
-events/delays and complete original game programs. Float-to-string `gcvt`
+nested/delayed events and complete original game programs. Float-to-string `gcvt`
 conversion remains unsupported, including float ref values assigned directly
 to attributes and floating dynamic path variables. Scalar float attribute
 assignment uses its separate original seven-decimal path. There is no new save

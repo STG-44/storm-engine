@@ -24,8 +24,9 @@ The tree is the already ported `storm-core::AttributeStore`, including its
 case-insensitive path lookup and first spelling. `PreviewSetAttribute` and
 `PreviewGetAttribute` are deliberately named diagnostic bindings. They are not
 original native function names, entity notifications, or savegame persistence.
-The separate `storm-demo` sail observer continues to report `script_vm: false`:
-these scripts do not yet consume its damage events or drive the rendered ship.
+The `storm-demo` preview now reports `script_vm: true` for its separate
+[immediate sail-event handlers](SCRIPT_EVENTS.md). The standalone fixtures
+remain independent diagnostic programs; original game scripts are pending.
 
 [Object/ref/aref integration](SCRIPT_OBJECTS.md) adds original attribute syntax,
 internal attribute functions and a second fixture with real entity notifications.
@@ -106,7 +107,7 @@ short-circuit effects, calls/returns, loop control, native attributes and bounds
 
 Still pending: globals, arrays, `ptr`, the remaining object/entity operations,
 the full game native API, includes/defines, segment loading,
-`for`, `switch`, `goto`, dynamic calls, events/delays, debugger, saved or cached
+`for`, `switch`, `goto`, dynamic calls, nested/delayed events, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float
 concatenation, string-left float comparison and legacy non-ASCII comparison
 rules also remain unsupported. Private Rust instructions are not a reader for

@@ -101,15 +101,11 @@ of restored sails and masks reconstructed from attributes. For example:
 cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --ship-character 19 --shot-owner 7 --rig-report ship-layout.json --event-report sail-events.json
 ~~~
 
-This remains a native observer, not the game's original DoSailHole script.
-Original script variables, complete compiler/VM execution, script handlers and savegame persistence
-are separate work. The characters wrapper and JSON report are new diagnostic
-code and do not claim compatibility with an original save file.
-
-The separate [executable script subset](SCRIPT_RUNTIME.md) now exercises this
-tree through native bindings. [Object/ref/aref support](SCRIPT_OBJECTS.md) now
-uses original attribute syntax and real entity notifications in a separate
-fixture. Collision-to-game-script event integration remains pending.
+[Immediate script handlers](SCRIPT_EVENTS.md) now populate this tree from
+collision payloads. The native observer counts explicit notifications and does
+not write masks. These are newly written diagnostic handlers; original game
+programs, the full game API and savegame persistence remain separate work. The
+characters wrapper and JSON report do not claim an original save file format.
 
 ## Verification
 
@@ -124,7 +120,7 @@ No game resources or compiler are needed to consume these fixtures in Rust CI.
 Native tests additionally cover stale/foreign/null handles, bounded paths,
 copied parent chains, shared borrowed entity roots, explicit notifications,
 damage-mask roundtrips, high mask bits and repair isolation between characters.
-The workspace currently has 97 CPU tests plus 13 separately enabled GPU tests.
+The workspace currently has 106 CPU tests plus 13 separately enabled GPU tests.
 CI checks the generated attribute/mask roundtrip on all four native build hosts
 and uploads the JSON reports.
 

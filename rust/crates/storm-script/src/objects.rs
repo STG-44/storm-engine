@@ -209,7 +209,19 @@ impl AttributeReference {
             .context("attribute has no scalar value")?
             .to_owned())
     }
-    pub fn write(&self, value: &str, host: &mut impl Host) -> Result<()> {
+    /// Bounded native path creation; does not notify an entity by itself.
+    pub fn create_path(&self, path: &str) -> Result<Self> {
+        Value::String(path.into()).validate()?;
+        self.walk(&[(path.into(), true)], true)
+    }
+    pub fn delete_path(&self, path: &str) -> Result<()> {
+        let path = Value::String(path.into());
+        path.validate()?;
+        self.builtin("deleteattribute", Some(&path))?;
+        Ok(())
+    }
+    /// Native population follows ATTRIBUTES::SetValue: explicit notification is separate.
+    pub fn set_value(&self, value: &str) -> Result<()> {
         Value::String(value.to_owned()).validate()?;
         let owner = self.owner()?;
         owner
@@ -218,6 +230,11 @@ impl AttributeReference {
             .attributes
             .borrow_mut()
             .set_value(self.node, Some(value))?;
+        Ok(())
+    }
+    pub fn write(&self, value: &str, host: &mut impl Host) -> Result<()> {
+        self.set_value(value)?;
+        let owner = self.owner()?;
         // Original VM calls Entity_AttributeChanged only for attribute assignment.
         host.attribute_changed(self.entity, &owner.world.0.attributes.borrow(), self.node)
     }
@@ -286,10 +303,7 @@ impl AttributeReference {
             _ => bail!("unknown attribute builtin"),
         })
     }
-    pub(crate) fn inspect<T>(
-        &self,
-        f: impl FnOnce(&AttributeStore, AttributeId) -> T,
-    ) -> Result<T> {
+    pub fn inspect<T>(&self, f: impl FnOnce(&AttributeStore, AttributeId) -> T) -> Result<T> {
         let owner = self.owner()?;
         owner.world.read(|store| f(store, self.node))
     }
