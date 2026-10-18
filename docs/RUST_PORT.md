@@ -207,6 +207,13 @@ tree through explicit preview bindings. Scalar parity is checked against 5,675
 cases generated from retained C++ methods. Original game programs, object/ref
 syntax, native APIs and damage-event handlers remain pending.
 
+The [script subset CI run](https://github.com/STG-44/storm-engine/actions/runs/39118509827)
+passes all four hosts for `a128f186`: 84 CPU tests, native builds and execution of
+the new script/attribute fixture. Its four downloaded reports are identical to
+the local result. Linux additionally passes 13 software Vulkan GPU tests and
+native-window fixtures. See [the verified scope](SCRIPT_RUNTIME.md#four-platform-evidence-2026-10-18)
+for reference cases, limits and the original game features still pending.
+
 
 The [original sail damage CI run](https://github.com/STG-44/storm-engine/actions/runs/39077873810)
 passes all four platform jobs for `9de18547`: 58 CPU tests including 7,934 cases

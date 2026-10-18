@@ -111,3 +111,20 @@ the original compiled-program cache or a stable bytecode file format.
 The next integration step is object/attribute expressions and original native
 bindings, followed by original script event handlers. Full game startup and
 gameplay remain separate work.
+
+## Four-platform evidence, 2026-10-18
+
+Code commit `a128f1867bb1b2bda74cedbfc787506db595f05a` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39118509827)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39118505845)
+on Windows, Ubuntu, macOS Intel and macOS Apple Silicon. Each host passes
+formatting, Clippy with warnings denied, all 84 CPU tests (11 script tests,
+including 5,675 scalar C++ reference cases), native builds and the script CLI
+fixture. Linux also passes all 13 separately enabled software Vulkan GPU tests
+and native-window fixtures. Hosted macOS/Windows GPU hardware is not validated.
+
+All four downloaded `script-state-*` artifacts have verified archive digests.
+Their complete script reports equal the local fixture: result `6`, three writes,
+and identical ordered attribute trees. Canonical JSON SHA-256:
+`019aaddb5fe945aca58edd5c5d5dc7205249e3292de702437eb158c81454a3cf`.
+The reports and native `storm-script` executables are available in that workflow.
