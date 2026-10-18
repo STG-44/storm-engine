@@ -84,9 +84,9 @@ The queue allows 256 retained entries and 1 MiB of charged names/field storage.
 Invalid entries still consume that budget until cleanup. Message limits remain
 128 fields and 4,096 bytes per string. One instruction budget covers each whole
 frame, including queued and nested handlers and posts appended during delivery;
-call/message depth remains bounded. Payloads are owned values with checked
-references and no raw pointers. Unsupported field formats are rejected before
-building their message.
+call/message depth remains bounded. Queue payloads are owned scalar values;
+script references are checked before serialization. No raw pointers enter the
+queue. Unsupported field formats are rejected before building their message.
 
 Errors stop the dispatch/frame and preserve completed side effects. A due event
 is invalidated before its handler runs, so an interrupted handler is not retried.
@@ -109,3 +109,20 @@ new scheduler hook. All complete event and layout reports from the 40-ship
 resource audit equal the prior reports: 368 reconstructed masks, 2,204 immediate
 handlers and 1,105 entity notifications. Resources and dependent reports stay
 outside Git.
+
+## Four-platform evidence, 2026-10-18
+
+Code `abcbd0966608a63dce96db62641a872d9ff1cba4` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39142258576)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39142254223)
+on Ubuntu 24.04, Windows 2025, macOS 15 Apple Silicon and macOS 15 Intel.
+All eight jobs succeed. Each host passes 120 CPU tests, formatting, Clippy,
+native builds and all three source CLI fixtures. Linux additionally passes 13
+explicit software Vulkan GPU tests and native-window fixtures. The hosted
+Windows/macOS checks establish compilation and CPU behavior; physical GPU
+coverage remains separate work.
+
+All four downloaded `script-state-*` ZIP archives have verified SHA-256 digests.
+Their twelve complete JSON reports match local results. The timed report has
+the canonical SHA-256 above on every host; both earlier standalone reports remain
+unchanged. Original-resource audit data and captures stay outside Git.

@@ -261,3 +261,10 @@ ClearPostEvents with original timer/cancellation/cleanup behavior and bounded
 owned payloads. A retained-C++ scheduler oracle checks 431 snapshots. The native
 preview advances the queue on unpaused rendered frames, and a GPU-free timed
 script fixture checks deterministic nested and delayed attribute writes.
+
+The [nested/timed event CI run](https://github.com/STG-44/storm-engine/actions/runs/39142258576)
+passes all four hosts for `abcbd096`: 120 CPU tests, native builds, formatting,
+Clippy and three executable script fixtures. Linux also passes 13 software Vulkan
+GPU tests and native windows. All twelve downloaded source-fixture reports equal
+local results, with verified archive digests. The 40-ship event/layout audit
+remains identical to the earlier reports. See [scheduler evidence](SCHEDULED_EVENTS.md#four-platform-evidence-2026-10-18).
