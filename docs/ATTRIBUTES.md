@@ -71,7 +71,7 @@ ordinary entity messages use the safe valid-only lookup.
 ## Sail damage integration
 
 The native damage observer has a bound attribute root. It writes each target's
-data under a new diagnostic characters.<index> container. The subtree inside
+data under a new diagnostic characters.[index] container. The subtree inside
 that container follows the original character layout:
 
 ~~~text
@@ -122,3 +122,15 @@ damage-mask roundtrips, high mask bits and repair isolation between characters.
 The workspace currently has 73 CPU tests plus 13 separately enabled GPU tests.
 CI checks the generated attribute/mask roundtrip on all four native build hosts
 and uploads the JSON reports.
+
+Verified at commit 67d0324d8ae797436e68d43530385aa892d7a44b on 2026-10-18:
+
+- [PR CI](https://github.com/STG-44/storm-engine/actions/runs/39117143046)
+  passes all four native jobs: formatting, Clippy, 73 CPU tests, native builds
+  and attribute roundtrips. Linux also passes 13 Vulkan GPU tests and windows.
+- The downloaded attribute reports from all four jobs contain identical trees,
+  notification counts and reconstructed masks. Canonical selected-state SHA256:
+  9490c2b11d21fcdab6e54545370a21357b590a582493a4ab40ef779dc8e80548.
+- The local original-resource audit covers all 40 ship roots and reconstructs
+  all 368 sail masks exactly, with 1,105 explicit attribute notifications.
+  The full reports and original resources remain outside Git.
