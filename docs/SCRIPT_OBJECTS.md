@@ -114,3 +114,28 @@ assignment from `source->Copy()`. It checks preserved destination name, replaced
 contents, self-copy and debugger break behavior. Rust separately checks repaired
 parent handles, overlapping source/destination, depth rejection and stale aliases.
 CI runs both script fixtures on every native host and publishes both JSON reports.
+
+## Four-platform evidence, 2026-10-18
+
+Code `27222bf33586a6e63b71aa76cd370e4b98fbbcd8` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39120759769)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39120756269)
+on Ubuntu 24.04, Windows 2025, macOS 15 Apple Silicon and macOS 15 Intel.
+Each host passes formatting, Clippy with warnings denied, 97 CPU tests, native
+builds and execution of both script fixtures. Linux additionally passes all 13
+explicit software Vulkan GPU tests and the native-window fixtures. Hosted
+Windows/macOS jobs do not establish physical GPU compatibility.
+
+All four downloaded `script-state-*` archives have verified SHA-256 digests.
+Both complete JSON reports match their local counterparts on every host:
+`script-state.json` keeps the earlier result of 6 and three native writes;
+`ship-script-state.json` returns 6, emits seven entity notifications and leaves
+host sail masks at 548 and 274. The copied object emits its own `hd = 1`
+notification without changing the original mask. These are newly written
+diagnostic scripts; original game handlers and preview collision integration
+remain pending.
+
+Canonical JSON SHA-256 (sorted keys, compact separators):
+
+- Legacy fixture: `019aaddb5fe945aca58edd5c5d5dc7205249e3292de702437eb158c81454a3cf`.
+- Object fixture: `6646bebfe318ee2f388ceb9da03d7e98979cb453c8d8e4eb1f74605198f18266`.

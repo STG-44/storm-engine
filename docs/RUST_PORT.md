@@ -216,6 +216,17 @@ the local result. Linux additionally passes 13 software Vulkan GPU tests and
 native-window fixtures. See [the verified scope](SCRIPT_RUNTIME.md#four-platform-evidence-2026-10-18)
 for reference cases, limits and the original game features still pending.
 
+The [object/reference integration](SCRIPT_OBJECTS.md) adds `object`, `ref`,
+`aref`, original literal/dynamic attribute paths and the first original internal
+attribute/conversion functions. Code `27222bf3` passes all four hosts in the
+[object script CI run](https://github.com/STG-44/storm-engine/actions/runs/39120759769):
+97 CPU tests, builds, formatting, Clippy and both executable script fixtures.
+Both complete downloaded reports match the local results on all hosts. Linux
+also passes 13 software Vulkan GPU tests and native-window fixtures. The C++
+reference now covers 9,213 scalar/reference/conversion/format cases and six
+attribute operation sequences. See [verified scope](SCRIPT_OBJECTS.md#four-platform-evidence-2026-10-18)
+for object ownership, notifications and the script-event integration still pending.
+
 
 The [original sail damage CI run](https://github.com/STG-44/storm-engine/actions/runs/39077873810)
 passes all four platform jobs for `9de18547`: 58 CPU tests including 7,934 cases
