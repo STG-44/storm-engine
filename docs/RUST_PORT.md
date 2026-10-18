@@ -275,3 +275,10 @@ The original GetArraySize/SetArraySize names operate through explicit refs.
 A retained-C++ scalar-array oracle checks 444 snapshots, and a fourth diagnostic
 script defers two characters' sail masks until a later frame before notifying
 the visible ship. Full original program/module loading remains pending.
+
+The [global/array CI run](https://github.com/STG-44/storm-engine/actions/runs/39144685224)
+passes all four hosts for `f5ad68bf`: 133 CPU tests, formatting, Clippy, native
+builds and four source fixtures. Linux additionally passes 13 software Vulkan
+GPU tests and native windows. All sixteen downloaded push-workflow source
+reports match local JSON, with four ZIP digests verified. The complete 40-ship
+event/layout audit remains unchanged. See [global storage evidence](SCRIPT_GLOBALS.md#four-platform-evidence-2026-10-18).

@@ -101,3 +101,30 @@ Reference-array container edge cases are not covered by the scalar C++ oracle;
 the checked Rust element behavior is tested separately. Modules/includes/defines,
 additional syntax, saved/cached programs, original native gameplay bindings and
 unmodified original game handlers remain pending. This phase adds no game assets.
+
+## Four-platform evidence, 2026-10-18
+
+Code `f5ad68bff0223a6570a4ebd194ff0d4e043fc9ed` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39144685224)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39144682486)
+on Ubuntu, Windows, macOS Intel and macOS Apple Silicon. All eight jobs succeed.
+Each host runs 133 CPU tests, including 56 script tests, formatting, Clippy with
+warnings denied, native builds and four source fixtures. Linux additionally
+passes all 13 explicit software Vulkan GPU tests and native-window fixtures.
+
+The four script-state archives from the push workflow were downloaded with
+GitHub's ZIP digests verified. All sixteen complete JSON reports match local
+results. Canonical sorted compact JSON SHA-256 values:
+
+- Legacy sail fixture: `019aaddb5fe945aca58edd5c5d5dc7205249e3292de702437eb158c81454a3cf`.
+- Object fixture: `6646bebfe318ee2f388ceb9da03d7e98979cb453c8d8e4eb1f74605198f18266`.
+- Timed fixture: `09efcc4fc9b47b3f52fae4b2cbd05d6a7be40f73e258c896e30737065deb5fc4`.
+- Global character fixture: `ba47b992ad4287abcc6b5e45707a23816fa644638d3a2f4f27729db5390065ad`.
+
+The three prior source reports are unchanged. A local resource-dependent audit
+passes all 40 original ship roots, restoring 368 sail masks through 2,204 script
+handlers and 1,105 attribute notifications. All 80 full event/layout JSON reports
+match the previous phase. These reports and commercial resources remain outside
+Git. The generated ship also presents three native Metal frames locally.
+Hosted Windows/macOS jobs establish CPU/build behavior; physical GPU coverage
+for those additional machines remains pending.
