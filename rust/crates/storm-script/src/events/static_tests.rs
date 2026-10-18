@@ -123,6 +123,7 @@ fn static_function_bindings_reject_unknown_or_parameterized_targets_and_bad_synt
         "#event_handler(\"\", \"H\") void H(){}",
         "#event_handler(\"событие\", \"H\") void H(){}",
         "int Main(){return #event_handler(\"E\", \"H\") 1;} void H(){}",
+        "void Main(){if(0) #event_handler(\"E\", \"H\")} void H(){}",
     ] {
         assert!(Program::compile(source).is_err(), "{source}");
     }

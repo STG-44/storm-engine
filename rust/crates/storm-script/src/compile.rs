@@ -537,7 +537,13 @@ impl Compiler {
         Ok(())
     }
     fn block(&mut self) -> Result<()> {
-        while !self.take("}") {
+        loop {
+            while self.is_static_handler() {
+                self.static_handler()?;
+            }
+            if self.take("}") {
+                return Ok(());
+            }
             ensure!(
                 self.current() != &Token::End,
                 "{}",
@@ -545,7 +551,6 @@ impl Compiler {
             );
             self.statement()?;
         }
-        Ok(())
     }
     fn statement(&mut self) -> Result<()> {
         self.enter()?;
@@ -556,13 +561,8 @@ impl Compiler {
     fn statement_inner(&mut self) -> Result<()> {
         // Directives emit no instruction and do not supply a control-flow body.
         // Preserve the following semicolon as the actual empty statement.
-        let mut directive = false;
         while self.is_static_handler() {
             self.static_handler()?;
-            directive = true;
-        }
-        if directive && self.is("}") {
-            return Ok(());
         }
         if self.take("{") {
             return self.block();
