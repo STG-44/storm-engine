@@ -79,7 +79,7 @@ script VM and combat compatibility remain under development.
 Five core tests cover deletion/drop timing, slot reuse/stale IDs, priority ties,
 cross-layer duplicates, freezing, direct delivery, numeric widths, cursor failures,
 unsupported pointer formats, event rewind/results and retained C++ hash constants.
-Two integration tests cover the original sail payloads, repeated damage, unknown
+Integration tests cover the original sail payloads, repeated damage, unknown
 characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.

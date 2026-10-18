@@ -101,3 +101,21 @@ mask matches the loaded ship state. The zero-sail boat emits no events. A
 textured Barkentine1 capture succeeds on local macOS Metal with 71 handlers,
 36 attribute notifications and 12 reconstructed masks. Commercial assets,
 captures and resource-dependent reports remain outside Git.
+
+## Four-platform evidence
+
+Code `977817543f43b279be268c5db014d01ff95de7de` passes both the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39138395313)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39138391500)
+on Ubuntu 24.04, Windows 2025, macOS 15 Apple Silicon and macOS 15 Intel.
+Each host passes 106 CPU tests, formatting, Clippy with warnings denied, native
+builds, both standalone script fixtures and the collision/script event fixture.
+Linux additionally passes all 13 explicit software Vulkan GPU tests and native
+window fixtures. Windows/macOS hosted jobs establish compilation and CPU
+behavior; physical GPU coverage on those systems remains separate work.
+
+Six downloaded archives have verified ZIP SHA-256 digests; their 12 complete JSON
+reports match local results. This includes event/layout reports from Linux and
+both macOS hosts, and standalone script reports from Linux, Windows and macOS
+Intel. CI fixture assertions pass on all four hosts. The full event payloads and
+attribute trees on all 40 original ships also match the prior native reports.

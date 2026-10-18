@@ -242,3 +242,11 @@ The native observer now counts notifications; source code writes the masks.
 A retained-C++ event-table oracle checks 521 status snapshots. Full original
 game handlers, nested/delayed events and side effects during collision traversal
 remain pending.
+
+The [immediate event CI run](https://github.com/STG-44/storm-engine/actions/runs/39138395313)
+passes all four hosts for `97781754`: 106 CPU tests, native builds, formatting,
+Clippy and executable sail event handlers. Linux additionally passes 13 software
+Vulkan GPU tests and native windows. A local audit executes 2,204 handlers across
+40 original ship roots and reconstructs all 368 masks through script-written
+attributes, with 1,105 entity notifications. The textured Barkentine1 capture
+also succeeds through Metal. See [event scope and evidence](SCRIPT_EVENTS.md).
