@@ -15,6 +15,15 @@ original character scripts are not running.
 The [attribute tree port](../docs/ATTRIBUTES.md) also reports persistent per-character
 sail masks and their reconstruction through the original `ship.sails` layout.
 
+The [first script runtime subset](../docs/SCRIPT_RUNTIME.md) now executes typed
+functions, arithmetic, conditions and loops without a GPU. Its separate native
+attribute fixture writes and reads sail masks. Original game scripts and the
+preview's damage-event handlers are not yet connected to this runtime.
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
+```
+
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
 
 ## Run

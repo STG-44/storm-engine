@@ -48,6 +48,10 @@ jobs:
         run: cargo run -p storm-formats --locked -- decode tools/modding-tool/Meshes/cannon_x.gm
       - name: Build native executable
         run: cargo build --workspace --locked
+      - name: Execute Storm source subset and native attribute bindings
+        run: |
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
+          python -c "import json; s=json.load(open('script-state.json')); assert s['script_runtime']=='bounded-source-subset'; assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['attribute_writes']==3; a=s['attributes']['children'][0]['children'][0]['children']; assert a[0]['name']=='rey_a1' and a[0]['children'][0]['children']==[{'name':'hd','value':'548','children':[]},{'name':'holes','value':'3','children':[]}]; assert a[1]['name']=='rey_b1' and a[1]['children'][0]['children']==[{'name':'hd','value':'274','children':[]}]"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -97,6 +101,15 @@ jobs:
           path: |
             target/debug/storm-demo
             target/debug/storm-demo.exe
+          if-no-files-found: error
+      - name: Upload script executable and attribute fixture
+        uses: actions/upload-artifact@v7
+        with:
+          name: script-state-${{ matrix.os }}
+          path: |
+            script-state.json
+            target/debug/storm-script
+            target/debug/storm-script.exe
           if-no-files-found: error
       - name: Upload native attribute roundtrip fixture
         uses: actions/upload-artifact@v7

@@ -102,9 +102,13 @@ cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --ship-character
 ~~~
 
 This remains a native observer, not the game's original DoSailHole script.
-Script variables, compiler/VM execution, script handlers and savegame persistence
+Original script variables, complete compiler/VM execution, script handlers and savegame persistence
 are separate work. The characters wrapper and JSON report are new diagnostic
 code and do not claim compatibility with an original save file.
+
+The separate [executable script subset](SCRIPT_RUNTIME.md) now exercises this
+tree through explicit native preview bindings. Its original object/attribute
+syntax and game damage-event integration remain pending.
 
 ## Verification
 

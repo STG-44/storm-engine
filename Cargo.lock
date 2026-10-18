@@ -1790,6 +1790,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "storm-script"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+ "storm-core",
+]
+
+[[package]]
 name = "storm-sim"
 version = "0.1.0"
 dependencies = [
