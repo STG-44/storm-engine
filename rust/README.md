@@ -301,3 +301,12 @@ cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fix
 
 Deleted static entries retain their original flag and can be reactivated. A
 confirmed infinite cleanup loop in the original returns an explicit Rust error.
+
+[`ClearEvents`](../docs/CLEAR_EVENTS.md) removes dynamic handlers using original
+cleanup rules while retaining static flags, globals and queued messages.
+Run the same fixture with `--entry ClearMain` to verify that a queued static
+commit survives and an unwanted dynamic ship handler stays inactive:
+
+```sh
+cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --entry ClearMain --frame-ms 0,0 --report clear-script-state.json
+```

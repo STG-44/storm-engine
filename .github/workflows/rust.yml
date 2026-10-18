@@ -62,6 +62,8 @@ jobs:
           python -c "import json; a=json.load(open('global-script-state.json')); b=json.load(open('multi-script-state.json')); assert b.pop('script_sources')==['main.c','data/characters.c','handlers/sails.c','helpers/bits.c']; assert a==b"
           cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --frame-ms 0,0 --report static-script-state.json
           python -c "import json; a=json.load(open('multi-script-state.json')); b=json.load(open('static-script-state.json')); assert a==b"
+          cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --entry ClearMain --frame-ms 0,0 --report clear-script-state.json
+          python -c "import json; a=json.load(open('static-script-state.json')); b=json.load(open('clear-script-state.json')); assert a==b"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -123,6 +125,7 @@ jobs:
             global-script-state.json
             multi-script-state.json
             static-script-state.json
+            clear-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

@@ -51,7 +51,9 @@ discovering a missing closing parenthesis, and its void `SetEventHandler` can
 log a failed function lookup without aborting the parser. Rust exposes no
 partially compiled runtime from either failure.
 
-Segment unloading, `ClearEvents`, cached/saved program declarations, the full
+[`ClearEvents`](CLEAR_EVENTS.md) now cleans dynamic handlers with the original
+index-reset behavior, keeping disabled statics inactive and queued messages intact.
+Segment unloading, cached/saved program declarations, the full
 native game API and complete original game startup remain pending. This phase
 adds newly written diagnostic scripts and no commercial resources.
 

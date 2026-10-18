@@ -31,3 +31,16 @@ int Main() {
 void NeverCalled() {
     if (0) { #event_handler(COMMIT_EVENT, "OnCommit"); }
 }
+
+// Queue the normal commit, then clear only dynamic handlers. Neither the
+// pending commit nor the character globals may be reset or prepared here.
+int ClearMain() {
+    int result = Main();
+    SetEventHandler(COMMIT_EVENT, "UnexpectedCommit", 0);
+    ClearEvents();
+    return result;
+}
+
+void UnexpectedCommit() {
+    VisibleShip.unexpected = 1;
+}

@@ -90,6 +90,18 @@ impl Handlers {
         self.queue.cancel(&event);
         Ok(())
     }
+    fn clear(&mut self) -> Result<()> {
+        for handlers in self.entries.values_mut() {
+            for handler in handlers {
+                if !handler.is_static {
+                    handler.status = Status::Deleted;
+                }
+            }
+        }
+        // S_EVENTTAB::Clear advances statuses immediately. Unlike deleting a
+        // named handler, it does not cancel or prepare any posted messages.
+        self.frame()
+    }
     fn frame(&mut self) -> Result<()> {
         for handlers in self.entries.values_mut() {
             let mut index = 0;
@@ -172,6 +184,12 @@ impl Runtime {
     /// Returns an error if deleted static entries would trap the retained loop.
     pub fn process_frame(&mut self) -> Result<()> {
         self.handlers.frame()
+    }
+    /// Apply the original ClearEvents table cleanup without changing posted
+    /// messages or globals. Static entries are not marked deleted; the original
+    /// frame activation and skipped-entry rules still apply.
+    pub fn clear_events(&mut self) -> Result<()> {
+        self.handlers.clear()
     }
     pub fn completed_handlers(&self) -> u64 {
         self.handlers.completed
@@ -340,7 +358,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "seteventhandler" => (3, Type::Void),
         "event" => (1, Type::Void),
         "postevent" => (2, Type::Void),
-        "clearpostevents" => (0, Type::Void),
+        "clearevents" | "clearpostevents" => (0, Type::Void),
         "deleventhandler" => (2, Type::Void),
         "eventsbreak" | "geteventdata" => (0, Type::Void), // GetEventData is dynamically typed.
         _ => return None,
@@ -412,6 +430,10 @@ impl Program {
                     };
                     execution.events.queue.post(event, delay, message)?;
                 }
+                Ok(Value::Void)
+            }
+            "clearevents" => {
+                execution.events.clear()?;
                 Ok(Value::Void)
             }
             "clearpostevents" => {
@@ -496,6 +518,8 @@ fn make_message(arguments: &[Value]) -> Result<Message> {
     Message::new(format, fields)
 }
 
+#[cfg(test)]
+mod clear_tests;
 #[cfg(test)]
 mod scheduled_tests;
 #[cfg(test)]

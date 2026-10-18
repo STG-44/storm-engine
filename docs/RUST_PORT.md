@@ -320,3 +320,12 @@ passes 13 software Vulkan GPU tests and native windows. All twenty-four download
 source reports match local JSON, with four ZIP digests verified. The complete
 40-ship event/layout audit remains unchanged and the generated local ship
 presents three Metal frames. See [static-handler evidence](STATIC_EVENT_HANDLERS.md#four-platform-evidence-2026-10-19).
+
+[ClearEvents](CLEAR_EVENTS.md) adds source and native embedding entry paths for
+retained dynamic-handler cleanup. Static flags, globals and posted messages
+survive; disabled statics, skipped deletions and name-budget retention remain.
+An independent reference routes through unedited event tables and three retained
+native/core/compiler bodies: 25 sequences, 627 state snapshots and one confirmed
+clear-time hang, replaced by a bounded Rust error. A seventh executable scenario
+clears an unwanted dynamic ship handler while preserving the queued static
+commit and the preceding complete report.
