@@ -329,3 +329,12 @@ native/core/compiler bodies: 25 sequences, 627 state snapshots and one confirmed
 clear-time hang, replaced by a bounded Rust error. A seventh executable scenario
 clears an unwanted dynamic ship handler while preserving the queued static
 commit and the preceding complete report.
+
+The [ClearEvents CI run](https://github.com/STG-44/storm-engine/actions/runs/39172045516)
+and its [push run](https://github.com/STG-44/storm-engine/actions/runs/39172042381)
+pass all four hosts for `d63efa99`: 165 CPU tests, including 88 script tests,
+formatting, Clippy, native builds and seven executable script scenarios. Linux
+also passes 13 software Vulkan GPU tests and native windows. All twenty-eight
+downloaded source reports match local JSON, with four ZIP digests verified.
+The complete 40-ship audit remains unchanged and the generated local ship
+presents three Metal frames. See [ClearEvents evidence](CLEAR_EVENTS.md#four-platform-evidence-2026-10-19).

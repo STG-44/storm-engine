@@ -67,3 +67,35 @@ queue payload/timer preservation, clearing inside live/nested dispatch, message
 cursors and EventsBreak, error recovery, bounds and the native ship scenario.
 Full original game startup, dynamic segment unloading, saved/cached programs and
 the remaining native game API are separate work. This phase adds no game assets.
+
+## Four-platform evidence, 2026-10-19
+
+Code `d63efa993cf22622476614355cef8015398c668a` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39172045516)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39172042381)
+on Windows, Ubuntu, macOS Intel and macOS Apple Silicon. All eight jobs succeed.
+Each host runs 165 CPU tests, including 88 script tests, formatting, Clippy with
+warnings denied, native builds and seven executable script scenarios. Rust host
+triples are verified in the logs. Linux additionally passes 13 explicit software
+Vulkan GPU tests and native-window fixtures.
+
+All four push-workflow script archives were downloaded and their ZIP SHA-256
+digests verified. All twenty-eight complete JSON reports match local results.
+The six previous reports remain unchanged. The seventh ClearMain report equals
+the static scenario's complete state, with canonical sorted compact JSON SHA-256
+`1ce5bca0ac9c84116ca63ce4421060361fcbcb2aa57c2bb61a84ab6dfc04ec76`.
+
+The retained routing/table oracle checks 25 sequences and 627 finite snapshots,
+plus one timeout-confirmed original clear-time hang that Rust reports as an
+error. Separate source tests check queue timers/payloads, globals, nested/live
+dispatch, message cursors, break state, budgets, cleanup and recovery. This is
+bounded compatibility evidence, not execution of the original game program.
+
+A local resource-dependent audit passes all 40 original ship roots and restores
+368 sail masks through 2,204 script handlers and 1,105 entity notifications. All
+80 complete event/layout reports match the preceding phase. The generated ship
+presents three native Metal frames on the local Intel Mac. Hosted Windows/macOS
+checks establish CPU/build behavior; physical GPU coverage for those additional
+machines remains pending. Commercial resources and resource-dependent reports
+remain outside Git. Full original game startup, module unloading and the
+remaining native game API remain pending.
