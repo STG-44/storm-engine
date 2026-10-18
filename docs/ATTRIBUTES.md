@@ -107,15 +107,16 @@ are separate work. The characters wrapper and JSON report are new diagnostic
 code and do not claim compatibility with an original save file.
 
 The separate [executable script subset](SCRIPT_RUNTIME.md) now exercises this
-tree through explicit native preview bindings. Its original object/attribute
-syntax and game damage-event integration remain pending.
+tree through native bindings. [Object/ref/aref support](SCRIPT_OBJECTS.md) now
+uses original attribute syntax and real entity notifications in a separate
+fixture. Collision-to-game-script event integration remains pending.
 
 ## Verification
 
 rust/crates/storm-core/src/attributes/reference/generate.py compiles the
 unchanged retained ATTRIBUTES.cpp, attributes.h, STRING_CODEC and string
 comparison headers. Only assertion/platform wrappers and the debugger callback
-are stubbed. Checked-in fixtures cover five operation sequences (ordered trees,
+are stubbed. Checked-in fixtures cover six operation sequences (ordered trees,
 name codes, missing values, path edge cases, copies, deletion, break counters and
 return values), 39 numeric prefixes and 2,051 finite float-format samples.
 No game resources or compiler are needed to consume these fixtures in Rust CI.
@@ -123,7 +124,7 @@ No game resources or compiler are needed to consume these fixtures in Rust CI.
 Native tests additionally cover stale/foreign/null handles, bounded paths,
 copied parent chains, shared borrowed entity roots, explicit notifications,
 damage-mask roundtrips, high mask bits and repair isolation between characters.
-The workspace currently has 73 CPU tests plus 13 separately enabled GPU tests.
+The workspace currently has 97 CPU tests plus 13 separately enabled GPU tests.
 CI checks the generated attribute/mask roundtrip on all four native build hosts
 and uploads the JSON reports.
 

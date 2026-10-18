@@ -1,4 +1,4 @@
-# First executable Storm source subset
+# Storm source runtime subset
 
 `storm-script` compiles a bounded subset of the retained Storm source language
 to private stack instructions and executes it natively. It has no graphics
@@ -27,18 +27,22 @@ original native function names, entity notifications, or savegame persistence.
 The separate `storm-demo` sail observer continues to report `script_vm: false`:
 these scripts do not yet consume its damage events or drive the rendered ship.
 
+[Object/ref/aref integration](SCRIPT_OBJECTS.md) adds original attribute syntax,
+internal attribute functions and a second fixture with real entity notifications.
+
 ## Source and execution rules
 
 The implementation follows `src/libs/core/src/token.cpp`, `expression.cpp`,
 `compiler.cpp` and `data.cpp`, rather than treating the language as C:
 
-- Functions with `int`/`bool`, `float`, `string` and `void` declarations, named
+- Functions with `int`/`bool`, `float`, `string`, `object`, `ref`, `aref` and `void` declarations, named
   parameters, forward calls, recursion and strict return types. Names are
   ASCII case-insensitive. Native declarations dispatch only through `Host`.
 - Function-scope locals, comma declarations, optional initial assignment,
   scalar assignment, `+=`, `-=`, `*=`, `/=`, integer statement `++` and `--`.
-  Scalar assignment and argument copy can change the declared scalar type,
-  matching `DATA::Set/Copy` and the disabled argument type check in C++.
+  Ordinary assignment converts to the destination's current scalar type, as in
+  `MOVE`; compound arithmetic can promote it. Argument types retain the original
+  disabled check. See the object notes for ref aliasing and deep object copies.
 - Blocks, `if`/`else`, `while`, `break`, `continue`, `return` and call statements.
 - Decimal integer/float literals, raw quoted UTF-8 strings, line/block comments,
   arithmetic, comparisons and short-circuit logical operators. Strings do not
@@ -93,23 +97,23 @@ FFI, process execution, file access or network API in the language runtime.
 `rust/crates/storm-script/reference/generate.py` extracts the retained
 `DATA::Set`, `Convert`, arithmetic, comparison and boolean method bodies
 verbatim. It compiles them with storage/platform scaffolding, the retained
-string comparison header, and UndefinedBehaviorSanitizer. `fmt` and
-`fast_float` paths outside the tested subset throw. The committed golden cases
+string comparison header, actual `fast_float/3.4.0`, and UndefinedBehaviorSanitizer.
+Unsupported `fmt` concatenation throws. The committed golden cases
 are consumed by Rust tests on every platform; C++ is needed only to regenerate
 them. This checks scalar results and exact float bits, not full original
 compiler/program execution. Source-level tests separately exercise precedence,
 short-circuit effects, calls/returns, loop control, native attributes and bounds.
 
-Still pending: globals, arrays, `object`/`ref`/`aref`/`ptr`, original attribute
-expression syntax, original native functions, includes/defines, segment loading,
+Still pending: globals, arrays, `ptr`, the remaining object/entity operations,
+the full game native API, includes/defines, segment loading,
 `for`, `switch`, `goto`, dynamic calls, events/delays, debugger, saved or cached
-programs and the full game scripts. String/float mixed conversions and
+programs and the full game scripts. Float-to-string conversion and string/float
 concatenation, string-left float comparison and legacy non-ASCII comparison
 rules also remain unsupported. Private Rust instructions are not a reader for
 the original compiled-program cache or a stable bytecode file format.
 
-The next integration step is object/attribute expressions and original native
-bindings, followed by original script event handlers. Full game startup and
+The [object/attribute subset](SCRIPT_OBJECTS.md) is now executable. The next
+integration step is original script event handlers and game bindings. Full game startup and
 gameplay remain separate work.
 
 ## Four-platform evidence, 2026-10-18

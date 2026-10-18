@@ -81,11 +81,13 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 84 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 97 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The separate [script source subset](SCRIPT_RUNTIME.md) adds executable functions,
 expressions, loops and native attribute bindings; these damage callbacks are not
 yet routed through script handlers.
+The [object/reference subset](SCRIPT_OBJECTS.md) can notify a native entity from
+script attribute assignments; its ship fixture is separate from collision dispatch.
 The generated ship fixture produces six `DoSailHole` and six `ShpSailDamage`
 callbacks for three shots per sail. A local audit of all 40 original ship roots
 checks 368 sails and 2,204 emitted events; every final per-sail event mask matches

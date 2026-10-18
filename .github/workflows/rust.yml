@@ -52,6 +52,8 @@ jobs:
         run: |
           cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
           python -c "import json; s=json.load(open('script-state.json')); assert s['script_runtime']=='bounded-source-subset'; assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['attribute_writes']==3; a=s['attributes']['children'][0]['children'][0]['children']; assert a[0]['name']=='rey_a1' and a[0]['children'][0]['children']==[{'name':'hd','value':'548','children':[]},{'name':'holes','value':'3','children':[]}]; assert a[1]['name']=='rey_b1' and a[1]['children'][0]['children']==[{'name':'hd','value':'274','children':[]}]"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/ship_attributes.c --report ship-script-state.json
+          python -c "import json; s=json.load(open('ship-script-state.json')); assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==7; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('hd','548'),('holes','3'),('hd','274'),('holes','3'),('damage','3.2500000'),('hd','1')]; r=s['script_ship']['children']; assert r[0]['value']=='19'; a=r[1]['children']; assert a[1]['value']=='3.2500000'; assert a[0]['children'][0]['children'][0]['children'][0]['value']=='548'; assert a[0]['children'][1]['children'][0]['children'][0]['value']=='274'"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -108,6 +110,7 @@ jobs:
           name: script-state-${{ matrix.os }}
           path: |
             script-state.json
+            ship-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

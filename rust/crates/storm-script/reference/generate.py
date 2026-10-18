@@ -1,17 +1,23 @@
 """Build numeric golden cases from unedited retained DATA methods.
 
 Only DATA storage/platform scaffolding is replaced. Original Convert, Set,
-arithmetic, comparisons and boolean methods are extracted verbatim. fmt and
-fast_float paths outside the tested subset throw, rather than supplying an
-invented oracle. No original game data, Rust executable or network is needed.
+arithmetic, comparisons and boolean methods are extracted verbatim. Supply the
+retained conanfile.py dependency fast_float/3.4.0 via --fast-float-include.
+Unported fmt concatenation throws. No game data or Rust executable is needed.
 """
 from pathlib import Path
 import hashlib
+import argparse
 import json
+import struct
 import subprocess
 import tempfile
 
 here = Path(__file__).resolve().parent
+parser=argparse.ArgumentParser()
+parser.add_argument('--fast-float-include',type=Path,required=True)
+args=parser.parse_args()
+assert (args.fast_float_include/'fast_float/fast_float.h').is_file()
 repo = next(p for p in here.parents if (p / "src/libs/core/src/data.cpp").is_file())
 data = (repo / "src/libs/core/src/data.cpp").read_text()
 tokens = (repo / "src/libs/core/src/token.h").read_text()
@@ -36,6 +42,7 @@ methods = [
     "bool DATA::Modul(DATA *pV)", "bool DATA::Plus(DATA *pV)",
     "bool DATA::Minus(DATA *pV)", "bool DATA::CompareAndSetResult(DATA *pV, S_TOKEN_TYPE op)",
     "bool DATA::BoolConvert()",
+    "DATA *DATA::GetVarPointer()",
 ]
 enum = extract(tokens, "enum S_TOKEN_TYPE") + ";\n"
 source = r'''
@@ -48,11 +55,9 @@ source = r'''
 #include <string>
 #include <stdexcept>
 #include "string_compare.hpp"
+#include <fast_float/fast_float.h>
 using std::isnan;
 std::string to_string(const char* s) {return s;}
-namespace fast_float {
-void from_chars(const char*, const char*, float&) {throw std::runtime_error("untested float string conversion");}
-}
 namespace fmt {
 std::string format(const char*, float) {throw std::runtime_error("untested float concatenation");}
 }
@@ -74,7 +79,7 @@ struct DATA {
     ATTRIBUTES* AttributesClass=nullptr;
     void Error(const char* s){throw std::runtime_error(s);}
     bool IsArray(){return bArray;}
-    DATA* GetVarPointer(){return this;}
+    DATA* GetVarPointer();
     S_TOKEN_TYPE GetType(){return Data_type;}
     bool Get(int32_t& n){n=lValue; return true;}
     void Set(int32_t);void Set(float);void Set(std::string);void Set(const char*);
@@ -94,7 +99,15 @@ void run(const char* op, char at, const char* av, char bt, const char* bv) {
     init(a,at,av);init(b,bt,bv);
     bool ok=true;
     std::string operation(op);
-    if(operation=="+")ok=a.Plus(&b);else if(operation=="-")ok=a.Minus(&b);
+    DATA original;
+    if(operation.rfind("ref_",0)==0){original=a;a.Data_type=VAR_REFERENCE;a.pReference=&original;operation=operation.substr(4);}
+    if(operation=="to_int")ok=a.Convert(VAR_INTEGER);
+    else if(operation=="to_float")ok=a.Convert(VAR_FLOAT);
+    else if(operation=="to_string")ok=a.Convert(VAR_STRING);
+    else if(operation=="attr_text") {
+        char buffer[128];snprintf(buffer,sizeof(buffer),"%.7f",a.fValue);a.Set(buffer);
+    }
+    else if(operation=="+")ok=a.Plus(&b);else if(operation=="-")ok=a.Minus(&b);
     else if(operation=="*")ok=a.Multiply(&b);else if(operation=="/")ok=a.Divide(&b);
     else if(operation=="%")ok=a.Modul(&b);else if(operation=="^")ok=a.Power(&b);
     else if(operation=="neg")ok=a.Inverse();else if(operation=="!")ok=a.Neg();
@@ -108,9 +121,10 @@ void run(const char* op, char at, const char* av, char bt, const char* bv) {
         a.CompareAndSetResult(&b,token);
     }
     if(!ok)throw std::runtime_error("unsupported oracle case");
-    if(a.Data_type==VAR_INTEGER)printf("i %d\n",a.lValue);
-    else if(a.Data_type==VAR_FLOAT){uint32_t n;memcpy(&n,&a.fValue,4);printf("f %u\n",n);}
-    else printf("s %s\n",a.sValue.c_str());
+    DATA* result=a.GetVarPointer();
+    if(result->Data_type==VAR_INTEGER)printf("i %d\n",result->lValue);
+    else if(result->Data_type==VAR_FLOAT){uint32_t n;memcpy(&n,&result->fValue,4);printf("f %u\n",n);}
+    else printf("s %s\n",result->sValue.c_str());
 }
 int main(){
 '''
@@ -144,6 +158,31 @@ for s in strings:
             cases.append({"a":["s",s],"b":["i",str(n)],"op":op})
         cases.append({"a":["i",str(n)],"b":["s",s],"op":"+"})
 
+prefixes=strings+["0", "-0", "1.9tail", " \t-37", "+.5", "-.5", ".5x", "1e2tail", "1e", "1e+",
+                 "1e999", "-1e999", "1e-999", "-1e-999", "inf", "-INFINITY", "nan", "NaN(payload)", "-nan",
+                 "3.141592653589793", "0.0000001", "16777217", "1,25", "0x1p2", "-2147483648", "-2147483649"]
+for text in prefixes:
+    for op in ['to_int','to_float']:
+        cases.append({'a':['s',text],'b':['i','0'],'op':op})
+for value in values:
+    cases.append({'a':value,'b':['i','0'],'op':'to_float'})
+    if value[0]=='i':cases.append({'a':value,'b':['i','0'],'op':'to_string'})
+seed=0x1942ea17
+bits=[0,0x80000000,1,0x7f7fffff,0x00800000,0x3f800000,0x497423f8,0x38d1b717]
+for _ in range(2048):
+    seed=(1664525*seed+1013904223)&0xffffffff
+    if seed&0x7f800000 != 0x7f800000:bits.append(seed)
+for raw in bits:
+    number=struct.unpack('<f',struct.pack('<I',raw))[0]
+    for op in ['attr_text']:
+        cases.append({'a':['f',str(number)],'b':['i','0'],'op':op})
+    if -2147483648<=number<=2147483647:
+        cases.append({'a':['f',str(number)],'b':['i','0'],'op':'to_int'})
+
+for index,case in enumerate(list(cases)):
+    if index%41==0 and case['op'] in ['+','-','*','/','%','^','neg','bool','to_int','to_float']:
+        cases.append({**case,'op':'ref_'+case['op']})
+
 literal = lambda value: json.dumps(value, ensure_ascii=True)
 for case in cases:
     a, b = case["a"], case["b"]
@@ -154,7 +193,7 @@ with tempfile.TemporaryDirectory(prefix="storm-script-reference-") as directory:
     (root / "reference.cpp").write_text(source)
     subprocess.run(["clang++", "-std=c++20", "-O0", "-Wno-switch", "-Wno-deprecated-declarations",
                     "-fsanitize=undefined", "-fno-sanitize-recover=all",
-                    "-I", str(repo / "src/libs/util/include"), str(root / "reference.cpp"),
+                    "-I", str(repo / "src/libs/util/include"), '-I',str(args.fast_float_include), str(root / "reference.cpp"),
                     "-o", str(root / "reference")], check=True)
     output = subprocess.check_output([str(root / "reference")], text=True).splitlines()
 assert len(output) == len(cases)
@@ -162,6 +201,8 @@ for case, line in zip(cases, output):
     kind, value = line.split(" ", 1)
     case["result"] = [kind, value if kind == "s" else int(value)]
 fixture = {"source":"retained src/libs/core/src/data.cpp methods", "methods":methods,
+           'fast_float_version':'3.4.0',
+           'fast_float_headers_sha256':hashlib.sha256(b''.join(p.read_bytes() for p in sorted((args.fast_float_include/'fast_float').glob('*.h')))).hexdigest(),
            "methods_sha256":hashlib.sha256("\n\n".join(extract(data,s) for s in methods).encode()).hexdigest(),
            "cases":cases}
 (here / "cases.json").write_text(json.dumps(fixture, separators=(",", ":")) + "\n")

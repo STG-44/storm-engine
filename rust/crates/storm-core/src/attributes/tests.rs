@@ -10,6 +10,35 @@ fn snapshot(store: &AttributeStore, id: AttributeId) -> Json {
 }
 
 #[test]
+fn replacing_contents_keeps_identity_and_parent_with_checked_overlap() -> Result<()> {
+    let mut store = AttributeStore::default();
+    let root = store.create_root()?;
+    let source = store.create_path(root, "source")?;
+    let leaf = store.create_path(source, "sails.hd")?;
+    store.set_value(leaf, Some("548"))?;
+    let destination = store.create_path(root, "Destination")?;
+    let old = store.create_path(destination, "old")?;
+    store.replace_with_copy(destination, source)?;
+    assert!(store.get(old).is_none());
+    assert_eq!(store.name(destination), Some("Destination"));
+    assert_eq!(store.get(destination).unwrap().parent(), Some(root));
+    let sails = store.child(destination, "sails").unwrap();
+    assert_eq!(store.get(sails).unwrap().parent(), Some(destination));
+    assert_eq!(store.value(sails, Some("hd")), Some("548"));
+    store.replace_with_copy(source, leaf)?;
+    assert_eq!(store.value(source, None), Some("548"));
+    assert!(store.get(leaf).is_none());
+    let mut chain = root;
+    for _ in 0..254 {
+        chain = store.create_attribute(chain, "deep", None)?;
+    }
+    let before = store.len();
+    assert!(store.replace_with_copy(chain, destination).is_err());
+    assert_eq!(store.len(), before);
+    Ok(())
+}
+
+#[test]
 fn trees_and_string_codes_match_retained_cpp_operations() -> Result<()> {
     let reference: Json = serde_json::from_str(include_str!("reference/cases.json"))?;
     for (case_index, case) in reference["cases"].as_array().unwrap().iter().enumerate() {
@@ -63,6 +92,10 @@ fn trees_and_string_codes_match_retained_cpp_operations() -> Result<()> {
                 "breaks" => json!(store.break_notifications()),
                 "names" => json!(store.name_count()),
                 "delete" => json!(store.delete_class(id(1), id(2))?),
+                "replace" => {
+                    store.replace_with_copy(id(1), id(2))?;
+                    Json::Null
+                }
                 "dword" => {
                     json!(store.set_dword(id(1), a[2].as_str(), a[3].as_u64().unwrap() as u32)?)
                 }

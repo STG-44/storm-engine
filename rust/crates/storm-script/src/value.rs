@@ -1,3 +1,4 @@
+use crate::objects::{AttributeReference, Object, Reference};
 use anyhow::{Result, bail, ensure};
 
 pub(crate) const MAX_STRING: usize = 4096;
@@ -7,6 +8,9 @@ pub enum Type {
     Int,
     Float,
     String,
+    Object,
+    Reference,
+    AReference,
     Void,
 }
 
@@ -15,6 +19,9 @@ pub enum Value {
     Int(i32),
     Float(f32),
     String(String),
+    Object(Object),
+    Reference(Reference),
+    AReference(Option<AttributeReference>),
     Void,
 }
 
@@ -42,6 +49,9 @@ impl Type {
             Self::Int => Value::Int(0),
             Self::Float => Value::Float(0.0),
             Self::String => Value::String(String::new()),
+            Self::Reference => Value::Reference(Reference::default()),
+            Self::AReference => Value::AReference(None),
+            Self::Object => unreachable!("objects require a world"),
             Self::Void => Value::Void,
         }
     }
@@ -53,6 +63,9 @@ impl Value {
             Self::Int(_) => Type::Int,
             Self::Float(_) => Type::Float,
             Self::String(_) => Type::String,
+            Self::Object(_) => Type::Object,
+            Self::Reference(_) => Type::Reference,
+            Self::AReference(_) => Type::AReference,
             Self::Void => Type::Void,
         }
     }
@@ -78,7 +91,7 @@ impl Value {
                         .count();
                 Ok(s[..end].parse().unwrap_or(0))
             }
-            Self::Void => bail!("void value in integer conversion"),
+            _ => bail!("non-scalar value in integer conversion"),
         }
     }
 
@@ -104,7 +117,7 @@ impl Value {
             Self::Int(v) => *v != 0,
             Self::Float(v) => *v != 0.0,
             Self::String(s) => !s.is_empty(),
-            Self::Void => bail!("void condition"),
+            _ => bail!("non-scalar condition"),
         })
     }
 
@@ -114,7 +127,7 @@ impl Value {
             Self::Float(v) => Self::Float(-v),
             // DATA::Inverse leaves non-numeric scalars unchanged.
             Self::String(_) => self,
-            Self::Void => bail!("void unary operand"),
+            _ => bail!("non-scalar unary operand"),
         })
     }
 

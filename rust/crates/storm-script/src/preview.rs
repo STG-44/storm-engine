@@ -1,23 +1,63 @@
 //! Explicit diagnostic bindings; these are not original game native functions.
-use crate::{Host, Value};
+use crate::{Host, Value, Variable, World};
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value as Json, json};
-use storm_core::{AttributeId, AttributeStore};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use storm_core::{AttributeId, AttributeStore, Entity, EntityId, EntityManager};
+
+#[derive(Default)]
+struct Notifications {
+    total: u64,
+    recent: VecDeque<Json>,
+}
+struct Observer(Rc<RefCell<Notifications>>);
+impl Entity for Observer {
+    fn attribute_changed(&mut self, store: &AttributeStore, changed: AttributeId) -> Result<u32> {
+        let mut records = self.0.borrow_mut();
+        records.total += 1;
+        if records.recent.len() == 256 {
+            records.recent.pop_front();
+        }
+        records.recent.push_back(
+            json!({"name":store.name(changed),"value":store.get(changed).and_then(|n|n.value())}),
+        );
+        Ok(0)
+    }
+}
 
 pub struct AttributeHost {
     attributes: AttributeStore,
     root: AttributeId,
     writes: u64,
+    world: World,
+    ship: Variable,
+    entities: EntityManager,
+    notifications: Rc<RefCell<Notifications>>,
+    ship_used: bool,
 }
 
 impl AttributeHost {
     pub fn new() -> Result<Self> {
         let mut attributes = AttributeStore::default();
         let root = attributes.create_root()?;
+        let world = World::default();
+        let notifications = Rc::new(RefCell::new(Notifications::default()));
+        let mut entities = EntityManager::default();
+        let entity =
+            entities.insert("script_attribute_observer", Observer(notifications.clone()))?;
+        let object = world.object(entity)?;
+        object
+            .root()
+            .inspect(|store, id| entities.bind_attributes(entity, store, Some(id)))??;
         Ok(Self {
             attributes,
             root,
             writes: 0,
+            ship: Variable::new(Value::Object(object)),
+            world,
+            entities,
+            notifications,
+            ship_used: false,
         })
     }
 
@@ -32,16 +72,50 @@ impl AttributeHost {
             Value::Float(n) => json!({"type":"float", "bits":n.to_bits()}),
             Value::String(s) => json!({"type":"string", "value":s}),
             Value::Void => json!({"type":"void"}),
+            value => json!({"type":format!("{:?}",value.kind()),"valid":value.resolved().is_ok()}),
         };
-        json!({"script_runtime":"bounded-source-subset", "original_game_scripts":false,
+        let mut report = json!({"script_runtime":"bounded-source-subset", "original_game_scripts":false,
             "result":result, "attribute_writes":self.writes,
-            "attributes":tree(&self.attributes,self.root)})
+            "attributes":tree(&self.attributes,self.root)});
+        if self.ship_used {
+            report["script_ship"] = self
+                .ship
+                .value()
+                .expect("host ship")
+                .attributes()
+                .expect("object")
+                .inspect(tree)
+                .expect("live ship");
+            let records = self.notifications.borrow();
+            report["ship_attribute_notifications"] = json!(records.total);
+            report["ship_attribute_changes"] = json!(records.recent);
+        }
+        report
     }
 }
 
 impl Host for AttributeHost {
+    fn world(&self) -> World {
+        self.world.clone()
+    }
+    fn attribute_changed(
+        &mut self,
+        entity: EntityId,
+        store: &AttributeStore,
+        changed: AttributeId,
+    ) -> Result<()> {
+        if entity != EntityId::INVALID {
+            self.entities
+                .notify_attribute_changed(entity, store, changed)?;
+        }
+        Ok(())
+    }
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         match (name, arguments) {
+            ("previewship", []) => {
+                self.ship_used = true;
+                Ok(self.ship.reference())
+            }
             ("previewsetattribute", [path, value]) => {
                 // Bound total host state as well as VM allocations.
                 let path = path.text()?;

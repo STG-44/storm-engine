@@ -45,6 +45,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Add the [native entity/message foundation and sail event observer](RUNTIME_FOUNDATION.md).
   - [x] Port the [native attribute tree and entity bindings](ATTRIBUTES.md); roundtrip sail masks through original character attribute paths.
   - [x] Add a bounded executable source subset with native attribute bindings ([scope](SCRIPT_RUNTIME.md)).
+  - [x] Add object/ref/aref expressions, first original attribute functions and entity notifications ([scope](SCRIPT_OBJECTS.md)).
   - [ ] Port remaining attribute encodings/conversions, complete script compilation/execution, delayed events and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
@@ -204,8 +205,9 @@ The [first executable script subset](SCRIPT_RUNTIME.md) compiles functions,
 expressions, conditions and loops to private native stack instructions. A
 GPU-free sail-mask fixture executes script calls and changes the ported attribute
 tree through explicit preview bindings. Scalar parity is checked against 5,675
-cases generated from retained C++ methods. Original game programs, object/ref
-syntax, native APIs and damage-event handlers remain pending.
+cases generated from retained C++ methods. That first milestone left object/ref
+syntax for the following [object/attribute integration](SCRIPT_OBJECTS.md).
+Original game programs, the full native API and damage-event handlers remain pending.
 
 The [script subset CI run](https://github.com/STG-44/storm-engine/actions/runs/39118509827)
 passes all four hosts for `a128f186`: 84 CPU tests, native builds and execution of

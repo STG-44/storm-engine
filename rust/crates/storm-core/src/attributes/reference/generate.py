@@ -58,6 +58,16 @@ cases = [
         ["get_dword", "r", "unset", 99], ["get_dword", "r", "blank", 99],
         ["get_dword", "r", "missing", 99], ["get_dword", "r", None, 0],
     ],
+    [
+        ["root", "source"], ["root", "destination"],
+        ["rename", "destination", "Destination"], ["value", "source", "source-value"],
+        ["create_path", "source", "leaf", "ship.sails.hd"], ["value", "leaf", "548"],
+        ["create", "destination", "old", "old", "old-value"],
+        ["break", "destination", True], ["break", "old", True],
+        ["replace", "destination", "source"], ["breaks"],
+        ["find", "destination", "new", "ship.sails.hd"], ["get", "destination", "old"],
+        ["replace", "destination", "destination"], ["value", "destination", "updated"], ["breaks"],
+    ],
 ]
 
 def literal(value):
@@ -90,6 +100,7 @@ def statement(op):
     if kind == "breaks": return 'number(changes);'
     if kind == "names": return 'number(codec->GetNum());'
     if kind == "delete": return f'boolean({node(a[0])}->DeleteAttributeClassX({node(a[1])}));'
+    if kind == "replace": return f'*{node(a[0])}={node(a[1])}->Copy(); null_result();'
     if kind == "dword": return f'boolean({node(a[0])}->SetAttributeUseDword({literal(a[1])},{a[2]}u));'
     if kind == "float": return f'boolean({node(a[0])}->SetAttributeUseFloat({literal(a[1])},static_cast<float>({a[2]})));'
     if kind == "get_dword": return f'number({node(a[0])}->GetAttributeAsDword({literal(a[1])},{a[2]}));'

@@ -20,6 +20,13 @@ functions, arithmetic, conditions and loops without a GPU. Its separate native
 attribute fixture writes and reads sail masks. Original game scripts and the
 preview's damage-event handlers are not yet connected to this runtime.
 
+[Object/ref/aref support](../docs/SCRIPT_OBJECTS.md) also executes original
+attribute syntax and internal attribute functions, with real entity notifications:
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/ship_attributes.c --report ship-script-state.json
+```
+
 ```sh
 cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
 ```

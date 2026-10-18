@@ -1,11 +1,16 @@
 //! Bounded source-language subset of Storm's retained stack VM.
 //! The private instruction format is not the original cached-program format.
+mod builtins;
 mod compile;
+mod conversions;
+mod objects;
 pub mod preview;
 mod value;
 
 use anyhow::{Context, Result, bail, ensure};
+pub use objects::{AttributeReference, Object, Reference, Variable, World};
 use std::collections::BTreeMap;
+use storm_core::{AttributeId, AttributeStore, EntityId};
 use value::Op;
 pub use value::{Type, Value};
 
@@ -13,6 +18,17 @@ pub use value::{Type, Value};
 /// supplies behavior; scripts have no implicit filesystem, network or FFI API.
 pub trait Host {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value>;
+    fn world(&self) -> World {
+        World::default()
+    }
+    fn attribute_changed(
+        &mut self,
+        _entity: EntityId,
+        _attributes: &AttributeStore,
+        _changed: AttributeId,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 impl Host for () {
@@ -56,6 +72,11 @@ enum Instruction {
     Push(Value),
     Load(usize),
     Store(usize),
+    StoreDynamic(usize),
+    MakeRef(usize, usize),
+    MakeARef(usize),
+    Attribute(usize, Vec<Access>, bool),
+    WriteAttribute,
     Increment(usize, bool),
     Binary(Op),
     Negate,
@@ -66,6 +87,17 @@ enum Instruction {
     Short(usize, bool),
     Call(String, usize),
     Return(bool),
+}
+enum Access {
+    Literal(String),
+    Dynamic(usize),
+}
+
+struct Execution<'a, H: Host> {
+    host: &'a mut H,
+    world: World,
+    limits: Limits,
+    fuel: u64,
 }
 
 pub(crate) fn spend(fuel: &mut u64) -> Result<()> {
@@ -94,28 +126,28 @@ impl Program {
         for value in arguments {
             value.validate()?;
         }
-        let mut fuel = limits.instructions;
-        self.invoke(
-            &name.to_ascii_lowercase(),
-            arguments,
+        let world = host.world();
+        let mut execution = Execution {
             host,
+            world,
             limits,
-            &mut fuel,
-            0,
-        )
+            fuel: limits.instructions,
+        };
+        self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
     }
 
     fn invoke(
         &self,
         name: &str,
         arguments: &[Value],
-        host: &mut impl Host,
-        limits: Limits,
-        fuel: &mut u64,
+        execution: &mut Execution<'_, impl Host>,
         depth: usize,
     ) -> Result<Value> {
-        spend(fuel)?;
-        ensure!(depth < limits.frames, "script call depth limit");
+        spend(&mut execution.fuel)?;
+        ensure!(depth < execution.limits.frames, "script call depth limit");
+        if builtins::signature(name).is_some() {
+            return builtins::call(name, arguments);
+        }
         let function = self
             .functions
             .get(name)
@@ -126,7 +158,8 @@ impl Program {
             function.parameters
         );
         if function.native {
-            let result = host
+            let result = execution
+                .host
                 .call(name, arguments)
                 .with_context(|| format!("native {name}"))?;
             result.validate()?;
@@ -136,10 +169,21 @@ impl Program {
             );
             return Ok(result);
         }
-        let mut locals: Vec<_> = function.locals.iter().map(|kind| kind.initial()).collect();
-        // Original argument type checks are disabled; DATA::Copy/Set also change
-        // local scalar type on assignment. Return types, however, are checked.
-        locals[..arguments.len()].clone_from_slice(arguments);
+        let locals = function
+            .locals
+            .iter()
+            .enumerate()
+            .map(|(i, kind)| -> Result<Variable> {
+                let value = if let Some(argument) = arguments.get(i) {
+                    argument.clone()
+                } else if *kind == Type::Object {
+                    Value::Object(execution.world.object(EntityId::INVALID)?)
+                } else {
+                    kind.initial()
+                };
+                Ok(Variable::new(value))
+            })
+            .collect::<Result<Vec<_>>>()?;
         let mut stack: Vec<Value> = Vec::new();
         let mut ip = 0;
         loop {
@@ -148,38 +192,65 @@ impl Program {
                 .get(ip)
                 .context("script reached invalid instruction")?;
             let result: Result<Option<Value>> = (|| {
-                spend(fuel)?;
+                spend(&mut execution.fuel)?;
                 ip += 1;
                 let pop =
                     |stack: &mut Vec<Value>| stack.pop().context("script operand stack underflow");
                 match &located.op {
                     Instruction::Push(value) => stack.push(value.clone()),
-                    Instruction::Load(index) => stack.push(locals[*index].clone()),
-                    Instruction::Store(index) => {
+                    Instruction::Load(index) => stack.push(locals[*index].load()?),
+                    Instruction::Store(index) | Instruction::StoreDynamic(index) => {
                         let v = pop(&mut stack)?;
-                        ensure!(v != Value::Void, "void assignment");
-                        locals[*index] = v;
+                        locals[*index].assign(v, matches!(located.op, Instruction::Store(_)))?;
+                    }
+                    Instruction::MakeRef(destination, source) => {
+                        locals[*destination].bind(&locals[*source])?
+                    }
+                    Instruction::MakeARef(destination) => {
+                        let attribute = pop(&mut stack)?.attributes()?;
+                        locals[*destination].bind_attribute(attribute)?;
+                    }
+                    Instruction::Attribute(index, path, create) => {
+                        let base = locals[*index].value()?.attributes()?;
+                        let segments = path
+                            .iter()
+                            .map(|access| -> Result<_> {
+                                Ok(match access {
+                                    Access::Literal(s) => (s.clone(), false),
+                                    Access::Dynamic(i) => (locals[*i].load()?.path_text()?, true),
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        let attribute = base.walk(&segments, *create)?;
+                        stack.push(if *create {
+                            Value::AReference(Some(attribute))
+                        } else {
+                            Value::String(attribute.value()?)
+                        });
+                    }
+                    Instruction::WriteAttribute => {
+                        let value = pop(&mut stack)?.attribute_text()?;
+                        let attribute = pop(&mut stack)?.attributes()?;
+                        attribute.write(&value, execution.host)?;
                     }
                     Instruction::Increment(index, decrement) => {
-                        let Value::Int(value) = &mut locals[*index] else {
-                            bail!("increment requires integer")
-                        };
-                        *value = value.wrapping_add(if *decrement { -1 } else { 1 });
+                        locals[*index].increment(*decrement)?;
                     }
                     Instruction::Binary(op) => {
                         let rhs = pop(&mut stack)?;
-                        let mut lhs = pop(&mut stack)?;
-                        if matches!(op, Op::And | Op::Or) {
-                            lhs = Value::Int(i32::from(lhs.truth()?));
-                        }
-                        stack.push(lhs.binary(*op, rhs, fuel)?);
+                        let lhs = pop(&mut stack)?;
+                        stack.push(lhs.apply_binary(*op, rhs, &mut execution.fuel)?);
                     }
                     Instruction::Negate => {
                         let v = pop(&mut stack)?;
-                        stack.push(v.negate()?);
+                        stack.push(v.apply_negate()?);
                     }
                     Instruction::Not => {
                         let v = pop(&mut stack)?;
+                        ensure!(
+                            !matches!(v, Value::Reference(_)),
+                            "logical negation on ref is invalid in DATA::Neg"
+                        );
                         stack.push(v.not()?);
                     }
                     Instruction::Drop => {
@@ -187,7 +258,7 @@ impl Program {
                     }
                     Instruction::Jump(target) => ip = *target,
                     Instruction::JumpFalse(target) => {
-                        if pop(&mut stack)?.integer()? == 0 {
+                        if pop(&mut stack)?.condition_integer()? == 0 {
                             ip = *target;
                         }
                     }
@@ -195,15 +266,15 @@ impl Program {
                         let value = stack
                             .last_mut()
                             .context("script condition stack underflow")?;
-                        if (value.integer()? != 0) == *when_true {
-                            *value = Value::Int(i32::from(value.truth()?));
+                        if (value.condition_integer()? != 0) == *when_true {
+                            *value = value.bool_convert()?;
                             ip = *target;
                         }
                     }
                     Instruction::Call(callee, count) => {
                         ensure!(stack.len() >= *count, "script argument stack underflow");
                         let args = stack.split_off(stack.len() - count);
-                        let result = self.invoke(callee, &args, host, limits, fuel, depth + 1)?;
+                        let result = self.invoke(callee, &args, execution, depth + 1)?;
                         stack.push(result);
                     }
                     Instruction::Return(value) => {
@@ -226,7 +297,10 @@ impl Program {
                         return Ok(Some(result));
                     }
                 }
-                ensure!(stack.len() <= limits.stack, "script operand stack limit");
+                ensure!(
+                    stack.len() <= execution.limits.stack,
+                    "script operand stack limit"
+                );
                 Ok(None)
             })();
             if let Some(value) =
@@ -238,5 +312,7 @@ impl Program {
     }
 }
 
+#[cfg(test)]
+mod object_tests;
 #[cfg(test)]
 mod tests;

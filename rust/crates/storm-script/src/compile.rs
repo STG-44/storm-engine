@@ -1,4 +1,4 @@
-use crate::{Function, Instruction, Located, Program, Type, Value, value::Op};
+use crate::{Access, Function, Instruction, Located, Program, Type, Value, builtins, value::Op};
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeMap;
 
@@ -75,6 +75,15 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
                 p += 1;
             }
             let floating = p < bytes.len() && bytes[p] == b'.';
+            if floating
+                && bytes
+                    .get(p + 1)
+                    .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+            {
+                return Err(anyhow::anyhow!(
+                    "{line}:{column}: numeric attribute names require a dynamic path"
+                ));
+            }
             if floating {
                 p += 1;
                 while p < bytes.len() && bytes[p].is_ascii_digit() {
@@ -109,7 +118,7 @@ fn lex(source: &str) -> Result<Vec<Lexeme>> {
                 p += 2;
             } else {
                 ensure!(
-                    b"{}();,+-*/%^=!<>".contains(&bytes[p]),
+                    b"{}();.,+-*/%^=!<>".contains(&bytes[p]),
                     "{line}:{column}: unsupported character"
                 );
                 p += 1;
@@ -175,6 +184,10 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
         let native = c.take("native");
         let returns = c.kind()?;
         let name = c.word()?;
+        ensure!(
+            builtins::signature(&name).is_none(),
+            "builtin function cannot be redeclared: {name}"
+        );
         ensure!(!functions.contains_key(&name), "duplicate function {name}");
         c.expect("(")?;
         let mut parameters = 0;
@@ -213,18 +226,25 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
     for (name, function) in &functions {
         for instruction in &function.code {
             if let Instruction::Call(callee, arguments) = &instruction.op {
-                let target = functions.get(callee).with_context(|| {
-                    format!(
-                        "{name} {}:{}: undeclared function {callee}",
-                        instruction.line, instruction.column
-                    )
-                })?;
+                let expected = if let Some((count, _)) = builtins::signature(callee) {
+                    count
+                } else {
+                    functions
+                        .get(callee)
+                        .with_context(|| {
+                            format!(
+                                "{name} {}:{}: undeclared function {callee}",
+                                instruction.line, instruction.column
+                            )
+                        })?
+                        .parameters
+                };
                 ensure!(
-                    *arguments == target.parameters,
+                    *arguments == expected,
                     "{name} {}:{}: {callee} expects {} arguments, got {arguments}",
                     instruction.line,
                     instruction.column,
-                    target.parameters
+                    expected
                 );
             }
         }
@@ -282,6 +302,12 @@ impl Compiler {
             Type::Float
         } else if self.take("string") {
             Type::String
+        } else if self.take("object") {
+            Type::Object
+        } else if self.take("ref") {
+            Type::Reference
+        } else if self.take("aref") {
+            Type::AReference
         } else if self.take("void") {
             Type::Void
         } else {
@@ -353,6 +379,33 @@ impl Compiler {
         if self.take(";") {
             return Ok(());
         }
+        if self.is("makeref") || self.is("makearef") {
+            let attribute = self.take("makearef");
+            if !attribute {
+                self.expect("makeref")?;
+            }
+            self.expect("(")?;
+            let destination = self.variable()?;
+            self.expect(",")?;
+            let source = self.variable()?;
+            if attribute {
+                ensure!(
+                    matches!(self.types[destination], Type::Reference | Type::AReference),
+                    "makearef requires aref/ref destination"
+                );
+                let path = self.path()?;
+                self.emit(Instruction::Attribute(source, path, true));
+                self.emit(Instruction::MakeARef(destination));
+            } else {
+                ensure!(
+                    self.types[destination] == Type::Reference,
+                    "makeref requires ref destination"
+                );
+                self.emit(Instruction::MakeRef(destination, source));
+            }
+            self.expect(")")?;
+            return self.expect(";");
+        }
         if self.take("return") {
             let value = !self.is(";");
             if value {
@@ -414,7 +467,7 @@ impl Compiler {
             }
             return Ok(());
         }
-        if ["int", "bool", "float", "string"]
+        if ["int", "bool", "float", "string", "object", "ref", "aref"]
             .iter()
             .any(|s| self.is(s))
         {
@@ -435,6 +488,15 @@ impl Compiler {
         if let Token::Word(name) = self.current() {
             let name = name.clone();
             let next = &self.tokens[self.p + 1].token;
+            if matches!(next, Token::Symbol(s) if s == ".") {
+                let index = self.variable()?;
+                let path = self.path()?;
+                self.emit(Instruction::Attribute(index, path, true));
+                self.expect("=")?;
+                self.expression(1)?;
+                self.emit(Instruction::WriteAttribute);
+                return self.expect(";");
+            }
             if matches!(next, Token::Symbol(s) if ["=", "+=", "-=", "*=", "/=", "++", "--"].contains(&s.as_str()))
             {
                 let index = *self
@@ -465,7 +527,11 @@ impl Compiler {
                     if let Some(op) = op {
                         self.emit(Instruction::Binary(op));
                     }
-                    self.emit(Instruction::Store(index));
+                    self.emit(if op.is_some() {
+                        Instruction::StoreDynamic(index)
+                    } else {
+                        Instruction::Store(index)
+                    });
                 }
                 return self.expect(";");
             }
@@ -496,6 +562,33 @@ impl Compiler {
             "^" => (Op::Pow, 5),
             _ => return None,
         })
+    }
+    fn variable(&mut self) -> Result<usize> {
+        let name = self.word()?;
+        self.locals
+            .get(&name)
+            .copied()
+            .with_context(|| format!("{}", self.error("undeclared local")))
+    }
+    fn path(&mut self) -> Result<Vec<Access>> {
+        let mut result = Vec::new();
+        while self.take(".") {
+            ensure!(result.len() < 128, "attribute expression depth limit");
+            let access = if self.take("(") {
+                let index = self.variable()?;
+                self.expect(")")?;
+                Access::Dynamic(index)
+            } else {
+                let Token::Word(name) = self.current() else {
+                    return Err(self.error("expected attribute word or dynamic variable"));
+                };
+                let name = name.clone();
+                self.p += 1;
+                Access::Literal(name)
+            };
+            result.push(access);
+        }
+        Ok(result)
     }
     fn expression(&mut self, minimum: u8) -> Result<()> {
         self.enter()?;
@@ -573,7 +666,12 @@ impl Compiler {
                 .locals
                 .get(&name)
                 .with_context(|| format!("{}", self.error("undeclared local")))?;
-            self.emit(Instruction::Load(index));
+            if self.is(".") {
+                let path = self.path()?;
+                self.emit(Instruction::Attribute(index, path, false));
+            } else {
+                self.emit(Instruction::Load(index));
+            }
         }
         Ok(())
     }

@@ -405,6 +405,38 @@ impl AttributeStore {
         }
         Ok(root)
     }
+    /// Implements `*destination = source->Copy()`: keep destination identity,
+    /// name and parent, replace value/children, and clear copied break flags.
+    pub fn replace_with_copy(
+        &mut self,
+        destination: AttributeId,
+        source: AttributeId,
+    ) -> Result<()> {
+        ensure!(
+            self.get(destination).is_some(),
+            "invalid attribute destination"
+        );
+        let mut stack = vec![(source, self.depth(destination)?)];
+        while let Some((id, depth)) = stack.pop() {
+            ensure!(depth <= MAX_DEPTH, "attribute depth limit exceeded");
+            let node = self
+                .get(id)
+                .ok_or_else(|| anyhow!("invalid attribute source"))?;
+            stack.extend(node.children.iter().map(|id| (*id, depth + 1)));
+        }
+        // Snapshot before deletion also handles self-copy and overlapping trees.
+        let temporary = self.copy(source)?;
+        self.delete_class(destination, destination)?;
+        let copied = self.nodes.remove(&temporary).expect("copied root");
+        for child in &copied.children {
+            self.nodes.get_mut(child).expect("copied child").parent = Some(destination);
+        }
+        let target = self.nodes.get_mut(&destination).expect("destination");
+        target.value = copied.value;
+        target.children = copied.children;
+        target.break_enabled = false;
+        Ok(())
+    }
     /// DeleteAttributeClassX(root, root) clears children, keeps the root/value,
     /// and returns false. Deleting a proper descendant returns true.
     pub fn delete_class(&mut self, root: AttributeId, target: AttributeId) -> Result<bool> {

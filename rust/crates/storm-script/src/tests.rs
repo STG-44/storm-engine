@@ -48,7 +48,7 @@ fn strings_are_raw_and_ascii_comparisons_ignore_case() -> Result<()> {
 }
 
 #[test]
-fn functions_loops_case_and_dynamic_local_values() -> Result<()> {
+fn functions_loops_case_and_assignment_conversions() -> Result<()> {
     let source = r#"
     /* Forward call and function-scope locals. */
     int MAIN() { return SuM(10); }
@@ -60,7 +60,7 @@ fn functions_loops_case_and_dynamic_local_values() -> Result<()> {
             if (n == 2) break;
             result += n;
         }
-        float value;
+        int value;
         value = result;
         return value;
     }"#;
@@ -245,15 +245,37 @@ fn scalars_match_unedited_retained_cpp_methods() -> Result<()> {
         }
     };
     for (index, case) in fixture["cases"].as_array().unwrap().iter().enumerate() {
-        let lhs = input(&case["a"]);
+        let mut lhs = input(&case["a"]);
         let rhs = input(&case["b"]);
-        let operation = case["op"].as_str().unwrap();
+        let mut operation = case["op"].as_str().unwrap();
+        let reference = operation.strip_prefix("ref_");
+        let variable = Variable::new(lhs.clone());
+        if let Some(op) = reference {
+            lhs = variable.reference();
+            operation = op;
+        }
         let mut fuel = 10000;
         let actual = match operation {
-            "neg" => lhs.negate()?,
+            "to_int" => {
+                if let Value::Reference(r) = lhs {
+                    r.convert(Type::Int)?
+                } else {
+                    lhs.convert(Type::Int)?
+                }
+            }
+            "to_float" => {
+                if let Value::Reference(r) = lhs {
+                    r.convert(Type::Float)?
+                } else {
+                    lhs.convert(Type::Float)?
+                }
+            }
+            "to_string" => lhs.convert(Type::String)?,
+            "attr_text" => Value::String(lhs.attribute_text()?),
+            "neg" => lhs.apply_negate()?,
             "!" => lhs.not()?,
-            "bool" => Value::Int(i32::from(lhs.truth()?)),
-            _ => lhs.binary(
+            "bool" => lhs.bool_convert()?,
+            _ => lhs.apply_binary(
                 match operation {
                     "+" => Op::Add,
                     "-" => Op::Sub,
@@ -273,12 +295,19 @@ fn scalars_match_unedited_retained_cpp_methods() -> Result<()> {
                 &mut fuel,
             )?,
         };
+        let actual = actual.resolved()?;
+        if reference.is_some() {
+            match (variable.value()?, &actual) {
+                (Value::Float(a), Value::Float(b)) => assert_eq!(a.to_bits(), b.to_bits()),
+                (a, b) => assert_eq!(&a, b, "reference case {index}"),
+            }
+        }
         let expected = &case["result"];
         let actual = match actual {
             Value::Int(n) => serde_json::json!(["i", n]),
             Value::Float(n) => serde_json::json!(["f", n.to_bits()]),
             Value::String(s) => serde_json::json!(["s", s]),
-            Value::Void => unreachable!(),
+            _ => unreachable!(),
         };
         assert_eq!(&actual, expected, "original C++ case {index}: {case}");
     }
