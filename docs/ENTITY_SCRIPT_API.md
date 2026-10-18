@@ -72,3 +72,29 @@ registered class factory, pre-Init registration and failure cleanup; those are
 the next lifecycle step. `SendMessage` still needs the original 64-bit pointer
 result and additional VM/message bindings. None of these three functions,
 original ship classes, or complete commercial game startup is claimed here.
+
+## Four-platform evidence, 2026-10-19
+
+Code `bc8efb677da327d0b92d8365489c74b51c06e53f` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39173977578) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39173974555):
+177 CPU tests, including 100 script tests, formatting, Clippy with warnings
+denied, native builds and all eight standalone script scenarios. Verified Rust
+host triples are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`. Linux also passes all
+13 separately enabled software Vulkan GPU tests and the native-window fixtures.
+Physical Windows/macOS GPU coverage remains pending.
+
+Four downloaded script-state ZIP archives have verified SHA-256 digests. All
+32 complete parsed JSON reports match local results, including the new
+entity lifecycle scenario. All seven prior reports remain unchanged. The new
+report has three notifications and retains suppressed writes; its original
+ship alias reports invalid after deletion through a copied object.
+
+Locally, the retained C++ binding oracle passes all 32 sequences / 560 snapshots
+under UBSan. All 40 original ship roots and 368 sail masks pass through 2,204
+handlers, 1,105 notifications and 1,099 native damage callbacks. All 80 complete
+layout/event reports equal the preceding phase. The generated ship presents
+three native Metal frames. Commercial resources and their reports stay outside
+Git. These checks establish this API subset and preserve the ship preview;
+original gameplay and class factories remain pending.

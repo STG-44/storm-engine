@@ -91,8 +91,8 @@ bindings. Attribute writes start with notifications enabled in each runtime.
 
 Still pending: pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
-attribute assignments, numeric literal attribute segments, includes/defines,
-static event declarations and complete original game programs. Float-to-string `gcvt`
+attribute assignments, numeric literal attribute segments and complete original
+game programs. Float-to-string `gcvt`
 conversion remains unsupported, including float ref values assigned directly
 to attributes and floating dynamic path variables. Scalar float attribute
 assignment uses its separate original seven-decimal path. There is no new save
@@ -100,7 +100,9 @@ format, compiled-program cache compatibility, or complete gameplay claim.
 
 ## Verification
 
-Local checks cover 97 CPU tests, including 23 script tests. The scalar golden
+The initial object/reference phase covered 97 CPU tests, including 23 script tests.
+Current entity bindings and cross-platform totals are recorded in the
+[entity API evidence](ENTITY_SCRIPT_API.md#four-platform-evidence-2026-10-19). The scalar golden
 fixture now has 9,213 retained-C++ scalar/reference/conversion and attribute
 format cases. `DATA::GetVarPointer` and the other retained method bodies are
 compiled unedited under UndefinedBehaviorSanitizer. Decimal parsing uses the

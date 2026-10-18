@@ -49,7 +49,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Bind `IsEntity`, `DeleteClass` and persistent `EntityUpdate` ([scope](ENTITY_SCRIPT_API.md)); factories/Init and `SendMessage` remain pending.
   - [x] Execute [immediate script handlers for sail damage](SCRIPT_EVENTS.md).
   - [x] Add [nested calls and the original frame-driven event queue](SCHEDULED_EVENTS.md).
-  - [ ] Port remaining attribute encodings/conversions, static handlers, complete script compilation/execution and game handlers.
+  - [ ] Port remaining attribute encodings/conversions, cached script programs, complete script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
 
@@ -339,3 +339,18 @@ also passes 13 software Vulkan GPU tests and native windows. All twenty-eight
 downloaded source reports match local JSON, with four ZIP digests verified.
 The complete 40-ship audit remains unchanged and the generated local ship
 presents three Metal frames. See [ClearEvents evidence](CLEAR_EVENTS.md#four-platform-evidence-2026-10-19).
+
+
+[Script entity bindings](ENTITY_SCRIPT_API.md) add `IsEntity`, `DeleteClass` and
+persistent `EntityUpdate`, including pending deletion callbacks and checked
+64-bit identity through objects/refs/arefs. The retained native/DATA/MOVE oracle
+checks 32 sequences / 560 snapshots. Factories/Init, script creation and
+`SendMessage` are the next lifecycle work.
+
+The [entity API CI run](https://github.com/STG-44/storm-engine/actions/runs/39173977578)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39173974555)
+pass all four hosts for `bc8efb67`: 177 CPU tests, including 100 script tests,
+plus all 13 explicit Linux software Vulkan GPU tests. Four ZIP digests and all
+32 complete standalone fixture reports are verified against local results.
+The seven preceding reports and all 80 resource-dependent fleet reports remain
+unchanged. See [scope and evidence](ENTITY_SCRIPT_API.md#four-platform-evidence-2026-10-19).
