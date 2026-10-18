@@ -291,3 +291,14 @@ An independent source-registration oracle runs unedited retained lexer/tables
 and extracted compiler include/define/append bodies in 22 cases under UBSan.
 Dynamic segment/native-library loading and complete original programs remain
 pending.
+
+
+The [source-loading CI run](https://github.com/STG-44/storm-engine/actions/runs/39167565014)
+and its [push run](https://github.com/STG-44/storm-engine/actions/runs/39167561073)
+pass all four hosts for `8def27a1`: 146 CPU tests, including 69 script tests,
+formatting, Clippy, native builds and five source fixtures. Linux additionally
+passes 13 software Vulkan GPU tests and native windows. All twenty downloaded
+source reports match local JSON, with four ZIP digests verified. The 22-case
+retained-C++ registration oracle includes binary64-to-binary32 literal rounding.
+The complete 40-ship audit remains unchanged, and the local generated ship
+presents three Metal frames. See [source-loading evidence](SCRIPT_SOURCES.md#four-platform-evidence-2026-10-19).

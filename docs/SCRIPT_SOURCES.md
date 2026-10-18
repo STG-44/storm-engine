@@ -60,7 +60,8 @@ object Characters[SHIP_COUNT];
 ```
 
 Defines store a single integer, float or string literal. Names are ASCII
-case-insensitive and redefinition fails. An optional semicolon is accepted. Decimal float literals use the retained
+case-insensitive and redefinition fails. An optional semicolon is accepted.
+Decimal float literals use the retained
 `atof` path: binary64 parsing followed by binary32 rounding, including rare
 values close to a binary32 midpoint.
 Expression reads first resolve local/global variables and then constant names;
@@ -95,8 +96,8 @@ The result, complete attribute tree, three ordered entity notifications and
 event counters match the preceding single-file global-character fixture. The
 CLI adds only `script_sources` for multi-file inputs, leaving single-file report
 shapes unchanged. This is newly written diagnostic source; it is not an original
-commercial game program. Commercial program sources are not included in this repository; complete
-original game startup remains pending.
+commercial game program. Commercial program sources are not included in this
+repository; complete original game startup remains pending.
 
 `reference/sources/generate.py` copies six retained TOKEN, STRINGS_LIST and
 S_DEFTAB source/header files unedited. It extracts the compiler's AppendProgram
@@ -114,3 +115,35 @@ deallocation. Golden data records core source and extracted-body hashes. Source
 tests also cover constant shadowing, array-dimension chronology, errors and file
 locations, path/case rules, include cycles, aggregate bounds and native queued
 entity writes. C++ is only needed to regenerate golden data.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `8def27a1c86042f443d9cb8c1aeaa30663fc80da` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39167565014)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39167561073)
+on Ubuntu, Windows, macOS Intel and macOS Apple Silicon. All eight jobs succeed.
+Each host runs 146 CPU tests, including 69 script tests, formatting, Clippy with
+warnings denied, native builds and five executable source fixtures. Linux also
+passes 13 explicit software Vulkan GPU tests and native-window fixtures.
+
+All four push-workflow script-state archives were downloaded and their ZIP
+SHA-256 digests verified. All twenty complete JSON reports match local results.
+The four preceding source reports are unchanged. The new four-file report adds
+only the normalized `script_sources` list to the global-character fixture's
+complete state. Its canonical sorted compact JSON SHA-256 is
+`1ce5bca0ac9c84116ca63ce4421060361fcbcb2aa57c2bb61a84ab6dfc04ec76`.
+
+The retained-C++ registration harness generates 22 cases under fail-fast UBSan:
+18 accepted graphs and four duplicate-define failures. These include decimal
+literals whose direct binary32 parsing differs from the original binary64 then
+binary32 rounding. All corresponding numeric values and float bits agree.
+
+A local resource-dependent audit passes all 40 original ship roots, restoring
+368 sail masks through 2,204 script handlers and 1,105 attribute notifications.
+All 80 full event/layout JSON reports match the preceding phase. The generated
+ship presents three frames through native Metal on the local Intel Mac. Hosted
+Windows/macOS checks establish CPU/build behavior; physical GPU coverage for
+those additional machines remains pending. Commercial resources and local
+resource-dependent reports remain outside Git. Full original game startup and
+dynamic/native library loading remain pending.
