@@ -668,21 +668,12 @@ impl ApplicationHandler for Application {
                             pose,
                         ) {
                             Ok(hits) => {
-                                if let Err(error) = self
-                                    .damage_events
-                                    .shot(
-                                        asset,
-                                        &hits,
-                                        self.options.shot_owner,
-                                        self.options.ship_character,
-                                    )
-                                    .and_then(|()| {
-                                        self.options
-                                            .event_report
-                                            .as_ref()
-                                            .map_or(Ok(()), |path| self.damage_events.write(path))
-                                    })
-                                {
+                                if let Err(error) = self.damage_events.shot(
+                                    asset,
+                                    &hits,
+                                    self.options.shot_owner,
+                                    self.options.ship_character,
+                                ) {
                                     self.fail(event_loop, error);
                                     return;
                                 }
@@ -698,6 +689,21 @@ impl ApplicationHandler for Application {
                         ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds)
                     };
                     if changed {
+                        let update_attributes = if code == KeyCode::Digit0 {
+                            self.damage_events
+                                .clear_sail_damage(self.options.ship_character)
+                        } else {
+                            Ok(())
+                        };
+                        if let Err(error) = update_attributes.and_then(|()| {
+                            self.options.event_report.as_ref().map_or(Ok(()), |path| {
+                                self.damage_events
+                                    .write(path, asset, self.options.ship_character)
+                            })
+                        }) {
+                            self.fail(event_loop, error);
+                            return;
+                        }
                         if let Scene::Model(scene) = &mut state.scene
                             && let Err(error) = scene.set_ship_state(state.ship_state.clone())
                         {
@@ -911,7 +917,11 @@ fn main() -> Result<()> {
         );
     }
     if let Some(path) = &options.event_report {
-        damage_events.write(path)?;
+        damage_events.write(
+            path,
+            asset.as_deref().expect("model required by CLI"),
+            options.ship_character,
+        )?;
     }
     if let Some(path) = &options.rig_report {
         let asset = asset.as_ref().expect("model required by CLI");

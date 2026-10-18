@@ -1,4 +1,4 @@
-use crate::EntityId;
+use crate::{AttributeId, EntityId};
 use anyhow::{Result, bail, ensure};
 
 /// Owned, platform-independent subset of MESSAGE::MessageParam.
@@ -11,6 +11,7 @@ pub enum Value {
     Float(f32),
     Double(f64),
     Entity(EntityId),
+    Attribute(AttributeId),
     Vector([f32; 3]),
     String(String),
 }
@@ -25,6 +26,7 @@ impl Value {
             Self::Float(_) => 'f',
             Self::Double(_) => 'd',
             Self::Entity(_) => 'i',
+            Self::Attribute(_) => 'a',
             Self::Vector(_) => 'c',
             Self::String(_) => 's',
         }
@@ -46,8 +48,11 @@ impl Message {
         );
         for (index, (code, value)) in format.chars().zip(&values).enumerate() {
             ensure!(
-                matches!(code, 'b' | 'w' | 'l' | 'u' | 'f' | 'd' | 'i' | 'c' | 's'),
-                "unsupported message format {code:?} at {index}; pointer formats require a runtime handle registry"
+                matches!(
+                    code,
+                    'b' | 'w' | 'l' | 'u' | 'f' | 'd' | 'i' | 'a' | 'c' | 's'
+                ),
+                "unsupported message format {code:?} at {index}; raw pointers and script-variable references are not ported"
             );
             ensure!(
                 code == value.format(),
@@ -136,6 +141,13 @@ impl Message {
     pub fn vector(&mut self) -> Result<[f32; 3]> {
         match self.read('c')? {
             Value::Vector(v) => Ok(*v),
+            _ => unreachable!(),
+        }
+    }
+    /// Resolve this handle through AttributeStore before accessing its node.
+    pub fn attribute(&mut self) -> Result<AttributeId> {
+        match self.read('a')? {
+            Value::Attribute(v) => Ok(*v),
             _ => unreachable!(),
         }
     }

@@ -151,7 +151,7 @@ fn owned_message_preserves_widths_and_failed_reads_do_not_advance() -> Result<()
     assert_eq!(m.byte()?, 255);
     assert!(Message::new("l", vec![Value::Float(1.)]).is_err());
     assert!(Message::new("ll", vec![Value::Long(1)]).is_err());
-    for code in ["a", "e", "p", "?", "ф"] {
+    for code in ["e", "p", "?", "ф"] {
         assert!(Message::new(code, vec![Value::Long(0)]).is_err());
     }
     assert!(Message::new("", vec![])?.long().is_err());

@@ -1,4 +1,4 @@
-use crate::Message;
+use crate::{AttributeId, AttributeStore, Message};
 use anyhow::{Result, anyhow, ensure};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -31,6 +31,13 @@ pub trait Entity {
     fn process_message(&mut self, _message: &mut Message) -> Result<u64> {
         Ok(0)
     }
+    fn attribute_changed(
+        &mut self,
+        _attributes: &AttributeStore,
+        _changed: AttributeId,
+    ) -> Result<u32> {
+        Ok(0)
+    }
 }
 
 /// MakeHashValue from core/include/vma.hpp, for ASCII engine class names.
@@ -54,6 +61,7 @@ struct Entry {
     hash: u32,
     valid: bool,
     entity: Box<dyn Entity>,
+    attributes: Option<AttributeId>,
 }
 #[derive(Default)]
 struct Layer {
@@ -94,6 +102,7 @@ impl EntityManager {
             hash,
             valid: true,
             entity: Box::new(entity),
+            attributes: None,
         });
         if self.free.pop().is_some() {
             self.entries[index] = entry;
@@ -123,6 +132,58 @@ impl EntityManager {
     }
     pub fn class_code(&self, id: EntityId) -> Option<u32> {
         self.entry(id).map(|e| e.hash)
+    }
+    /// Entity::AttributesPointer borrows an externally owned root/subtree. As
+    /// with the original attribute API, pending deletion can still access it.
+    pub fn bind_attributes(
+        &mut self,
+        id: EntityId,
+        store: &AttributeStore,
+        attributes: Option<AttributeId>,
+    ) -> Result<bool> {
+        ensure!(
+            attributes.is_none_or(|root| store.get(root).is_some()),
+            "invalid attribute binding"
+        );
+        let Some(entry) = self.entry_mut(id) else {
+            return Ok(false);
+        };
+        entry.attributes = attributes;
+        Ok(true)
+    }
+    pub fn attribute_root(&self, id: EntityId) -> Option<AttributeId> {
+        self.entry(id)?.attributes
+    }
+    /// Source Entity_SetAttribute addresses a literal child name and does not
+    /// automatically call AttributeChanged. Keep the zero-based return index.
+    pub fn set_attribute(
+        &mut self,
+        id: EntityId,
+        store: &mut AttributeStore,
+        name: &str,
+        value: Option<&str>,
+    ) -> Result<Option<usize>> {
+        let Some(root) = self.attribute_root(id) else {
+            return Ok(None);
+        };
+        Ok(Some(store.set_attribute(root, name, value)?))
+    }
+    pub fn notify_attribute_changed(
+        &mut self,
+        id: EntityId,
+        store: &AttributeStore,
+        changed: AttributeId,
+    ) -> Result<u32> {
+        // CoreImpl::Entity_AttributeChanged uses the teardown lookup, rather
+        // than the safe lookup used by ordinary entity messages.
+        let Some(entry) = self.entry_mut(id) else {
+            return Ok(0);
+        };
+        ensure!(
+            store.get(changed).is_some(),
+            "invalid changed attribute handle"
+        );
+        entry.entity.attribute_changed(store, changed)
     }
     pub fn ids(&self, class: &str) -> Vec<EntityId> {
         let hash = class_hash(class);

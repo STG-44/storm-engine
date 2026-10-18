@@ -43,7 +43,8 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [ ] Port animation, input, audio, and platform file handling.
 - [ ] Port the script runtime, entity messages, and game-facing API.
   - [x] Add the [native entity/message foundation and sail event observer](RUNTIME_FOUNDATION.md).
-  - [ ] Port attributes, delayed events, script compilation/execution and game handlers.
+  - [x] Port the [native attribute tree and entity bindings](ATTRIBUTES.md); roundtrip sail masks through original character attribute paths.
+  - [ ] Port the remaining attribute encodings/conversions, delayed events, script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
 

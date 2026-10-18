@@ -12,6 +12,8 @@ sail damage observer. Add `--event-report events.json --shot-owner 7
 --ship-character 19` to a model preview or a GPU-free `--rig-report` command to
 inspect the original event payloads. Character indices are preview inputs;
 original character scripts are not running.
+The [attribute tree port](../docs/ATTRIBUTES.md) also reports persistent per-character
+sail masks and their reconstruction through the original `ship.sails` layout.
 
 ![First diagnostic frame rendered with Metal](screenshots/first-frame.png)
 

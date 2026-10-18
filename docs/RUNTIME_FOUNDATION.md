@@ -18,12 +18,13 @@ The fork is public; the original storm-devs repository is archived.
 | `core/src/message.cpp` | Owned `b w l u f d i c s` values; 32-bit longs/floats, 64-bit entity IDs, signed Dword return bits, checked cursor reads and rewind |
 | `compiler.cpp::ProcessEvent`, `s_eventtab.cpp::FindEvent` | Case-insensitive ASCII event lookup, registration order, rewind before each native callback, last non-void result retained |
 
-`storm-core` forbids unsafe code. Pointer formats `p/a/e` are rejected until a
-runtime handle registry exists; no C++ addresses are represented as Rust pointers.
+`storm-core` forbids unsafe code. Format `a` now uses a checked attribute handle;
+raw `p/e` pointer formats remain rejected. See the [attribute port](ATTRIBUTES.md).
+No C++ addresses are represented as Rust pointers.
 Stamp exhaustion returns an error instead of wrapping into an old ID. Invalid
 layer indices and message types return errors instead of unchecked memory access.
 Class insertion currently accepts an already constructed native object. Factories,
-`Init`, attributes, class-query caching/order, whole-world reset and teardown that
+`Init`, class-query caching/order, whole-world reset and teardown that
 mutates the manager are not ported. Event handlers cannot yet register/delete
 handlers or recursively dispatch through the same dispatcher while executing.
 
@@ -80,7 +81,7 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace has 65 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 73 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The generated ship fixture produces six `DoSailHole` and six `ShpSailDamage`
 callbacks for three shots per sail. A local audit of all 40 original ship roots
