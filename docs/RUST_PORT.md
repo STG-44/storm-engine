@@ -288,6 +288,6 @@ rooted UTF-8 directory loader, typed define constants, append-order includes and
 source file/line diagnostics. Named array dimensions require earlier integer
 defines. A four-file ship diagnostic reproduces the preceding single-file state.
 An independent source-registration oracle runs unedited retained lexer/tables
-and extracted compiler include/define/append bodies in 21 cases under UBSan.
+and extracted compiler include/define/append bodies in 22 cases under UBSan.
 Dynamic segment/native-library loading and complete original programs remain
 pending.

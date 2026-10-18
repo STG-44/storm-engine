@@ -60,7 +60,9 @@ object Characters[SHIP_COUNT];
 ```
 
 Defines store a single integer, float or string literal. Names are ASCII
-case-insensitive and redefinition fails. An optional semicolon is accepted.
+case-insensitive and redefinition fails. An optional semicolon is accepted. Decimal float literals use the retained
+`atof` path: binary64 parsing followed by binary32 rounding, including rare
+values close to a binary32 midpoint.
 Expression reads first resolve local/global variables and then constant names;
 strings and literal attribute names keep their contents. Constants are not
 textual replacement rules. Functions can read constants declared later in the
@@ -100,9 +102,10 @@ original game startup remains pending.
 S_DEFTAB source/header files unedited. It extracts the compiler's AppendProgram
 method and include/define case bodies verbatim. A small registration scan and
 virtual file provider supply platform/debug/cache scaffolding. C++20 executes
-21 file graphs under fail-fast UndefinedBehaviorSanitizer: 17 accepted graphs
+22 file graphs under fail-fast UndefinedBehaviorSanitizer: 18 accepted graphs
 and four duplicate-define failures. Rust compares normalized file order and
-numeric constant names/values/float bits; rejected graphs fail compilation.
+numeric constant names/values/float bits, including decimal literals straddling
+binary32 midpoints; rejected graphs fail compilation.
 
 The reference covers source registration with numeric defines, not the complete
 C++ compiler/interpreter. String constants have separate source tests; they are

@@ -57,6 +57,12 @@ cases.append({'files':{'main.c':'#define N 3\n#include "A.C"\n#include "b.c"\n#i
                       'b.c':'#include "MAIN.C"\n#define SCALE -1.25',
                       'c.c':'#include "b.c"\n#define END 4294967295'}})
 
+# Values straddling binary32 midpoints expose atof(double)->float rounding.
+cases.append({'files':{'main.c':
+    '#define ABOVE 1.000000059604644775390625000000000001\n'
+    '#define BELOW 1.000000178813934326171874999999999999\n'
+    '#define NEGATIVE -1.000000059604644775390625000000000001\n'}})
+
 source=r'''
 #include "token.h"
 #include "strings_list.h"

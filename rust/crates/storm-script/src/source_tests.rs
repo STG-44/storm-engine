@@ -445,6 +445,6 @@ fn source_registration_matches_unedited_retained_lexer_tables_and_compiler_case_
         }
         checked += 1;
     }
-    assert_eq!(checked, 21);
+    assert_eq!(checked, 22);
     Ok(())
 }

@@ -105,9 +105,11 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
             }
             let value = if floating {
                 Value::Float(
+                    // CompileFloatNumber and #define use atof (double), then float.
                     source[start..p]
-                        .parse()
-                        .with_context(|| format!("{line}:{column}: float literal"))?,
+                        .parse::<f64>()
+                        .with_context(|| format!("{line}:{column}: float literal"))?
+                        as f32,
                 )
             } else {
                 Value::Int(
