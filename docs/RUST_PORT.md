@@ -47,9 +47,14 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Add a bounded executable source subset with native attribute bindings ([scope](SCRIPT_RUNTIME.md)).
   - [x] Add object/ref/aref expressions, first original attribute functions and entity notifications ([scope](SCRIPT_OBJECTS.md)).
   - [x] Execute [immediate script handlers for sail damage](SCRIPT_EVENTS.md).
-  - [ ] Port remaining attribute encodings/conversions, complete script compilation/execution, delayed events and game handlers.
+  - [x] Add [nested calls and the original frame-driven event queue](SCHEDULED_EVENTS.md).
+  - [ ] Port remaining attribute encodings/conversions, static handlers, complete script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
 - [ ] Verify representative gameplay and publish platform builds.
+
+A rough functional coverage estimate is recorded in [port status](PORT_STATUS.md):
+15–20% toward original-game compatibility, and about 70% for the ship demo
+including remaining polish and platform verification. These are planning estimates.
 
 ## Current evidence and prerequisites
 
@@ -250,3 +255,9 @@ Vulkan GPU tests and native windows. A local audit executes 2,204 handlers acros
 40 original ship roots and reconstructs all 368 masks through script-written
 attributes, with 1,105 entity notifications. The textured Barkentine1 capture
 also succeeds through Metal. See [event scope and evidence](SCRIPT_EVENTS.md).
+
+[Nested and frame-driven events](SCHEDULED_EVENTS.md) add Event, PostEvent and
+ClearPostEvents with original timer/cancellation/cleanup behavior and bounded
+owned payloads. A retained-C++ scheduler oracle checks 431 snapshots. The native
+preview advances the queue on unpaused rendered frames, and a GPU-free timed
+script fixture checks deterministic nested and delayed attribute writes.

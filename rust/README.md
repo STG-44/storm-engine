@@ -246,3 +246,16 @@ ship's deck. Full battle/crew AI and projectile ballistics remain pending.
 coordinates, wrap/mirror addressing, alpha test, full-resolution sector index
 ranges and coarse collision rules are preserved. Metadata reports the mask
 source and `[SAILS]` damage coefficients. A missing original mask is an error.
+
+### Nested and timed script events
+
+The [frame-driven scheduler](../docs/SCHEDULED_EVENTS.md) supports Event,
+PostEvent and ClearPostEvents with checked l/f/s payloads. Native preview frames
+advance it while unpaused. A deterministic GPU-free fixture runs with:
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/timed_events.c --frame-ms 0,9,1,0 --report timed-script-state.json
+```
+
+It produces four completed handlers and four entity attribute notifications;
+the two queued events fire on the third and fourth supplied frames.

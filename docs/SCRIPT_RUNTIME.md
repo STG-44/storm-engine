@@ -107,7 +107,7 @@ short-circuit effects, calls/returns, loop control, native attributes and bounds
 
 Still pending: globals, arrays, `ptr`, the remaining object/entity operations,
 the full game native API, includes/defines, segment loading,
-`for`, `switch`, `goto`, dynamic calls, nested/delayed events, debugger, saved or cached
+`for`, `switch`, `goto`, dynamic calls, static event declarations, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float
 concatenation, string-left float comparison and legacy non-ASCII comparison
 rules also remain unsupported. Private Rust instructions are not a reader for
@@ -133,3 +133,6 @@ Their complete script reports equal the local fixture: result `6`, three writes,
 and identical ordered attribute trees. Canonical JSON SHA-256:
 `019aaddb5fe945aca58edd5c5d5dc7205249e3292de702437eb158c81454a3cf`.
 The reports and native `storm-script` executables are available in that workflow.
+
+[Nested and queued events](SCHEDULED_EVENTS.md) now execute through the same
+Runtime/World with bounded payloads and one instruction budget per frame.

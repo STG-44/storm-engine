@@ -28,6 +28,10 @@ impl Timeline {
         self.advance(Instant::now())
     }
 
+    pub fn milliseconds(&self) -> u64 {
+        (self.seconds * 1000.0) as u64
+    }
+
     pub fn toggle(&mut self) {
         self.seconds();
         self.paused = !self.paused;
@@ -48,5 +52,20 @@ mod tests {
         assert_eq!(clock.advance(start + Duration::from_secs(100)), 6.0);
         clock.paused = false;
         assert_eq!(clock.advance(start + Duration::from_secs(101)), 7.0);
+    }
+    #[test]
+    fn scheduler_clock_keeps_fractional_milliseconds_and_excludes_pause() {
+        let mut clock = Timeline::new(0., false);
+        let start = clock.last;
+        clock.advance(start + Duration::from_micros(1500));
+        assert_eq!(clock.milliseconds(), 1);
+        clock.advance(start + Duration::from_micros(3000));
+        assert_eq!(clock.milliseconds(), 3);
+        clock.paused = true;
+        clock.advance(start + Duration::from_secs(100));
+        assert_eq!(clock.milliseconds(), 3);
+        clock.paused = false;
+        clock.advance(start + Duration::from_secs(100) + Duration::from_micros(1500));
+        assert_eq!(clock.milliseconds(), 4);
     }
 }

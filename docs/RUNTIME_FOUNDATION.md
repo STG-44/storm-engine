@@ -27,7 +27,7 @@ Class insertion currently accepts an already constructed native object. Factorie
 `Init`, class-query caching/order, whole-world reset and teardown that
 mutates the manager are not ported. The native callback dispatcher does not support handler mutation or recursive
 dispatch. The separate [script event runtime](SCRIPT_EVENTS.md) supports immediate
-registration/deletion while script handlers execute; nested events remain pending.
+registration/deletion while script handlers execute; [nested and posted events](SCHEDULED_EVENTS.md) are now supported.
 
 ## First integration: sail damage events
 
@@ -70,7 +70,7 @@ separately supplied resources instead of `--ship-demo`.
 
 These callbacks observe completed preview collision results. Original scripts,
 handler side effects during collision traversal, free-sail/ship group lifetime,
-delayed PostEvent, nested script events, projectile flight and combat integration
+static handler declarations, the full game API, projectile flight and combat integration
 remain pending. Immediate source handlers now execute these payloads; complete
 script VM and combat compatibility remain under development.
 
@@ -84,7 +84,7 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 106 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 120 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The [script source subset](SCRIPT_RUNTIME.md) and [object/reference subset](SCRIPT_OBJECTS.md)
 now feed the [immediate event integration](SCRIPT_EVENTS.md). The generated

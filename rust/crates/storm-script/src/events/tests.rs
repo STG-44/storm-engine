@@ -2,7 +2,7 @@ use super::*;
 use storm_core::Value as Field;
 
 #[derive(Default)]
-struct Trace(Vec<Vec<Value>>);
+pub(super) struct Trace(pub(super) Vec<Vec<Value>>);
 impl Host for Trace {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         ensure!(name == "record", "unexpected test native");

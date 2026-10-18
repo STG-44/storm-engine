@@ -86,7 +86,7 @@ is rejected. Native handlers remain responsible for their own work and state.
 Still pending: globals, arrays, pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
 attribute assignments, numeric literal attribute segments, includes/defines,
-nested/delayed events and complete original game programs. Float-to-string `gcvt`
+static event declarations and complete original game programs. Float-to-string `gcvt`
 conversion remains unsupported, including float ref values assigned directly
 to attributes and floating dynamic path variables. Scalar float attribute
 assignment uses its separate original seven-decimal path. There is no new save

@@ -101,7 +101,8 @@ struct Execution<'a, H: Host> {
     limits: Limits,
     fuel: u64,
     events: &'a mut events::Handlers,
-    message: Option<&'a mut storm_core::Message>,
+    messages: Vec<storm_core::Message>,
+    current_message: Option<usize>,
     break_events: bool,
 }
 
@@ -140,7 +141,7 @@ impl Program {
         host: &mut impl Host,
         limits: Limits,
         events: &mut events::Handlers,
-        message: Option<&mut storm_core::Message>,
+        message: Option<&storm_core::Message>,
     ) -> Result<Value> {
         let mut execution = Self::execution(host, limits, events, message)?;
         self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
@@ -150,7 +151,7 @@ impl Program {
         host: &'a mut H,
         limits: Limits,
         events: &'a mut events::Handlers,
-        message: Option<&'a mut storm_core::Message>,
+        message: Option<&storm_core::Message>,
     ) -> Result<Execution<'a, H>> {
         // Keep recursion and allocation bounded even if caller raises limits.
         ensure!(
@@ -164,7 +165,8 @@ impl Program {
             limits,
             fuel: limits.instructions,
             events,
-            message,
+            messages: message.cloned().into_iter().collect(),
+            current_message: message.map(|_| 0),
             break_events: false,
         })
     }
@@ -182,7 +184,7 @@ impl Program {
             value.validate()?;
         }
         if events::signature(name).is_some() {
-            return self.event_builtin(name, arguments, execution);
+            return self.event_builtin(name, arguments, execution, depth);
         }
         if builtins::signature(name).is_some() {
             return builtins::call(name, arguments);

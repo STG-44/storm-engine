@@ -54,6 +54,8 @@ jobs:
           python -c "import json; s=json.load(open('script-state.json')); assert s['script_runtime']=='bounded-source-subset'; assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['attribute_writes']==3; a=s['attributes']['children'][0]['children'][0]['children']; assert a[0]['name']=='rey_a1' and a[0]['children'][0]['children']==[{'name':'hd','value':'548','children':[]},{'name':'holes','value':'3','children':[]}]; assert a[1]['name']=='rey_b1' and a[1]['children'][0]['children']==[{'name':'hd','value':'274','children':[]}]"
           cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/ship_attributes.c --report ship-script-state.json
           python -c "import json; s=json.load(open('ship-script-state.json')); assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==7; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('hd','548'),('holes','3'),('hd','274'),('holes','3'),('damage','3.2500000'),('hd','1')]; r=s['script_ship']['children']; assert r[0]['value']=='19'; a=r[1]['children']; assert a[1]['value']=='3.2500000'; assert a[0]['children'][0]['children'][0]['children'][0]['value']=='548'; assert a[0]['children'][1]['children'][0]['children'][0]['value']=='274'"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/timed_events.c --frame-ms 0,9,1,0 --report timed-script-state.json
+          python -c "import json; s=json.load(open('timed-script-state.json')); assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==4; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('hd','274'),('hd','548'),('total','6'),('committed','1')]; assert s['script_events']=={'completed_handlers':4,'posted_events':2,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':9,'delivered_events':0},{'delta_ms':1,'delivered_events':1},{'delta_ms':0,'delivered_events':1}]}"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -111,6 +113,7 @@ jobs:
           path: |
             script-state.json
             ship-script-state.json
+            timed-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

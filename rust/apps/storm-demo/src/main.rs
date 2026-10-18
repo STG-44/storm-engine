@@ -443,7 +443,11 @@ impl WindowState {
         }
     }
 
-    fn draw(&mut self, instance: &wgpu::Instance) -> Result<()> {
+    fn draw(
+        &mut self,
+        instance: &wgpu::Instance,
+        events: &mut damage_events::DamageEvents,
+    ) -> Result<()> {
         if !self.configured || self.occluded {
             return Ok(());
         }
@@ -473,6 +477,9 @@ impl WindowState {
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let target = frame.texture.create_view(&Default::default());
         let seconds = self.timeline.seconds();
+        if !self.timeline.paused {
+            events.frame(self.timeline.milliseconds())?;
+        }
         let mut frame_seconds = seconds;
         let mut frame_wind = self.wind;
         if let Some(sailing) = &mut self.sailing {
@@ -785,21 +792,23 @@ impl ApplicationHandler for Application {
                     state.window.request_redraw();
                 }
             }
-            WindowEvent::RedrawRequested => match state.draw(&self.instance) {
-                Ok(()) => {
-                    if self
-                        .options
-                        .frames
-                        .is_some_and(|limit| state.frames >= limit)
-                    {
-                        eprintln!("Presented {} frames", state.frames);
-                        event_loop.exit();
-                    } else if state.configured && !state.occluded {
-                        state.window.request_redraw();
+            WindowEvent::RedrawRequested => {
+                match state.draw(&self.instance, &mut self.damage_events) {
+                    Ok(()) => {
+                        if self
+                            .options
+                            .frames
+                            .is_some_and(|limit| state.frames >= limit)
+                        {
+                            eprintln!("Presented {} frames", state.frames);
+                            event_loop.exit();
+                        } else if state.configured && !state.occluded {
+                            state.window.request_redraw();
+                        }
                     }
+                    Err(error) => self.fail(event_loop, error),
                 }
-                Err(error) => self.fail(event_loop, error),
-            },
+            }
             _ => {}
         }
     }

@@ -120,7 +120,7 @@ No game resources or compiler are needed to consume these fixtures in Rust CI.
 Native tests additionally cover stale/foreign/null handles, bounded paths,
 copied parent chains, shared borrowed entity roots, explicit notifications,
 damage-mask roundtrips, high mask bits and repair isolation between characters.
-The workspace currently has 106 CPU tests plus 13 separately enabled GPU tests.
+The workspace currently has 120 CPU tests plus 13 separately enabled GPU tests.
 CI checks the generated attribute/mask roundtrip on all four native build hosts
 and uploads the JSON reports.
 

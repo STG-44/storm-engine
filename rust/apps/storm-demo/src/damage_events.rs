@@ -35,6 +35,7 @@ pub struct DamageEvents {
     runtime: Runtime,
     records: Rc<RefCell<Records>>,
     host: script::DamageHost,
+    last_frame_ms: Option<u64>,
 }
 impl DamageEvents {
     pub fn new() -> Result<Self> {
@@ -46,7 +47,20 @@ impl DamageEvents {
             runtime,
             records,
             host,
+            last_frame_ms: None,
         })
+    }
+    /// The native preview supplies its unpaused clock in whole milliseconds.
+    pub fn frame(&mut self, now_ms: u64) -> Result<()> {
+        let elapsed = self
+            .last_frame_ms
+            .map_or(0, |last| now_ms.saturating_sub(last));
+        self.last_frame_ms = Some(now_ms);
+        let elapsed = u32::try_from(elapsed)
+            .map_err(|_| anyhow::anyhow!("script frame delta exceeds uint32 milliseconds"))?;
+        self.runtime
+            .advance_frame(elapsed, &mut self.host, Limits::default())?;
+        Ok(())
     }
     fn emit(&mut self, name: &str, message: &mut Message) -> Result<()> {
         self.runtime
@@ -250,6 +264,31 @@ fn attribute_tree(store: &AttributeStore, id: AttributeId) -> Json {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_frame_clock_delivers_posted_payload_into_the_existing_damage_host() -> Result<()> {
+        let mut events = DamageEvents::new()?;
+        events.runtime = Runtime::compile(
+            r#"
+            native void PreviewSailDamage(int c,float x,float y,float z,int o);
+            void Init(){SetEventHandler("Later","H",0);PostEvent("Later",10,"lfffl",19,1.0,2.0,3.0,7);}
+            void H(){int c=GetEventData();float x=GetEventData();float y=GetEventData();float z=GetEventData();int o=GetEventData();PreviewSailDamage(c,x,y,z,o);}
+        "#,
+        )?;
+        events
+            .runtime
+            .call("Init", &[], &mut events.host, Limits::default())?;
+        events.frame(1000)?;
+        events.frame(1009)?;
+        assert_eq!(events.records.borrow().script_damage_calls, 0);
+        events.frame(1010)?;
+        let records = events.records.borrow();
+        assert_eq!(records.script_damage_calls, 1);
+        assert_eq!(
+            records.script_last_damage,
+            Some(json!({"character":19,"position":[1.,2.,3.],"owner":7}))
+        );
+        Ok(())
+    }
     #[test]
     fn shot_emits_original_payloads_even_when_damage_was_already_present() -> Result<()> {
         let mut asset = ModelAsset::ship_demo()?;

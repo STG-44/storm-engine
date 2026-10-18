@@ -240,7 +240,11 @@ pub(crate) fn compile(source: &str) -> Result<Program> {
                         .parameters
                 };
                 ensure!(
-                    *arguments == expected,
+                    if crate::events::signature(callee).is_some() {
+                        crate::events::arguments_valid(callee, *arguments)
+                    } else {
+                        *arguments == expected
+                    },
                     "{name} {}:{}: {callee} expects {} arguments, got {arguments}",
                     instruction.line,
                     instruction.column,
