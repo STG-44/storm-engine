@@ -311,3 +311,12 @@ reference uses unedited TOKEN/S_EVENTTAB and compiler declaration/registration
 bodies: 16 declaration cases, 55 lifetime snapshots and one isolated confirmed
 frame hang, which becomes an explicit error in Rust. A sixth executable fixture
 reproduces the complete multi-file ship report without dynamic registrations.
+
+The [static-handler CI run](https://github.com/STG-44/storm-engine/actions/runs/39170644575)
+and its [push run](https://github.com/STG-44/storm-engine/actions/runs/39170640157)
+pass all four hosts for `6a6c7a32`: 156 CPU tests, including 79 script tests,
+formatting, Clippy, native builds and six executable script fixtures. Linux also
+passes 13 software Vulkan GPU tests and native windows. All twenty-four downloaded
+source reports match local JSON, with four ZIP digests verified. The complete
+40-ship event/layout audit remains unchanged and the generated local ship
+presents three Metal frames. See [static-handler evidence](STATIC_EVENT_HANDLERS.md#four-platform-evidence-2026-10-19).

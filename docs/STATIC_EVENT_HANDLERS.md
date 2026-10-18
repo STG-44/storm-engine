@@ -77,10 +77,39 @@ lookup, cache/error/platform storage and the outer scan are explicit adapters;
 the complete original compiler/interpreter does not run.
 
 C++20 with fail-fast UndefinedBehaviorSanitizer generates 16 declaration cases
-and nine static-lifetime sequences with 55 complete table snapshots. One final
-isolated reference process confirms the original infinite frame loop with a
-one-second timeout. Rust checks the finite states and returns an error for that
+and nine static-lifetime sequences with 55 snapshots of function order, status
+and static flags. One final isolated reference process confirms the original
+infinite frame loop with a one-second timeout. Rust checks the finite states and returns an error for that
 last frame. Core files and extracted-body hashes are recorded in golden data.
 Separate source tests cover initialization timing, dead code, control-flow
 semicolons, persistent/isolated runtimes, include order, file diagnostics,
 resource limits, dispatch error recovery and the native ship fixture.
+
+## Four-platform evidence, 2026-10-19
+
+Code `6a6c7a32c8b08de373416ab32b2bf5de5dfc574a` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39170644575)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39170640157)
+on Windows, Ubuntu, macOS Intel and macOS Apple Silicon. All eight jobs succeed.
+Each host runs 156 CPU tests, including 79 script tests, formatting, Clippy with
+warnings denied, native builds and six executable script fixtures. Linux also
+passes 13 explicit software Vulkan GPU tests and native-window fixtures.
+
+The four push-workflow script-state archives were downloaded and their ZIP
+SHA-256 digests verified. All twenty-four complete JSON reports match local
+results. All five preceding script reports are unchanged. The static fixture's
+complete report equals the preceding multi-file report, with canonical sorted
+compact JSON SHA-256
+`1ce5bca0ac9c84116ca63ce4421060361fcbcb2aa57c2bb61a84ab6dfc04ec76`.
+
+The retained-C++ reference generates six accepted and ten rejected declarations,
+55 finite static-table snapshots and one timeout-confirmed original frame hang.
+Rust checks these cases, plus forward includes, initialization timing, malformed
+control-flow bodies, limits, frame error recovery and native attribute writes.
+A local resource-dependent audit passes all 40 original ship roots and 368 masks
+through 2,204 handlers and 1,105 entity notifications. All 80 complete event/layout
+JSON reports match the preceding phase. The generated native ship presents three
+Metal frames on the local Intel Mac. Hosted Windows/macOS checks establish
+CPU/build behavior; physical GPU coverage for those additional machines remains
+pending. Commercial resources and resource-dependent reports remain outside Git.
+Full original game startup, native APIs and dynamic modules remain pending.
