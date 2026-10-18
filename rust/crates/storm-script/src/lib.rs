@@ -36,6 +36,14 @@ pub trait Host {
     fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
         bail!("entity deletion is not bound by this host")
     }
+    fn create_entity(
+        &mut self,
+        _class: &str,
+        _store: &mut AttributeStore,
+        _attributes: Option<AttributeId>,
+    ) -> Result<EntityId> {
+        bail!("entity creation is not bound by this host")
+    }
     fn attribute_changed(
         &mut self,
         _entity: EntityId,

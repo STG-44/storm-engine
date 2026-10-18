@@ -1,5 +1,14 @@
 use crate::{AttributeId, AttributeStore, Message};
-use anyhow::{Result, anyhow, ensure};
+use anyhow::{Context, Result, anyhow, ensure};
+use std::{
+    cell::{Ref, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+};
+
+const MAX_CLASSES: usize = 256;
+const MAX_ENTITIES: usize = 4096;
+const MAX_INIT_DEPTH: usize = 32;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct EntityId(u64);
@@ -27,6 +36,9 @@ pub enum Stage {
 }
 
 pub trait Entity {
+    fn init(&mut self, _context: &mut EntityInit<'_>) -> Result<bool> {
+        Ok(true)
+    }
     fn process_stage(&mut self, _stage: Stage, _delta_ms: u32) {}
     fn process_message(&mut self, _message: &mut Message) -> Result<u64> {
         Ok(0)
@@ -38,6 +50,47 @@ pub trait Entity {
     ) -> Result<u32> {
         Ok(0)
     }
+}
+
+/// The instance is registered and its attributes are bound before Init.
+/// Nested construction and manager operations use the same checked context.
+pub struct EntityInit<'a> {
+    pub id: EntityId,
+    pub attributes: Option<AttributeId>,
+    pub store: &'a mut AttributeStore,
+    pub manager: &'a mut EntityManager,
+}
+
+type Instance = Rc<RefCell<Box<dyn Entity>>>;
+type Factory = Rc<dyn Fn() -> Result<Box<dyn Entity>>>;
+
+/// A teardown lookup remains present even during Init. Accessing the instance
+/// while its callback is already running returns a checked borrow error.
+pub struct EntityRef<'a> {
+    id: EntityId,
+    instance: &'a RefCell<Box<dyn Entity>>,
+}
+impl EntityRef<'_> {
+    pub fn id(&self) -> EntityId {
+        self.id
+    }
+    pub fn borrow(&self) -> Result<Ref<'_, dyn Entity>> {
+        let entity = self
+            .instance
+            .try_borrow()
+            .context("reentrant entity access")?;
+        Ok(Ref::map(entity, |entity| entity.as_ref()))
+    }
+}
+
+fn checked_class(class: &str) -> Result<u32> {
+    ensure!(
+        class.is_ascii() && !class.contains('\0') && class.len() <= 128,
+        "entity class must be an ASCII engine name of at most 128 bytes"
+    );
+    let hash = class_hash(class);
+    ensure!(hash != 0, "null entity class hash");
+    Ok(hash)
 }
 
 /// MakeHashValue from core/include/vma.hpp, for ASCII engine class names.
@@ -60,7 +113,7 @@ struct Entry {
     id: EntityId,
     hash: u32,
     valid: bool,
-    entity: Box<dyn Entity>,
+    entity: Instance,
     attributes: Option<AttributeId>,
 }
 #[derive(Default)]
@@ -79,16 +132,88 @@ pub struct EntityManager {
     deleted: Vec<usize>,
     layers: [Layer; 32],
     stamp: u32,
+    factories: BTreeMap<String, Factory>,
+    init_depth: usize,
 }
 impl EntityManager {
-    /// Inserts an already constructed native entity; class factories/Init are not ported yet.
-    pub fn insert(&mut self, class: &str, entity: impl Entity + 'static) -> Result<EntityId> {
+    /// Like the retained registry's first matching VMA, the first registration
+    /// wins. A duplicate returns false without replacing its constructor.
+    pub fn register_class(
+        &mut self,
+        class: &str,
+        factory: impl Fn() -> Result<Box<dyn Entity>> + 'static,
+    ) -> Result<bool> {
+        checked_class(class)?;
+        let name = class.to_ascii_lowercase();
+        if self.factories.contains_key(&name) {
+            return Ok(false);
+        }
         ensure!(
-            class.is_ascii() && !class.contains('\0'),
-            "entity class must be an ASCII engine name"
+            self.factories.len() < MAX_CLASSES,
+            "entity class registry budget"
         );
-        let hash = class_hash(class);
-        ensure!(hash != 0, "null entity class hash");
+        self.factories.insert(name, Rc::new(factory));
+        Ok(true)
+    }
+
+    pub fn create(
+        &mut self,
+        class: &str,
+        store: &mut AttributeStore,
+        attributes: Option<AttributeId>,
+    ) -> Result<EntityId> {
+        checked_class(class)?;
+        ensure!(
+            attributes.is_none_or(|root| store.get(root).is_some()),
+            "invalid attribute binding"
+        );
+        ensure!(self.init_depth < MAX_INIT_DEPTH, "entity Init depth budget");
+        let factory = self
+            .factories
+            .get(&class.to_ascii_lowercase())
+            .context("invalid entity name")?
+            .clone();
+        let entity = factory().with_context(|| format!("construct entity {class}"))?;
+        let id = self.insert_box(class, entity)?;
+        let entry = self.entry_mut(id).expect("inserted entity");
+        entry.attributes = attributes;
+        let instance = entry.entity.clone();
+        self.init_depth += 1;
+        let initialized = (|| {
+            instance
+                .try_borrow_mut()
+                .context("reentrant entity Init")?
+                .init(&mut EntityInit {
+                    id,
+                    attributes,
+                    store,
+                    manager: self,
+                })
+        })();
+        self.init_depth -= 1;
+        match initialized {
+            Ok(true) => Ok(id),
+            Ok(false) => {
+                self.erase(id);
+                Ok(EntityId::INVALID)
+            }
+            Err(error) => {
+                self.erase(id);
+                Err(error).with_context(|| format!("Init entity {class}"))
+            }
+        }
+    }
+
+    /// Inserts an already constructed object without calling Init.
+    pub fn insert(&mut self, class: &str, entity: impl Entity + 'static) -> Result<EntityId> {
+        self.insert_box(class, Box::new(entity))
+    }
+    fn insert_box(&mut self, class: &str, entity: Box<dyn Entity>) -> Result<EntityId> {
+        let hash = checked_class(class)?;
+        ensure!(
+            !self.free.is_empty() || self.entries.len() < MAX_ENTITIES,
+            "entity storage budget"
+        );
         let stamp = self
             .stamp
             .checked_add(1)
@@ -101,7 +226,7 @@ impl EntityManager {
             id,
             hash,
             valid: true,
-            entity: Box::new(entity),
+            entity: Rc::new(RefCell::new(entity)),
             attributes: None,
         });
         if self.free.pop().is_some() {
@@ -127,8 +252,11 @@ impl EntityManager {
         self.entry(id).is_some_and(|e| e.valid)
     }
     /// As in GetEntityPointer, pending deletion remains accessible for teardown.
-    pub fn get(&self, id: EntityId) -> Option<&dyn Entity> {
-        self.entry(id).map(|e| e.entity.as_ref())
+    pub fn get(&self, id: EntityId) -> Option<EntityRef<'_>> {
+        self.entry(id).map(|e| EntityRef {
+            id,
+            instance: &e.entity,
+        })
     }
     pub fn class_code(&self, id: EntityId) -> Option<u32> {
         self.entry(id).map(|e| e.hash)
@@ -183,16 +311,25 @@ impl EntityManager {
             store.get(changed).is_some(),
             "invalid changed attribute handle"
         );
-        entry.entity.attribute_changed(store, changed)
+        entry
+            .entity
+            .try_borrow_mut()
+            .context("reentrant entity callback")?
+            .attribute_changed(store, changed)
     }
     pub fn ids(&self, class: &str) -> Vec<EntityId> {
         let hash = class_hash(class);
-        self.entries
+        let mut ids = self
+            .entries
             .iter()
             .flatten()
             .filter(|e| e.valid && e.hash == hash)
             .map(|e| e.id)
-            .collect()
+            .collect::<Vec<_>>();
+        // EntityContainerCache::Add orders IDs by allocation stamp, including
+        // after a newer instance reuses an earlier storage slot.
+        ids.sort_by_key(|id| id.raw());
+        ids
     }
     pub fn erase(&mut self, id: EntityId) {
         if let Some(entry) = self.entry_mut(id).filter(|e| e.valid) {
@@ -201,6 +338,11 @@ impl EntityManager {
         }
     }
     pub fn new_lifecycle(&mut self) {
+        // Never destroy/reuse an instance whose Init is still on the stack.
+        // The next lifecycle boundary after Init performs the queued cleanup.
+        if self.init_depth != 0 {
+            return;
+        }
         while let Some(index) = self.deleted.pop() {
             let entry = self.entries[index].take().expect("pending entity exists");
             for layer in &mut self.layers {
@@ -253,22 +395,34 @@ impl EntityManager {
             .flat_map(|l| l.entries.iter().map(|(_, id)| *id))
             .collect()
     }
-    pub fn process_stage(&mut self, stage: Stage, delta_ms: u32) {
+    pub fn process_stage(&mut self, stage: Stage, delta_ms: u32) -> Result<()> {
         let kind = match stage {
             Stage::Execute => LayerType::Execute,
             Stage::Realize => LayerType::Realize,
         };
         for id in self.layer_ids(kind) {
             if let Some(entry) = self.entry_mut(id).filter(|e| e.valid) {
-                entry.entity.process_stage(stage, delta_ms);
+                entry
+                    .entity
+                    .try_borrow_mut()
+                    .context("reentrant entity callback")?
+                    .process_stage(stage, delta_ms);
             }
         }
+        Ok(())
     }
     /// CoreImpl::Send_Message uses the safe lookup and returns zero for invalid IDs.
     pub fn send_message(&mut self, id: EntityId, message: &mut Message) -> Result<u64> {
         match self.entry_mut(id).filter(|e| e.valid) {
-            Some(entry) => entry.entity.process_message(message),
+            Some(entry) => entry
+                .entity
+                .try_borrow_mut()
+                .context("reentrant entity callback")?
+                .process_message(message),
             None => Ok(0),
         }
     }
 }
+
+#[cfg(test)]
+mod creation_tests;

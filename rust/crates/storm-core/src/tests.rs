@@ -53,7 +53,7 @@ fn deletion_defers_drop_and_slot_reuse_rejects_stale_ids() -> Result<()> {
         core.send_message(first, &mut Message::new("l", vec![Value::Long(5)])?)?,
         0
     );
-    core.process_stage(Stage::Execute, 5);
+    core.process_stage(Stage::Execute, 5)?;
     assert!(log.borrow().is_empty());
     core.new_lifecycle();
     assert_eq!(*log.borrow(), [10]);
@@ -101,7 +101,7 @@ fn layers_keep_priority_ties_duplicates_and_frozen_message_delivery() -> Result<
     core.add_to_layer(0, a, 0)?; // repeated insertion does not reprioritize
     core.add_to_layer(4, b, 0)?;
     assert_eq!(core.layer_ids(LayerType::Execute), [b, a, c, b]);
-    core.process_stage(Stage::Execute, 1);
+    core.process_stage(Stage::Execute, 1)?;
     assert_eq!(*log.borrow(), [21, 11, 31, 21]);
     core.freeze_layer(0, true)?;
     assert_eq!(core.layer_ids(LayerType::Execute), [b]);

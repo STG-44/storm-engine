@@ -105,9 +105,41 @@ impl World {
     pub fn live_nodes(&self) -> Result<usize> {
         self.read(|s| s.len())
     }
+    /// A native Init can populate the selected attribute store directly.
+    /// The embedding host is trusted native code; script budgets are checked
+    /// again on return. Re-entry and foreign roots fail before the callback.
+    pub(crate) fn initialize<T>(
+        &self,
+        attributes: Option<&AttributeReference>,
+        action: impl FnOnce(&mut AttributeStore, Option<AttributeId>) -> Result<T>,
+    ) -> Result<T> {
+        let owner = attributes.map(AttributeReference::owner).transpose()?;
+        if let Some(owner) = &owner {
+            ensure!(
+                Rc::ptr_eq(&self.0, &owner.world.0),
+                "foreign attribute world"
+            );
+        }
+        self.prepare(0)?;
+        let mut store = self
+            .0
+            .attributes
+            .try_borrow_mut()
+            .context("reentrant attribute access")?;
+        let result = action(&mut store, attributes.map(|a| a.node));
+        ensure!(store.len() <= MAX_NODES, "script attribute node budget");
+        ensure!(
+            store.name_count() <= MAX_NAMES,
+            "script attribute name budget"
+        );
+        result
+    }
 }
 
 impl Object {
+    pub(crate) fn set_entity(&self, entity: EntityId) {
+        self.0.entity.set(entity);
+    }
     pub fn entity(&self) -> EntityId {
         self.0.entity.get()
     }
@@ -413,6 +445,23 @@ impl Variable {
 }
 
 impl Reference {
+    pub(crate) fn set_entity(&self, entity: EntityId) -> Result<()> {
+        let variable =
+            Variable(self.0.upgrade().context("uninitialized or expired ref")?).resolved()?;
+        let mut value = variable
+            .0
+            .try_borrow_mut()
+            .context("reentrant variable access")?;
+        match &mut *value {
+            Value::Object(object) => object.set_entity(entity),
+            Value::AReference(Some(attribute)) => {
+                attribute.owner()?;
+                attribute.entity = entity;
+            }
+            _ => bail!("CreateEntity destination requires object or initialized aref"),
+        }
+        Ok(())
+    }
     pub(crate) fn value(&self) -> Result<Value> {
         Variable(self.0.upgrade().context("uninitialized or expired ref")?).value()
     }

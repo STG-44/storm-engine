@@ -23,9 +23,12 @@ raw `p/e` pointer formats remain rejected. See the [attribute port](ATTRIBUTES.m
 No C++ addresses are represented as Rust pointers.
 Stamp exhaustion returns an error instead of wrapping into an old ID. Invalid
 layer indices and message types return errors instead of unchecked memory access.
-Class insertion currently accepts an already constructed native object. Factories,
-`Init`, class-query caching/order, whole-world reset and teardown that
-mutates the manager are not ported. The native callback dispatcher does not support handler mutation or recursive
+Class insertion accepts already constructed native objects; registered
+[factories and Init](ENTITY_CREATION.md) now also construct entities with
+pre-Init registration, attribute binding and deferred rejection cleanup.
+Class queries preserve allocation-stamp order after slot reuse. The cache
+optimization, whole-world reset and destructors that mutate the manager remain
+pending. The native callback dispatcher does not support handler mutation or recursive
 dispatch. The separate [script event runtime](SCRIPT_EVENTS.md) supports immediate
 registration/deletion while script handlers execute; [nested and posted events](SCHEDULED_EVENTS.md) are now supported.
 
@@ -100,8 +103,9 @@ also succeeds. These resource-dependent reports and captures remain outside Git.
 The later [script entity API](ENTITY_SCRIPT_API.md) binds `IsEntity` and
 `DeleteClass` to this native manager, including immediate invalidation, pending
 attribute callbacks and stale-ID rejection. Persistent `EntityUpdate` controls
-notifications from script assignments. Class factories/Init and script entity
-creation remain pending.
+notifications from script assignments. The later [creation port](ENTITY_CREATION.md)
+adds factories/Init and script `CreateEntity`/`CreateClass`; original commercial
+native classes and `SendMessage` remain pending.
 
 At commit `402d469ee72885832cc3f4cec2a305faeb3866ec`, both
 [push CI](https://github.com/STG-44/storm-engine/actions/runs/39079242564) and

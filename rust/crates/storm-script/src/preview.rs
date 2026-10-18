@@ -3,7 +3,7 @@ use crate::{Host, Value, Variable, World};
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
-use storm_core::{AttributeId, AttributeStore, Entity, EntityId, EntityManager};
+use storm_core::{AttributeId, AttributeStore, Entity, EntityId, EntityInit, EntityManager};
 
 #[derive(Default)]
 struct Notifications {
@@ -12,6 +12,12 @@ struct Notifications {
 }
 struct Observer(Rc<RefCell<Notifications>>);
 impl Entity for Observer {
+    fn init(&mut self, ctx: &mut EntityInit<'_>) -> Result<bool> {
+        if let Some(root) = ctx.attributes {
+            ctx.store.set_attribute(root, "initialized", Some("1"))?;
+        }
+        Ok(true)
+    }
     fn attribute_changed(&mut self, store: &AttributeStore, changed: AttributeId) -> Result<u32> {
         let mut records = self.0.borrow_mut();
         records.total += 1;
@@ -22,6 +28,15 @@ impl Entity for Observer {
             json!({"name":store.name(changed),"value":store.get(changed).and_then(|n|n.value())}),
         );
         Ok(0)
+    }
+}
+struct Reject;
+impl Entity for Reject {
+    fn init(&mut self, ctx: &mut EntityInit<'_>) -> Result<bool> {
+        if let Some(root) = ctx.attributes {
+            ctx.store.set_attribute(root, "rejected", Some("1"))?;
+        }
+        Ok(false)
     }
 }
 
@@ -43,6 +58,11 @@ impl AttributeHost {
         let world = World::default();
         let notifications = Rc::new(RefCell::new(Notifications::default()));
         let mut entities = EntityManager::default();
+        let records = notifications.clone();
+        entities.register_class("script_attribute_observer", move || {
+            Ok(Box::new(Observer(records.clone())))
+        })?;
+        entities.register_class("script_attribute_reject", || Ok(Box::new(Reject)))?;
         let entity =
             entities.insert("script_attribute_observer", Observer(notifications.clone()))?;
         let object = world.object(entity)?;
@@ -104,6 +124,14 @@ impl Host for AttributeHost {
     fn delete_entity(&mut self, entity: EntityId) -> Result<()> {
         self.entities.erase(entity);
         Ok(())
+    }
+    fn create_entity(
+        &mut self,
+        class: &str,
+        store: &mut AttributeStore,
+        root: Option<AttributeId>,
+    ) -> Result<EntityId> {
+        self.entities.create(class, store, root)
     }
     fn attribute_changed(
         &mut self,

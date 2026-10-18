@@ -67,11 +67,11 @@ targets are instrumented adapters; this oracle checks forwarded IDs, calls,
 results and suppression, not the original entity manager or complete compiler.
 The generator records hashes of every extracted body.
 
-The complete game API remains unfinished. `CreateEntity`/`CreateClass` need a
-registered class factory, pre-Init registration and failure cleanup; those are
-the next lifecycle step. `SendMessage` still needs the original 64-bit pointer
-result and additional VM/message bindings. None of these three functions,
-original ship classes, or complete commercial game startup is claimed here.
+The later [entity creation port](ENTITY_CREATION.md) supplies registered
+factories, pre-Init registration, failure cleanup and `CreateEntity`/`CreateClass`.
+`SendMessage` still needs the original 64-bit pointer result and additional
+VM/message bindings. Original ship classes and complete commercial game startup
+remain pending. The evidence below records the preceding lookup/deletion phase.
 
 ## Four-platform evidence, 2026-10-19
 

@@ -320,4 +320,14 @@ event and keeps the complete report without commercial resources:
 cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_lifecycle.c --frame-ms 0,0 --report entity-script-state.json
 ```
 
-Class factories/Init, script entity creation and `SendMessage` remain pending.
+[Registered factories and Init](../docs/ENTITY_CREATION.md) now back the original
+`CreateEntity`/`CreateClass` source calls. The new diagnostic binds a persistent
+tree through ref, checks a rejected replacement, creates an entity with no
+attribute binding and deletes the previous identities:
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_creation.c --report creation-script-state.json
+```
+
+The registered observer/reject classes are diagnostic fixtures. Original game
+classes and script `SendMessage` remain pending.

@@ -6,7 +6,9 @@ mod events;
 mod message;
 
 pub use attributes::{AttributeId, AttributeNode, AttributeStore, format_float};
-pub use entities::{Entity, EntityId, EntityManager, LayerType, Stage, class_hash};
+pub use entities::{
+    Entity, EntityId, EntityInit, EntityManager, EntityRef, LayerType, Stage, class_hash,
+};
 pub use events::EventDispatcher;
 pub use message::{Message, Value};
 
