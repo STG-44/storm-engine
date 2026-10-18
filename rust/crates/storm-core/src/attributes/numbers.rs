@@ -41,7 +41,11 @@ pub(super) fn parse_float(value: &str) -> f32 {
         .get(..3)
         .is_some_and(|s| s.eq_ignore_ascii_case("nan"))
     {
-        return f32::NAN;
+        return if bytes.first() == Some(&b'-') {
+            -f32::NAN
+        } else {
+            f32::NAN
+        };
     }
     let mut end = start;
     let mut digits = 0;

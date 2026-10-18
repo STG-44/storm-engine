@@ -113,7 +113,7 @@ unchanged retained ATTRIBUTES.cpp, attributes.h, STRING_CODEC and string
 comparison headers. Only assertion/platform wrappers and the debugger callback
 are stubbed. Checked-in fixtures cover five operation sequences (ordered trees,
 name codes, missing values, path edge cases, copies, deletion, break counters and
-return values), 38 numeric prefixes and 2,051 finite float-format samples.
+return values), 39 numeric prefixes and 2,051 finite float-format samples.
 No game resources or compiler are needed to consume these fixtures in Rust CI.
 
 Native tests additionally cover stale/foreign/null handles, bounded paths,

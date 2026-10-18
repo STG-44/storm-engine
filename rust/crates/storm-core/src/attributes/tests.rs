@@ -118,6 +118,11 @@ fn numeric_prefixes_and_printf_g_match_retained_cpp_reference() -> Result<()> {
         let value = numbers::parse_float(input);
         if case["nan"].as_bool().unwrap() {
             assert!(value.is_nan(), "{input:?}");
+            assert_eq!(
+                value.is_sign_negative(),
+                case["float_bits"].as_u64().unwrap() & 0x8000_0000 != 0,
+                "{input:?} NaN sign"
+            );
         } else {
             assert_eq!(
                 u64::from(value.to_bits()),
