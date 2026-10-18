@@ -97,6 +97,12 @@ the loaded ship state. Barkentine1 contributes 36 per-sail callbacks and 35
 nearest-hit callbacks across the fixture segments. Its textured Metal capture
 also succeeds. These resource-dependent reports and captures remain outside Git.
 
+The later [script entity API](ENTITY_SCRIPT_API.md) binds `IsEntity` and
+`DeleteClass` to this native manager, including immediate invalidation, pending
+attribute callbacks and stale-ID rejection. Persistent `EntityUpdate` controls
+notifications from script assignments. Class factories/Init and script entity
+creation remain pending.
+
 At commit `402d469ee72885832cc3f4cec2a305faeb3866ec`, both
 [push CI](https://github.com/STG-44/storm-engine/actions/runs/39079242564) and
 [PR CI](https://github.com/STG-44/storm-engine/actions/runs/39079245316) pass

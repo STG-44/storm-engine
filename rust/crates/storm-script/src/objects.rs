@@ -149,6 +149,10 @@ impl Object {
 }
 
 impl AttributeReference {
+    pub(crate) fn entity(&self) -> Result<EntityId> {
+        self.owner()?;
+        Ok(self.entity)
+    }
     fn owner(&self) -> Result<Rc<Owner>> {
         let owner = self.owner.upgrade().context("expired attribute owner")?;
         owner.world.prepare(0)?;

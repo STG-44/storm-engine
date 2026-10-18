@@ -85,6 +85,10 @@ is rejected. Native handlers remain responsible for their own work and state.
 
 [Globals and arrays](SCRIPT_GLOBALS.md) now persist across calls and frames.
 
+[Entity lookup, deletion and notification control](ENTITY_SCRIPT_API.md) now
+expose `IsEntity`, `DeleteClass` and persistent `EntityUpdate` through typed host
+bindings. Attribute writes start with notifications enabled in each runtime.
+
 Still pending: pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
 attribute assignments, numeric literal attribute segments, includes/defines,

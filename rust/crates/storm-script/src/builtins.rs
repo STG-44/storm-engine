@@ -12,7 +12,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "getattributesnum" => (1, Type::Int),
         "getattributen" => (2, Type::AReference),
         "getattributename" | "getattributevalue" => (1, Type::String),
-        _ => return crate::events::signature(name),
+        _ => return crate::entity_api::signature(name).or_else(|| crate::events::signature(name)),
     })
 }
 

@@ -310,3 +310,14 @@ commit survives and an unwanted dynamic ship handler stays inactive:
 ```sh
 cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --entry ClearMain --frame-ms 0,0 --report clear-script-state.json
 ```
+
+[`IsEntity`, `DeleteClass` and `EntityUpdate`](../docs/ENTITY_SCRIPT_API.md) now
+connect scripts to native entity lookup/deferred deletion and persistent control
+over attribute notifications. The diagnostic exercises them across a posted
+event and keeps the complete report without commercial resources:
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_lifecycle.c --frame-ms 0,0 --report entity-script-state.json
+```
+
+Class factories/Init, script entity creation and `SendMessage` remain pending.

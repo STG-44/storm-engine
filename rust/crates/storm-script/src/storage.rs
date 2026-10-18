@@ -152,6 +152,8 @@ pub(crate) struct State {
     pub world: World,
     pub budget: Budget,
     pub globals: Vec<Variable>,
+    // COMPILER starts with bEntityUpdate=true; calls/events share the flag.
+    pub entity_update: Cell<bool>,
 }
 impl State {
     pub fn new(program: &Program, host: &impl Host) -> Result<Self> {
@@ -166,6 +168,7 @@ impl State {
             world,
             budget,
             globals,
+            entity_update: Cell::new(true),
         })
     }
 }

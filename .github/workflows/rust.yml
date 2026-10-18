@@ -64,6 +64,8 @@ jobs:
           python -c "import json; a=json.load(open('multi-script-state.json')); b=json.load(open('static-script-state.json')); assert a==b"
           cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --entry ClearMain --frame-ms 0,0 --report clear-script-state.json
           python -c "import json; a=json.load(open('static-script-state.json')); b=json.load(open('clear-script-state.json')); assert a==b"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_lifecycle.c --frame-ms 0,0 --report entity-script-state.json
+          python -c "import json; s=json.load(open('entity-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':19}; assert s['ship_attribute_notifications']==3; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('hd','548'),('deleted','1')]; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','hd':'548','silent':'1','deleted':'1','valid':'0'}; assert s['script_events']=={'completed_handlers':1,'posted_events':1,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':0,'delivered_events':1}]}"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -126,6 +128,7 @@ jobs:
             multi-script-state.json
             static-script-state.json
             clear-script-state.json
+            entity-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

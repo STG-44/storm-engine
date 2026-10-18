@@ -3,6 +3,7 @@
 mod builtins;
 mod compile;
 mod conversions;
+mod entity_api;
 mod events;
 mod objects;
 pub mod preview;
@@ -21,12 +22,19 @@ use storm_core::{AttributeId, AttributeStore, EntityId};
 use value::Op;
 pub use value::{Type, Value};
 
-/// Native functions must be declared in source. The embedding application
-/// supplies behavior; scripts have no implicit filesystem, network or FFI API.
+/// External native functions must be declared in source. Internal builtins
+/// use explicit hooks below; scripts have no implicit filesystem, network or FFI API.
 pub trait Host {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value>;
     fn world(&self) -> World {
         World::default()
+    }
+    /// Embeddings must explicitly provide entity lookup and deferred deletion.
+    fn is_entity(&self, _entity: EntityId) -> Result<bool> {
+        bail!("entity lookup is not bound by this host")
+    }
+    fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
+        bail!("entity deletion is not bound by this host")
     }
     fn attribute_changed(
         &mut self,
@@ -206,6 +214,9 @@ impl Program {
         for value in arguments {
             value.validate()?;
         }
+        if entity_api::signature(name).is_some() {
+            return entity_api::call(name, arguments, execution);
+        }
         if events::signature(name).is_some() {
             return self.event_builtin(name, arguments, execution, depth);
         }
@@ -344,7 +355,11 @@ impl Program {
                     Instruction::WriteAttribute => {
                         let value = pop(&mut stack)?.attribute_text()?;
                         let attribute = pop(&mut stack)?.attributes()?;
-                        attribute.write(&value, execution.host)?;
+                        if execution.state.entity_update.get() {
+                            attribute.write(&value, execution.host)?;
+                        } else {
+                            attribute.set_value(&value)?;
+                        }
                     }
                     Instruction::Increment(decrement) => {
                         targets

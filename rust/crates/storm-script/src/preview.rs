@@ -98,6 +98,13 @@ impl Host for AttributeHost {
     fn world(&self) -> World {
         self.world.clone()
     }
+    fn is_entity(&self, entity: EntityId) -> Result<bool> {
+        Ok(self.entities.is_valid(entity))
+    }
+    fn delete_entity(&mut self, entity: EntityId) -> Result<()> {
+        self.entities.erase(entity);
+        Ok(())
+    }
     fn attribute_changed(
         &mut self,
         entity: EntityId,
