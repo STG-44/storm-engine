@@ -205,7 +205,12 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     // Collect top-level declarations before resolving any function references.
     let mut headers = Vec::new();
     let mut names = BTreeMap::new();
+    let mut static_handlers = Vec::new();
     while c.current() != &Token::End {
+        if c.is_static_handler() {
+            static_handlers.push(c.static_handler()?);
+            continue;
+        }
         if let Token::Definition(name, value) = c.current().clone() {
             ensure!(c.constants.len() < 1024, "script constant limit");
             ensure!(
@@ -255,7 +260,9 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                         "{}",
                         c.error("function-scope #define is not supported")
                     );
-                    if c.take("{") {
+                    if c.is_static_handler() {
+                        static_handlers.push(c.static_handler()?);
+                    } else if c.take("{") {
                         depth += 1;
                     } else if c.take("}") {
                         depth -= 1;
@@ -357,14 +364,65 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
             }
         }
     }
+    let mut initial_handlers = Vec::new();
+    let mut registered = crate::events::Handlers::default();
+    for (event, function, origin) in static_handlers {
+        let location = format!(
+            "{}:{}:{}: #event_handler",
+            origin.file, origin.line, origin.column
+        );
+        let event = match event {
+            Token::Literal(Value::String(event)) => event,
+            Token::Word(name) => match c.constants.get(&name) {
+                Some((Value::String(event), _)) => event.clone(),
+                _ => anyhow::bail!("{location}: event name requires a string define"),
+            },
+            _ => unreachable!(),
+        };
+        let handler = functions
+            .get(&function)
+            .with_context(|| format!("{location}: unknown event handler function {function}"))?;
+        ensure!(
+            handler.parameters == 0,
+            "{location}: event handler must take no parameters"
+        );
+        registered
+            .register_static(&event, &function)
+            .with_context(|| location.clone())?;
+        initial_handlers.push((event, function));
+    }
     Ok(Program {
         functions,
         globals: c.declarations,
         sources: sources.files,
+        static_handlers: initial_handlers,
     })
 }
 
 impl Compiler {
+    fn is_static_handler(&self) -> bool {
+        matches!(self.current(), Token::Directive(name) if name == "event_handler")
+    }
+    fn static_handler(&mut self) -> Result<(Token, String, Lexeme)> {
+        let origin = self.tokens[self.p].clone();
+        self.p += 1;
+        self.expect("(")?;
+        let event = self.current().clone();
+        ensure!(
+            matches!(event, Token::Literal(Value::String(_)) | Token::Word(_)),
+            "{}",
+            self.error("event name requires a string literal or define")
+        );
+        self.p += 1;
+        self.expect(",")?;
+        let Token::Literal(Value::String(function)) = self.current() else {
+            return Err(self.error("handler function requires a string literal"));
+        };
+        let function = function.to_ascii_lowercase();
+        self.p += 1;
+        self.expect(")")?;
+        Ok((event, function, origin))
+    }
     fn current(&self) -> &Token {
         &self.tokens[self.p].token
     }
@@ -496,6 +554,16 @@ impl Compiler {
         Ok(())
     }
     fn statement_inner(&mut self) -> Result<()> {
+        // Directives emit no instruction and do not supply a control-flow body.
+        // Preserve the following semicolon as the actual empty statement.
+        let mut directive = false;
+        while self.is_static_handler() {
+            self.static_handler()?;
+            directive = true;
+        }
+        if directive && self.is("}") {
+            return Ok(());
+        }
         if self.take("{") {
             return self.block();
         }

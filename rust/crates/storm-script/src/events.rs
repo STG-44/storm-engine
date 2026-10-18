@@ -17,6 +17,7 @@ enum Status {
 struct Handler {
     function: String,
     status: Status,
+    is_static: bool,
 }
 #[derive(Default)]
 pub(crate) struct Handlers {
@@ -34,7 +35,20 @@ fn event_name(name: &str) -> Result<String> {
 }
 
 impl Handlers {
+    pub(crate) fn for_program(program: &Program) -> Result<Self> {
+        let mut handlers = Self::default();
+        for (event, function) in &program.static_handlers {
+            handlers.register_static(event, function)?;
+        }
+        Ok(handlers)
+    }
+    pub(crate) fn register_static(&mut self, event: &str, function: &str) -> Result<()> {
+        self.add(event, function, 0, true)
+    }
     fn register(&mut self, event: &str, function: &str, flag: i32) -> Result<()> {
+        self.add(event, function, flag, false)
+    }
+    fn add(&mut self, event: &str, function: &str, flag: i32, is_static: bool) -> Result<()> {
         let event = event_name(event)?;
         if let Some(handler) = self
             .entries
@@ -55,6 +69,7 @@ impl Handlers {
         );
         self.entries.entry(event).or_default().push(Handler {
             function: function.into(),
+            is_static,
             status: if flag == 0 {
                 Status::Normal
             } else {
@@ -75,12 +90,22 @@ impl Handlers {
         self.queue.cancel(&event);
         Ok(())
     }
-    fn frame(&mut self) {
+    fn frame(&mut self) -> Result<()> {
         for handlers in self.entries.values_mut() {
             let mut index = 0;
             while index < handlers.len() {
                 if handlers[index].status == Status::Deleted {
-                    handlers.remove(index);
+                    if handlers[index].is_static {
+                        // Original DelEventHandler refuses to erase static entries,
+                        // but ProcessFrame still resets its index to 1. At a later
+                        // index that repeats forever. Fail instead of hanging.
+                        ensure!(
+                            index == 0,
+                            "retained static handler frame loop would not terminate"
+                        );
+                    } else {
+                        handlers.remove(index);
+                    }
                     // Retained ProcessFrame sets i=0 inside a for-loop, whose
                     // increment then starts at 1. Preserve its skipped first
                     // shifted entry, including a still-New/Deleted status.
@@ -91,6 +116,7 @@ impl Handlers {
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -103,16 +129,15 @@ pub struct Runtime {
 }
 impl Runtime {
     pub fn compile(source: &str) -> Result<Self> {
-        Ok(Self {
-            program: Program::compile(source)?,
-            handlers: Handlers::default(),
-            state: None,
-        })
+        Self::from_program(Program::compile(source)?)
     }
     pub fn compile_with_loader(entry: &str, loader: &mut impl crate::SourceLoader) -> Result<Self> {
+        Self::from_program(Program::compile_with_loader(entry, loader)?)
+    }
+    fn from_program(program: Program) -> Result<Self> {
         Ok(Self {
-            program: Program::compile_with_loader(entry, loader)?,
-            handlers: Handlers::default(),
+            handlers: Handlers::for_program(&program)?,
+            program,
             state: None,
         })
     }
@@ -144,8 +169,9 @@ impl Runtime {
     }
     /// Advance statuses using S_EVENTTAB::ProcessFrame, including its index quirk.
     /// This legacy method advances handler statuses only. Use advance_frame for posted events.
-    pub fn process_frame(&mut self) {
-        self.handlers.frame();
+    /// Returns an error if deleted static entries would trap the retained loop.
+    pub fn process_frame(&mut self) -> Result<()> {
+        self.handlers.frame()
     }
     pub fn completed_handlers(&self) -> u64 {
         self.handlers.completed
@@ -200,8 +226,8 @@ impl Runtime {
             None,
             self.state.as_ref().unwrap(),
         )?;
-        execution.events.frame();
         let result = (|| {
+            execution.events.frame()?;
             let mut fired = 0;
             let mut index = 0;
             while index < execution.events.queue.entries.len() {
@@ -472,5 +498,7 @@ fn make_message(arguments: &[Value]) -> Result<Message> {
 
 #[cfg(test)]
 mod scheduled_tests;
+#[cfg(test)]
+mod static_tests;
 #[cfg(test)]
 mod tests;

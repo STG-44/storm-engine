@@ -60,6 +60,8 @@ jobs:
           python -c "import json; s=json.load(open('global-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==3; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('hd','548'),('hd','274'),('holes','6')]; assert s['script_events']=={'completed_handlers':3,'posted_events':1,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':0,'delivered_events':1}]}"
           cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/multi_ship MAIN.C --frame-ms 0,0 --report multi-script-state.json
           python -c "import json; a=json.load(open('global-script-state.json')); b=json.load(open('multi-script-state.json')); assert b.pop('script_sources')==['main.c','data/characters.c','handlers/sails.c','helpers/bits.c']; assert a==b"
+          cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --frame-ms 0,0 --report static-script-state.json
+          python -c "import json; a=json.load(open('multi-script-state.json')); b=json.load(open('static-script-state.json')); assert a==b"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -120,6 +122,7 @@ jobs:
             timed-script-state.json
             global-script-state.json
             multi-script-state.json
+            static-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

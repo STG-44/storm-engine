@@ -288,3 +288,16 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/multi_sh
 The four-file diagnostic reproduces the earlier global-character report and
 adds normalized file names in `script_sources`. It includes duplicate/cyclic
 paths, constants for array dimensions and event names, and a later-frame commit.
+
+### Static event handlers
+
+[`#event_handler`](../docs/STATIC_EVENT_HANDLERS.md) registers handlers during
+compilation, including in uncalled functions. The static four-file diagnostic
+produces the same complete report as `multi_ship` without dynamic registrations:
+
+```sh
+cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --frame-ms 0,0 --report static-script-state.json
+```
+
+Deleted static entries retain their original flag and can be reactivated. A
+confirmed infinite cleanup loop in the original returns an explicit Rust error.

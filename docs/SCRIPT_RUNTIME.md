@@ -109,12 +109,17 @@ short-circuit effects, calls/returns, loop control, native attributes and bounds
 [Source loading](SCRIPT_SOURCES.md) adds typed `#define` constants and
 root-relative `#include` files in the retained append order.
 
+[Static `#event_handler` declarations](STATIC_EVENT_HANDLERS.md) register before
+execution, including declarations inside uncalled functions. Static lifetimes
+and duplicate flags follow the retained table; a confirmed original infinite
+frame loop returns an explicit error.
+
 [Globals and one-dimensional arrays](SCRIPT_GLOBALS.md) now persist in `Runtime`,
 including indexed objects and checked element references.
 
 Still pending: `ptr`, the remaining object/entity operations,
 the full game native API, dynamic segment loading/unloading,
-`for`, `switch`, `goto`, dynamic calls, static event declarations, debugger, saved or cached
+`for`, `switch`, `goto`, dynamic calls, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float
 concatenation, string-left float comparison and legacy non-ASCII comparison
 rules also remain unsupported. Private Rust instructions are not a reader for

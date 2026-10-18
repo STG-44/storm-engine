@@ -83,6 +83,11 @@ function-scope defines and conditional directives remain unsupported. Dynamic
 segment loading/unloading, native library directives, legacy source encodings,
 additional language syntax and saved/cached programs remain separate work.
 
+[Static event declarations](STATIC_EVENT_HANDLERS.md) also pass through the
+loader. They bind after complete source registration and keep encounter order,
+including declarations inside functions. Both entry APIs install them before
+execution; no dynamic initialization call is required.
+
 ## Diagnostic and independent checks
 
 The new four-file fixture includes mixed-case Windows paths, duplicate/cyclic

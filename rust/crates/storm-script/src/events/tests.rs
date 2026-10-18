@@ -36,7 +36,7 @@ fn retained_event_table_status_snapshots_match() -> Result<()> {
                 "delete" => {
                     handlers.delete(operation[1].as_str().unwrap(), &operation[2].to_string())?
                 }
-                "frame" => handlers.frame(),
+                "frame" => handlers.frame()?,
                 _ => unreachable!(),
             }
             let actual = ["e", "other"].map(|name| {
@@ -146,7 +146,7 @@ fn live_handler_mutation_and_frame_activation_follow_original_table() -> Result<
         None
     );
     host.0.clear();
-    runtime.process_frame();
+    runtime.process_frame()?;
     runtime.emit("Later", &mut empty()?, &mut host, Limits::default())?;
     assert_eq!(host.0, vec![vec![Value::Int(2)]]);
     Ok(())

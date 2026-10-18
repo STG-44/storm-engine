@@ -448,3 +448,48 @@ fn source_registration_matches_unedited_retained_lexer_tables_and_compiler_case_
     assert_eq!(checked, 22);
     Ok(())
 }
+
+#[test]
+fn static_handlers_resolve_forward_included_defines_and_preserve_append_order_and_locations()
+-> Result<()> {
+    let mut loader = Memory::new(&[
+        (
+            "main.c",
+            r#"#include "A.C" #include "b.c"
+            #event_handler(EVENT_NAME, "A")
+            int hits;
+            int A(){hits=hits*10+1; return hits;}"#,
+        ),
+        (
+            "a.c",
+            r#"#event_handler(EVENT_NAME, "B")
+            void Never(){if(0){#event_handler("E", "C");}}
+            int B(){hits=hits*10+2; return hits;}
+            int C(){hits=hits*10+3; return hits;}"#,
+        ),
+        (
+            "b.c",
+            "#define EVENT_NAME \"E\"\n#event_handler(EVENT_NAME, \"D\")\nint D(){hits=hits*10+4; return hits;}",
+        ),
+    ]);
+    let mut runtime = Runtime::compile_with_loader("MAIN.C", &mut loader)?;
+    assert_eq!(runtime.sources(), ["main.c", "a.c", "b.c"]);
+    assert_eq!(
+        runtime.emit(
+            "e",
+            &mut storm_core::Message::new("", vec![])?,
+            &mut (),
+            Limits::default()
+        )?,
+        Some(Value::Int(1234))
+    );
+    loader.files.insert(
+        "b.c".into(),
+        "#define EVENT_NAME \"E\"\n#event_handler(EVENT_NAME, \"Missing\")".into(),
+    );
+    let error = Runtime::compile_with_loader("main.c", &mut loader)
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("b.c:2:1: #event_handler: unknown"));
+    Ok(())
+}

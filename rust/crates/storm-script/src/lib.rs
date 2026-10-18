@@ -64,6 +64,7 @@ pub struct Program {
     functions: BTreeMap<String, Function>,
     globals: Vec<Declaration>,
     sources: Vec<String>,
+    static_handlers: Vec<(String, String)>,
 }
 struct Function {
     parameters: usize,
@@ -149,7 +150,7 @@ impl Program {
             arguments,
             host,
             limits,
-            &mut events::Handlers::default(),
+            &mut events::Handlers::for_program(self)?,
             &state,
         )
     }

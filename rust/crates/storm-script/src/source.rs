@@ -211,6 +211,7 @@ impl Builder {
                             input.next();
                         }
                     }
+                    "event_handler" => {}
                     _ => bail!("{context}: unsupported directive"),
                 }
             }

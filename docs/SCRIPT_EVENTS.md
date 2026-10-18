@@ -79,7 +79,9 @@ already completed side effects intact; later calls start with fresh execution
 and message state.
 
 [Nested Event, delayed PostEvent and ClearPostEvents](SCHEDULED_EVENTS.md) are now
-available. Static `#event_handler`, segment unloading, `ClearEvents`,
+available. [Static `#event_handler` declarations](STATIC_EVENT_HANDLERS.md) now
+register at compilation with retained static lifetimes and bounded hang detection.
+Segment unloading, `ClearEvents`,
 entity/attribute/script-variable payloads (`i/a/e`), original
 program loading and the full native game API remain pending. This establishes
 immediate handler execution for preview sail events, not complete script VM or

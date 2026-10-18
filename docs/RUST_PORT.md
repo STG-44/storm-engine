@@ -302,3 +302,12 @@ source reports match local JSON, with four ZIP digests verified. The 22-case
 retained-C++ registration oracle includes binary64-to-binary32 literal rounding.
 The complete 40-ship audit remains unchanged, and the local generated ship
 presents three Metal frames. See [source-loading evidence](SCRIPT_SOURCES.md#four-platform-evidence-2026-10-19).
+
+[Static event declarations](STATIC_EVENT_HANDLERS.md) add compile-time
+`#event_handler`, including forward string defines, handlers in uncalled/dead
+code, append-order registration and retained static flags. Runtime installs them
+before its first entry; one-shot calls receive fresh tables. An independent
+reference uses unedited TOKEN/S_EVENTTAB and compiler declaration/registration
+bodies: 16 declaration cases, 55 lifetime snapshots and one isolated confirmed
+frame hang, which becomes an explicit error in Rust. A sixth executable fixture
+reproduces the complete multi-file ship report without dynamic registrations.
