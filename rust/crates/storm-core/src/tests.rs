@@ -37,6 +37,7 @@ fn script_variable_message_cursor_and_weak_native_access_are_checked() -> Result
     assert_eq!(message.script_variable()?, cell);
     drop(owner);
     assert!(cell.read().is_err());
+    assert!(cell.elements().is_err());
     assert!(cell.set(ScriptScalar::Int(1)).is_err());
     Ok(())
 }

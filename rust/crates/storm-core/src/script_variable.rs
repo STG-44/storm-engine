@@ -40,6 +40,7 @@ pub trait ScriptVariableAccess: std::any::Any {
     }
     fn write(&self, value: ScriptScalar) -> Result<()>;
     fn elements(&self) -> Result<usize> {
+        self.kind()?;
         Ok(1)
     }
     fn element(&self, _index: i32) -> Result<ScriptVariable> {
