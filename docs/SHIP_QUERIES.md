@@ -91,3 +91,39 @@ objects, `MSG_SHIP_SAFE_DELETE`, damage/fire activation, original physics and
 commercial program startup remain pending. The preview keeps its existing
 fire/crew/damage presentation; querying locators does not port those native
 game systems.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `84e76583740f02a939be1c5d54c2a4ca8cda12a8` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39289799260) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39289786087):
+241 CPU tests, including 135 interpreter tests, formatting, Clippy with warnings
+denied, native builds and all fourteen standalone scenarios on each host.
+The four verified Rust host triples are `aarch64-apple-darwin`,
+`x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
+Linux also passes 13 explicit software Vulkan GPU tests and native windows.
+Four downloaded script-state ZIP digests and all 56 complete JSON reports
+match local results; all thirteen preceding reports remain unchanged.
+
+Ten added CPU tests cover the retained 56 sequences / 224 complete query
+snapshots, context delegation and invalid bindings, cursor/full-width results,
+Init reentry, live character indices, separate instances and actual records.
+The standalone source performs five deliveries and two ignored sends after
+deletion; its native Init preserves an existing index or fills a missing one.
+
+The final code reloads all 40 original ship roots and queries 274 fireplace
+locator records, matching their previous model-layout counts. Across these
+runs, 200 delivered messages and 80 ignored sends verify live index changes,
+record counts and unchanged outputs after deletion. This is a new query audit;
+the prior 80 damage/layout reports were not regenerated for this increment.
+Original ArabellaShip1 also executes the new source, returns its seven real
+fire locators and renders a 12-second sailing state offscreen through local
+Metal. The image was visually inspected. Commercial resources, images and
+local reports remain outside Git.
+
+The preceding phase's local native-window attempts timed out; that check was
+not repeated for this data/query change. Hosted macOS/Windows jobs establish
+CPU behavior and builds; physical GPU/window coverage there remains pending.
+Full SHIP mounting, original particle/sound objects, SAFE_DELETE and remaining
+native game messages remain unfinished.

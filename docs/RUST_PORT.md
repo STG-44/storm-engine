@@ -449,3 +449,16 @@ script tree. Preview factories now bind characters during native Init;
 indices update on every query and record counts follow the current vector.
 The retained reference covers 56 sequences / 224 complete query snapshots.
 Full SHIP mounting and native fireplace particle/sound objects remain pending.
+
+
+The [SHIP query PR run](https://github.com/STG-44/storm-engine/actions/runs/39289799260)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39289786087)
+pass all four native hosts for `84e76583`: 241 CPU tests, including 135
+interpreter tests, plus 13 explicit Linux software Vulkan GPU tests and native
+windows. Four archive digests and all 56 complete scenario reports are verified.
+The thirteen preceding reports remain unchanged. A new resource-dependent
+query audit covers all 40 original ship roots and 274 fireplace locators;
+200 native deliveries and 80 ignored sends preserve live index/count behavior.
+Original ArabellaShip1 also executes the query source and renders through
+local offscreen Metal. Full mounting, particle/sound objects and native
+cleanup remain pending; see [scope and evidence](SHIP_QUERIES.md#four-platform-evidence-2026-10-19).
