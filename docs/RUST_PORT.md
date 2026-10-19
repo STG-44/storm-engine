@@ -509,3 +509,13 @@ and 117 XPS style patches; all 40 native fire reports equal the previous phase.
 The new Metal atlas pixel test and original ArabellaShip1 XPS fire/smoke capture
 pass. Full particle dynamics, arbitrary native profile selection and audio remain
 pending; see [scope and evidence](PARTICLE_PROFILES.md#four-platform-evidence-2026-10-20).
+
+
+[Retained particle emission](PARTICLE_EMISSION.md) replaces mean-rate slot
+reconstruction with the original 32-substep clock/rate/remainder/capacity rules.
+Living records retain age, lifetime and appearance factors; pause holds emitter
+state while tails age. The native birth core is compared against 35 sequences /
+245 complete C++ snapshots, with another 240 retained RandomRange samples.
+The renderer supplies deterministic fixed frames and a portable per-patch RNG;
+full particle movement, manager/global RNG ordering, native profile dispatch and
+audio remain pending.

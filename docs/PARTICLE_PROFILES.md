@@ -65,15 +65,14 @@ lifetimes up to 60 seconds. Native fire cleanup now retains service tails for
 the loaded profile's maximum lifetime (at least the previous seven seconds),
 so original long-lived smoke does not disappear early from the service.
 
-This is an appearance integration on deterministic preview slots. It samples
-mean emission rate and stable per-slot random fractions; it does not implement
-the original 32-substep birth accumulation/RNG, full velocity/force/drag
-integration, spin, attached emitters, model particles, camera LOD, frame blending,
-normal-map/additive techniques or world-space birth history. Only the current
-UV frame is sampled. The default project atlas is used; .prj project selection
-is pending. Native message profile names are still recorded but do not switch
-these two fixed ship presentation profiles. Arbitrary profile selection and
-full particle service behavior remain unfinished. Audio playback is unbound.
+The subsequent [particle emission increment](PARTICLE_EMISSION.md) replaces
+mean-rate slot reconstruction with retained 32-substep birth accumulation,
+living particle records and a fixed-frame replay adapter. XPS appearance still
+uses current UV frames and the default atlas; full movement/forces/drag, spin,
+attached/model rendering, camera LOD, frame blending and original techniques
+remain pending. .prj project selection and arbitrary native message profile
+selection remain pending; the two fixed ship presentation profiles are used.
+Audio playback is unbound.
 
 ## Native reference and tests
 

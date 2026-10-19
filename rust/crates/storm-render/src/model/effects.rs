@@ -62,7 +62,7 @@ impl DynamicMesh {
         );
         match self {
             Self::Crew(c) => c.deform(out, seconds)?,
-            Self::Particles(p) => p.deform(out, seconds, wind, eye, asset, state),
+            Self::Particles(p) => p.deform(out, seconds, wind, eye, asset, state)?,
         }
         ensure!(
             out.iter().all(|v| v
@@ -94,7 +94,7 @@ impl ParticlePatch {
         eye: Vec3,
         asset: &ShipAsset,
         state: &ShipState,
-    ) {
+    ) -> Result<()> {
         let air = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos()) * wind.speed;
         let mut particles = Vec::with_capacity(self.points.len() * self.per_point);
         for (emitter, point) in self.points.iter().enumerate() {
@@ -111,6 +111,22 @@ impl ParticlePatch {
                 .transform(&point.node, state, seconds)
                 .unwrap_or_default();
             let source = transform.transform_point3(point.position);
+            let samples = if let Some(style) = &self.style {
+                if emission.is_some()
+                    || (state.native_fire.is_none() && state.fire_started.is_some())
+                {
+                    Some(style.samples(
+                        seconds,
+                        start,
+                        emission.and_then(|e| e.stopped),
+                        emitter,
+                    )?)
+                } else {
+                    Some(vec![None; self.per_point])
+                }
+            } else {
+                None
+            };
             for i in 0..self.per_point {
                 let phase = i as f32 / self.per_point as f32;
                 let age = (elapsed + phase * self.lifetime).rem_euclid(self.lifetime);
@@ -139,15 +155,12 @@ impl ParticlePatch {
                 } else {
                     (if self.smoke { 0.42 } else { 0.8 }) * (1.0 - life) * ((life * 8.0).min(1.0))
                 };
-                let (center, radius, color, uv) = if let Some(style) = &self.style {
-                    match style.sample(seconds, start, i) {
+                let (center, radius, color, uv) = if let Some(samples) = &samples {
+                    match samples[i].as_ref() {
                         Some(sample) => {
                             let mut color = sample.color;
                             if (state.native_fire.is_some()
                                 && emission.is_none_or(|e| seconds < e.started))
-                                || emission.is_some_and(|e| {
-                                    e.stopped.is_some_and(|stop| sample.birth > stop)
-                                })
                                 || asset.hidden(&point.node, state, seconds)
                             {
                                 color[3] = 0.0;
@@ -201,5 +214,6 @@ impl ParticlePatch {
                 };
             }
         }
+        Ok(())
     }
 }

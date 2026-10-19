@@ -420,3 +420,20 @@ particle atlas for preview appearance. The generated ship fixture stays resource
 free. This ports data/curve evaluation and appearance; full emission/physics,
 project selection, dynamic message profile selection and audio remain pending.
 See [format limits, reference checks and rendering scope](../docs/PARTICLE_PROFILES.md).
+
+
+### Particle birth and capacity reports
+
+XPS effects now use the retained native 32-substep birth accumulator with living
+particle records. Export counts, emitter clocks and remainders without a GPU:
+
+```sh
+cargo run -p storm-demo --locked -- \
+  --model /path/to/RESOURCE/MODELS/Ships/ArabellaShip1/ArabellaShip1.gm \
+  --game-dir /path/to/game-data --fire --time 2 --rig-report particle-state.json
+```
+
+Rig reports honor --time; generated fixture/report defaults remain unchanged.
+The renderer uses fixed 60 Hz replay and a portable RNG adapter; original full
+particle motion/forces and global native RNG/service behavior remain pending.
+See [birth/time contracts and remaining scope](../docs/PARTICLE_EMISSION.md).

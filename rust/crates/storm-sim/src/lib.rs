@@ -4,6 +4,7 @@ use glam::DVec2;
 use std::{error::Error, fmt};
 pub mod fire;
 mod flags;
+pub mod particle_emitter;
 mod rig;
 pub mod ship_queries;
 pub mod ship_sails;

@@ -33,7 +33,7 @@ fn lerp(a: f32, b: f32, k: f32) -> f32 {
 impl Graph {
     /// Retains the first matching segment, including extrapolation before its start.
     /// An empty/single-point graph safely returns zero (native empty graphs are unsafe).
-    pub fn sample(&self, time: f32, lifetime: f32, random: f32) -> f32 {
+    pub fn bounds(&self, time: f32, lifetime: f32) -> (f32, f32) {
         let time = if self.relative {
             time / lifetime * 100.0
         } else {
@@ -53,7 +53,21 @@ impl Graph {
             }
             0.0
         };
-        lerp(evaluate(&self.min), evaluate(&self.max), random)
+        (evaluate(&self.min), evaluate(&self.max))
+    }
+    pub fn sample(&self, time: f32, lifetime: f32, random: f32) -> f32 {
+        let (min, max) = self.bounds(time, lifetime);
+        lerp(min, max, random)
+    }
+    /// Native GetRandomValue swaps inverted limits and uses rand()%1000.
+    pub fn sample_range(&self, time: f32, lifetime: f32, random: u32) -> f32 {
+        let (mut min, mut max) = self.bounds(time, lifetime);
+        if min > max {
+            std::mem::swap(&mut min, &mut max);
+        }
+        let mut value = (random % 1000) as f32 / 1000.0;
+        value *= max - min;
+        value + min
     }
     pub fn maximum(&self) -> f32 {
         self.min

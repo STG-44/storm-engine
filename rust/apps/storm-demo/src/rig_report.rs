@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use storm_render::model::ModelAsset;
 use storm_sim::{RigState, SailMode, SailTier};
 
-pub fn report(asset: &ModelAsset) -> Value {
+pub fn report(asset: &ModelAsset, seconds: f32) -> Value {
     let sails = asset
         .meshes
         .iter()
@@ -33,7 +33,7 @@ pub fn report(asset: &ModelAsset) -> Value {
         "normal_count": normal, "full_only_count": sails.len()-normal,
         "normal_weight": layout.normal_weight, "full_only_weight": layout.full_only_weight,"missing_sail_weight":layout.missing_weight,
         "normal_mode_fraction": RigState::for_mode(SailMode::Normal).fraction(layout), "sails": sails, "flags":flags,
-        "ship":ship_frame(asset,0.0),
+        "ship":ship_frame(asset,seconds),
         "rigging": { "ropes":r.ropes,"shrouds":r.shrouds,"flags":r.flags,
             "unmatched_ropes":r.unmatched_ropes,"incomplete_shrouds":r.incomplete_shrouds,
             "incomplete_flags":r.incomplete_flags,"invalid_lengths":r.invalid_lengths,"duplicate_points":r.duplicate_points } })
@@ -52,5 +52,37 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
     if !profiles.is_empty() {
         report["xps_particle_styles"] = json!(profiles);
     }
+    let mut births = vec![];
+    for (mesh_index, mesh) in asset.meshes.iter().enumerate() {
+        let Some(storm_render::model::DynamicMesh::Particles(patch)) = &mesh.dynamic else {
+            continue;
+        };
+        let Some(style) = &patch.style else {
+            continue;
+        };
+        for locator in 0..patch.points.len() {
+            let emission = state.native_fire.as_ref().and_then(|v| {
+                v.iter()
+                    .filter(|e| e.point == locator && e.smoke == patch.smoke)
+                    .max_by(|a, b| a.started.total_cmp(&b.started))
+            });
+            let activation = if state.native_fire.is_some() {
+                emission.map(|e| (e.started, e.stopped))
+            } else {
+                state.fire_started.map(|s| (s, None))
+            };
+            let Some((start, stop)) = activation else {
+                continue;
+            };
+            births.push(match style.birth_stats(seconds,start,stop,locator) {
+                Ok(s)=>json!({"mesh":mesh_index,"locator":locator,"source":style.source,"created":s.created,"living":s.living,"emitter_clock_bits":s.clock_bits,"remainder_bits":s.remainder_bits}),
+                Err(error)=>json!({"mesh":mesh_index,"locator":locator,"error":error.to_string()}),
+            });
+        }
+    }
+    if !births.is_empty() {
+        report["particle_births"] = json!(births);
+    }
+
     report
 }

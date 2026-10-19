@@ -2,7 +2,9 @@
 mod assets;
 mod crew;
 mod effects;
+mod particle_replay;
 mod particle_style;
+pub use particle_replay::BirthStats;
 pub use particle_style::{MAX_PARTICLE_LIFETIME, ParticleStyle};
 mod rigging;
 mod sail_damage;

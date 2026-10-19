@@ -250,6 +250,16 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
             .count()
     };
     assert!(green(&active) > green(&unlit) + 5);
+    let repeated = capture(ShipState {
+        native_fire: Some(vec![FireEmission {
+            point: 0,
+            smoke: false,
+            started: 0.0,
+            stopped: None,
+        }]),
+        ..Default::default()
+    });
+    assert_eq!(active.rgba, repeated.rgba);
     assert_eq!(
         unlit.rgba,
         capture(ShipState {
@@ -258,4 +268,85 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
         })
         .rgba
     );
+}
+
+fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u32; 3])> {
+    samples
+        .into_iter()
+        .flatten()
+        .map(|s| {
+            (
+                s.serial,
+                s.color.map(f32::to_bits),
+                s.offset.to_array().map(f32::to_bits),
+            )
+        })
+        .collect()
+}
+#[test]
+fn birth_replay_is_independent_of_presentation_cadence_repeated_draws_and_rewinds() {
+    let direct = fixture();
+    let stepped = fixture();
+    let expected = sample_signature(direct.samples(1.013, 0.0, None, 0).unwrap());
+    assert_eq!(
+        direct.birth_stats(1.0, 0.0, None, 0).unwrap().created,
+        direct.birth_stats(1.013, 0.0, None, 0).unwrap().created
+    );
+    for time in [0.01, 0.2, 0.55, 1.0, 1.013] {
+        stepped.samples(time, 0.0, None, 0).unwrap();
+    }
+    assert_eq!(
+        sample_signature(stepped.samples(1.013, 0.0, None, 0).unwrap()),
+        expected
+    );
+    assert_eq!(
+        direct.birth_stats(1.013, 0.0, None, 0).unwrap(),
+        stepped.birth_stats(1.013, 0.0, None, 0).unwrap()
+    );
+    stepped.samples(0.1, 0.0, None, 0).unwrap();
+    assert_eq!(
+        sample_signature(stepped.samples(1.013, 0.0, None, 0).unwrap()),
+        expected
+    );
+    assert_eq!(
+        sample_signature(stepped.samples(1.013, 0.0, None, 0).unwrap()),
+        expected
+    );
+}
+#[test]
+fn paused_emitters_hold_the_native_clock_while_live_particles_expire_and_capacity_recovers() {
+    let mut style = fixture();
+    style.count = 2;
+    style.rate = constant(64.0);
+    style.lifetime = constant(0.25);
+    let before = style.birth_stats(1.0, 0.0, Some(1.0), 0).unwrap();
+    assert!(before.created > 2 && before.living <= 2);
+    let held = style.birth_stats(1.1, 0.0, Some(1.0), 0).unwrap();
+    assert_eq!(before.created, held.created);
+    assert_eq!(before.clock_bits, held.clock_bits);
+    assert_eq!(before.remainder_bits, held.remainder_bits);
+    let expired = style.birth_stats(1.5, 0.0, Some(1.0), 0).unwrap();
+    assert_eq!(expired.created, before.created);
+    assert_eq!(expired.living, 0);
+    assert_eq!(expired.clock_bits, before.clock_bits);
+    let restart = style.birth_stats(2.0, 1.9, None, 0).unwrap();
+    assert!(restart.created > 0 && restart.created < before.created);
+}
+#[test]
+fn independent_locators_and_changed_stop_boundaries_replay_without_ghost_births() {
+    let style = fixture();
+    let a = sample_signature(style.samples(1.5, 0.0, None, 0).unwrap());
+    style.samples(0.8, 0.0, None, 1).unwrap();
+    assert_eq!(
+        sample_signature(style.samples(1.5, 0.0, None, 0).unwrap()),
+        a
+    );
+    let rewound_stop = sample_signature(style.samples(1.5, 0.0, Some(0.75), 0).unwrap());
+    assert_eq!(
+        rewound_stop,
+        sample_signature(fixture().samples(1.5, 0.0, Some(0.75), 0).unwrap())
+    );
+    assert!(style.samples(1.0, 0.0, Some(-1.0), 0).is_err());
+    assert!(style.samples(7201.0, 0.0, None, 0).is_err());
+    assert!(style.samples(1.0, 0.0, None, usize::MAX).is_err());
 }

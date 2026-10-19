@@ -1,11 +1,14 @@
-//! XPS appearance on deterministic preview slots; not the native emitter/physics processor.
+//! XPS appearance with retained birth accumulation and fixed-frame replay; physics is pending.
+use super::particle_replay::{BirthStats, LiveParticle, Replay};
 use anyhow::{Context, Result, ensure};
 use glam::Vec3;
+use std::sync::Mutex;
 use storm_formats::particles::{ColorGraph, Fields, Graph, Value};
 
 pub const MAX_PARTICLE_LIFETIME: f32 = 60.0;
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ParticleStyle {
+    replay: Mutex<Replay>,
     pub source: String,
     pub emitter_position: Vec3,
     pub emitter_lifetime: f32,
@@ -20,7 +23,9 @@ pub struct ParticleStyle {
     pub animation: Graph,
     pub track: [Graph; 3],
 }
+#[derive(Clone, Debug)]
 pub struct StyleSample {
+    pub serial: u64,
     pub birth: f32,
     pub offset: Vec3,
     pub radius: f32,
@@ -67,6 +72,7 @@ impl ParticleStyle {
             "XPS preview particle lifetime exceeds 0..=60 seconds"
         );
         let style = Self {
+            replay: Mutex::new(Replay::default()),
             emitter_position: position,
             emitter_lifetime,
             looping: matches!(emitter.get("Looping"), Some(Value::Bool(true))),
@@ -83,74 +89,30 @@ impl ParticleStyle {
         };
         Ok(style)
     }
-    pub fn sample(&self, seconds: f32, start: f32, index: usize) -> Option<StyleSample> {
-        if !seconds.is_finite()
-            || !start.is_finite()
-            || !self.emitter_lifetime.is_finite()
-            || self.emitter_lifetime <= 0.0
-            || self.frames.is_empty()
-            || index >= self.count
-        {
+    fn appearance(&self, seconds: f32, start: f32, particle: &LiveParticle) -> Option<StyleSample> {
+        let age = particle.age;
+        let lifetime = particle.lifetime;
+        let random = particle.random;
+        if lifetime <= 0.0 || self.frames.is_empty() {
             return None;
         }
-        let elapsed = seconds - start;
-        if elapsed < 0.0 {
-            return None;
-        }
-        let emitter_time = if self.looping {
-            elapsed.rem_euclid(self.emitter_lifetime)
-        } else {
-            elapsed.min(self.emitter_lifetime)
-        };
-        // Diagnostic scheduling at the mean rate; original 32-step accumulation/RNG is pending.
-        let rate = self
-            .rate
-            .sample(emitter_time, self.emitter_lifetime, 0.5)
-            .clamp(0.0, 2048.0);
-        if !rate.is_finite() || rate <= 0.0 {
-            return None;
-        }
-        let period = self.count as f32 / rate;
-        let age = (elapsed - (index + 1) as f32 / rate).rem_euclid(period);
-        let birth = seconds - age;
-        let birth_elapsed = birth - start;
-        if birth_elapsed < 0.0 || (!self.looping && birth_elapsed > self.emitter_lifetime) {
-            return None;
-        }
-        let birth_time = if self.looping {
-            birth_elapsed.rem_euclid(self.emitter_lifetime)
-        } else {
-            birth_elapsed
-        };
-        let random = |salt: u32| {
-            ((index as u32)
-                .wrapping_mul(1664525)
-                .wrapping_add(salt.wrapping_mul(1013904223))
-                % 1000) as f32
-                / 1000.0
-        };
-        let lifetime = self
-            .lifetime
-            .sample(birth_time, self.emitter_lifetime, random(1));
-        if !lifetime.is_finite() || lifetime <= 0.0 || age > lifetime {
-            return None;
-        }
-        let radius = self.size.sample(age, lifetime, random(2));
+        let radius = self.size.sample(age, lifetime, random[0]);
         if radius <= 0.000001 {
             return None;
         }
-        let mut color = self.color.sample(age, lifetime, random(3));
+        let mut color = self.color.sample(age, lifetime, random[1]);
         color[3] =
-            (1.0 - self.transparency.sample(age, lifetime, random(4)) * 0.01).clamp(0.0, 1.0);
-        let frame = self.animation.sample(age, lifetime, random(5)).max(0.0) as u32 as usize
+            (1.0 - self.transparency.sample(age, lifetime, random[2]) * 0.01).clamp(0.0, 1.0);
+        let frame = self.animation.sample(age, lifetime, random[3]).max(0.0) as u32 as usize
             % self.frames.len();
         let track = Vec3::new(
-            self.track[0].sample(age, lifetime, random(6)),
-            self.track[1].sample(age, lifetime, random(7)),
-            -self.track[2].sample(age, lifetime, random(8)),
+            self.track[0].sample(age, lifetime, random[4]),
+            self.track[1].sample(age, lifetime, random[5]),
+            -self.track[2].sample(age, lifetime, random[6]),
         );
         let sample = StyleSample {
-            birth,
+            serial: particle.serial,
+            birth: (seconds - age).max(start),
             offset: self.emitter_position + track,
             radius,
             color,
@@ -163,6 +125,71 @@ impl ParticleStyle {
             return None;
         }
         Some(sample)
+    }
+    pub fn samples(
+        &self,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        locator: usize,
+    ) -> Result<Vec<Option<StyleSample>>> {
+        let (particles, _) = self
+            .replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
+            .snapshot(self, seconds, start, stop, locator)?;
+        if seconds < start {
+            return Ok(vec![None; self.count]);
+        }
+        let mut result = particles
+            .iter()
+            .map(|p| self.appearance(seconds, start, p))
+            .collect::<Vec<_>>();
+        result.resize(self.count, None);
+        Ok(result)
+    }
+    pub fn birth_stats(
+        &self,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        locator: usize,
+    ) -> Result<BirthStats> {
+        Ok(self
+            .replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
+            .snapshot(self, seconds, start, stop, locator)?
+            .1)
+    }
+    pub fn sample(&self, seconds: f32, start: f32, index: usize) -> Option<StyleSample> {
+        if index >= self.count || self.frames.is_empty() {
+            return None;
+        }
+        self.samples(seconds, start, None, 0)
+            .ok()?
+            .get(index)?
+            .clone()
+    }
+}
+impl Clone for ParticleStyle {
+    fn clone(&self) -> Self {
+        Self {
+            replay: Mutex::new(Replay::default()),
+            source: self.source.clone(),
+            emitter_position: self.emitter_position,
+            emitter_lifetime: self.emitter_lifetime,
+            looping: self.looping,
+            count: self.count,
+            lifetime: self.lifetime.clone(),
+            rate: self.rate.clone(),
+            size: self.size.clone(),
+            transparency: self.transparency.clone(),
+            color: self.color.clone(),
+            frames: self.frames.clone(),
+            animation: self.animation.clone(),
+            track: self.track.clone(),
+        }
     }
 }
 #[cfg(test)]

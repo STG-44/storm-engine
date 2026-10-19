@@ -967,7 +967,10 @@ fn main() -> Result<()> {
     }
     if let Some(path) = &options.rig_report {
         let asset = asset.as_ref().expect("model required by CLI");
-        std::fs::write(path, serde_json::to_vec_pretty(&rig_report::report(asset))?)?;
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&rig_report::report(asset, options.time))?,
+        )?;
         return Ok(());
     }
     if let Some(path) = &options.sail_script_report {

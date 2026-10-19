@@ -33,6 +33,7 @@ fn all_seven_field_loaders_and_complete_state_match_retained_cpp() {
             .clone();
         let mut expected = case["expected"].clone();
         expected.as_object_mut().unwrap().remove("samples");
+        expected.as_object_mut().unwrap().remove("range_samples");
         assert_eq!(
             expected
                 .as_object_mut()
@@ -196,4 +197,44 @@ fn sparse_graphs_and_undefined_native_division_paths_are_safe() {
     };
     assert_eq!(empty.sample(0.0, 0.0, 0.5), 0.0);
     assert_eq!(ColorGraph(vec![]).sample(0.0, 0.0, 0.5), [1.0; 4]);
+}
+#[test]
+fn native_random_ranges_swap_crossing_bounds_and_use_the_thousand_step_fraction() {
+    let fixture = reference();
+    let mut count = 0;
+    for case in fixture["fields"].as_array().unwrap() {
+        let Some(samples) = case["expected"].get("range_samples") else {
+            continue;
+        };
+        let mut bytes = 1u32.to_le_bytes().to_vec();
+        bytes.extend(3u32.to_le_bytes());
+        bytes.extend(
+            case["bytes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as u8),
+        );
+        let fields = Reader {
+            bytes: &bytes,
+            offset: 0,
+            budget: 262_144,
+        }
+        .fields()
+        .unwrap();
+        let Value::Graph(graph) = &fields.0[0].value else {
+            panic!("graph expected")
+        };
+        for sample in samples.as_array().unwrap() {
+            let f = |n: usize| f32::from_bits(sample[n].as_u64().unwrap() as u32);
+            assert_eq!(
+                graph
+                    .sample_range(f(0), f(1), sample[2].as_u64().unwrap() as u32)
+                    .to_bits(),
+                sample[3].as_u64().unwrap() as u32
+            );
+            count += 1;
+        }
+    }
+    assert_eq!(count, 240);
 }
