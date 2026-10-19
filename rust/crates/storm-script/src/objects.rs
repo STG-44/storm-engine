@@ -352,6 +352,10 @@ impl Variable {
     pub fn reference(&self) -> Value {
         Value::Reference(Reference(Rc::downgrade(&self.0)))
     }
+    pub(crate) fn address(&self) -> Result<Value> {
+        // SETREF binds GetVarPointer now, before subsequent arguments run.
+        Ok(self.resolved()?.reference())
+    }
     pub fn value(&self) -> Result<Value> {
         self.resolved()?
             .0

@@ -100,6 +100,7 @@ enum Instruction {
     Select(Slot),
     Index,
     Load(bool),
+    Address,
     Store(bool),
     MakeRef,
     MakeARef,
@@ -295,6 +296,11 @@ impl Program {
                         };
                         targets.push((array.element(index)?, indirect));
                     }
+                    Instruction::Address => {
+                        let (variable, _) =
+                            targets.pop().context("script target stack underflow")?;
+                        stack.push(variable.address()?);
+                    }
                     Instruction::Load(keep) => {
                         let target = if *keep {
                             targets.last().cloned()
@@ -465,5 +471,7 @@ mod storage_tests;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod address_tests;
 #[cfg(test)]
 mod source_tests;

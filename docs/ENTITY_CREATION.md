@@ -37,6 +37,12 @@ the caller's object or an actual indexed array cell. A plain aref shares its
 tree but copies its entity ID; a ref to an aref changes that variable's ID,
 without changing the owning object or previously copied arefs.
 
+The later [address operator port](ADDRESS_REFERENCES.md) adds the original
+`CreateEntity(&ship, class)` spelling, including `&array[index]` and resolved
+refs. Run this fixture with `--entry AddressMain` to compare its complete report
+with the existing-ref path. The evidence below records the earlier factory/Init
+phase; the address document records the later source extension.
+
 `CreateClass` passes no attribute binding to Init and returns a script object
 with the created ID. Later accessing that object's attributes does not bind
 them to the native entity automatically. The existing DATA null-source copy

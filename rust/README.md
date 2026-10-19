@@ -331,3 +331,11 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_c
 
 The registered observer/reject classes are diagnostic fixtures. Original game
 classes and script `SendMessage` remain pending.
+
+[Original address expressions](../docs/ADDRESS_REFERENCES.md) now support
+`CreateEntity(&ship, class)` and `&array[index]`. The same creation scenario
+with `--entry AddressMain` produces an identical complete report:
+
+```sh
+cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_creation.c --entry AddressMain --report address-script-state.json
+```

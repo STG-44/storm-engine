@@ -133,7 +133,7 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
                 p += 2;
             } else {
                 ensure!(
-                    b"{}[]();.,+-*/%^=!<>".contains(&bytes[p]),
+                    b"{}[]();.,+-*/%^=!<>&".contains(&bytes[p]),
                     "{line}:{column}: unsupported character"
                 );
                 p += 1;
@@ -893,6 +893,20 @@ impl Compiler {
     }
     fn expression(&mut self, minimum: u8) -> Result<()> {
         self.enter()?;
+        // Retained CompileExpression handles '&' before L0. It accepts one
+        // variable/array element as the complete expression, never a raw pointer.
+        if minimum == 1 && self.take("&") {
+            let slot = self.variable()?;
+            self.emit(Instruction::Select(slot));
+            if self.take("[") {
+                self.expression(3)?; // Original address indices start at L2.
+                self.expect("]")?;
+                self.emit(Instruction::Index);
+            }
+            self.emit(Instruction::Address);
+            self.nesting -= 1;
+            return Ok(());
+        }
         let sign = if self.take("-") {
             Some(false)
         } else if self.take("!") {

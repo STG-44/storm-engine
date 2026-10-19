@@ -89,6 +89,10 @@ is rejected. Native handlers remain responsible for their own work and state.
 expose `IsEntity`, `DeleteClass` and persistent `EntityUpdate` through typed host
 bindings. Attribute writes start with notifications enabled in each runtime.
 
+[Address expressions](ADDRESS_REFERENCES.md) also create checked refs using
+the original `&variable` / `&array[index]` spelling. They resolve aliases before
+later arguments execute and retain the existing weak reference lifetimes.
+
 Still pending: pointers, full entity/game API and entity-ID
 operators, implicit object/ref conversions beyond this subset, compound
 attribute assignments, numeric literal attribute segments and complete original
