@@ -78,3 +78,39 @@ return an explicit unsupported error, unlike the original switch's zero
 fallback. `MSG_SHIP_CREATE`, character binding/index queries, live fireplace
 counts, service initialization, movement impulses and original ship physics
 remain pending. Original commercial programs still do not boot in this port.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `a62c560ea63bd48e83fb49f249fe4574b68ec506` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39210367729) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39210360784):
+231 CPU tests, including 135 interpreter tests, formatting, Clippy with warnings
+denied, native builds and all thirteen standalone scenarios on each host.
+The four verified Rust host triples are `aarch64-apple-darwin`,
+`x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
+Linux also passes 13 explicit software Vulkan GPU tests and native windows.
+Four downloaded script-state ZIP digests and all 52 complete JSON reports
+match local results; all twelve preceding reports remain unchanged.
+
+The eight added CPU tests cover the retained 20-case reference, malformed
+messages, real gradual deployment, output-cell semantics, deletion, recovery
+and raw commands surviving rudder/focus changes. Float64 preview inputs round
+to float32 before selecting a set, consistently with subsequent application.
+
+This phase rechecked all 40 original ship roots and 368 persistent sail masks:
+2,204 diagnostic handlers, 1,105 attribute notifications and 1,099 native damage
+callbacks. All 80 layout/event reports match the address-phase baseline. That
+resource audit was run at the initial phase commit `d6241956`; the subsequent
+precision fix affects sailing, which this metadata/collision audit does not
+invoke. The final code also renders original ArabellaShip1 offscreen through
+local Metal after the startup source; its complete state report is unchanged
+by the precision correction. Resources, images and local reports remain
+outside Git.
+
+Local native-window attempts for both ArabellaShip1 and the generated fixture
+timed out before confirming three presented frames. Offscreen Metal rendering
+is verified; this window/surface check remains unconfirmed on this Mac.
+Hosted macOS/Windows checks cover compilation and CPU behavior; physical GPU
+coverage there remains pending. Full original SHIP initialization/game startup
+and the remaining native messages remain unfinished.

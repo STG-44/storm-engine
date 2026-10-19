@@ -430,3 +430,14 @@ gradually deployed canvas remain separate. A startup source fixture exercises
 all three sets and deletion. The C++/DATA reference covers 20 cases, including
 signed zero, threshold neighbors and non-finite patterns. Full SHIP mounting,
 character binding and the remaining native messages are still pending.
+
+
+The [SHIP sail-command PR run](https://github.com/STG-44/storm-engine/actions/runs/39210367729)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39210360784)
+pass all four native hosts for `a62c560e`: 231 CPU tests, including 135
+interpreter tests, plus 13 explicit Linux software Vulkan GPU tests and native
+windows. Four archive digests and all 52 complete scenario reports are verified.
+The twelve preceding reports remain unchanged. The phase's 40-ship resource
+audit reproduces all 80 previous layout/event reports; final code also renders
+original ArabellaShip1 through offscreen Metal with scripted sail commands.
+Local native-window checks timed out; see [scope and evidence](SHIP_SAIL_MESSAGES.md#four-platform-evidence-2026-10-19).
