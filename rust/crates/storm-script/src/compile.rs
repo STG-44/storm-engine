@@ -352,6 +352,8 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 ensure!(
                     if crate::events::signature(callee).is_some() {
                         crate::events::arguments_valid(callee, *arguments)
+                    } else if crate::entity_api::signature(callee).is_some() {
+                        crate::entity_api::arguments_valid(callee, *arguments)
                     } else {
                         *arguments == expected
                     },
@@ -476,6 +478,8 @@ impl Compiler {
             Type::Int
         } else if self.take("float") {
             Type::Float
+        } else if self.take("ptr") {
+            Type::Ptr
         } else if self.take("string") {
             Type::String
         } else if self.take("object") {
@@ -661,9 +665,11 @@ impl Compiler {
             }
             return Ok(());
         }
-        if ["int", "bool", "float", "string", "object", "ref", "aref"]
-            .iter()
-            .any(|s| self.is(s))
+        if [
+            "int", "bool", "float", "string", "object", "ref", "aref", "ptr",
+        ]
+        .iter()
+        .any(|s| self.is(s))
         {
             let kind = self.kind()?;
             loop {

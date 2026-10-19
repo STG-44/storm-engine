@@ -15,11 +15,11 @@ The fork is public; the original storm-devs repository is archived.
 | `AddToLayer`, `GetEntityIds(type)` | 32 layers; ascending layer index and stable ascending unsigned priority; duplicate insertion does not reprioritize; membership in different layers remains duplicated |
 | `core_impl.cpp::Send_Message`, `ProcessExecute`, `ProcessRealize` | Invalid/pending destinations receive no normal messages or stage calls; invalid sends return zero; frozen layers skip stages but do not block direct messages |
 | `core/include/vma.hpp::MakeHashValue` | Original ASCII case folding and 32-bit class hash |
-| `core/src/message.cpp` | Owned `b w l u f d i c s` values; 32-bit longs/floats, 64-bit entity IDs, signed Dword return bits, checked cursor reads and rewind |
+| `core/src/message.cpp` | Owned `b w l p u f d i c s` values; 32-bit longs/floats, opaque 64-bit tokens and entity IDs, signed Dword return bits, checked cursor reads and rewind |
 | `compiler.cpp::ProcessEvent`, `s_eventtab.cpp::FindEvent` | Case-insensitive ASCII event lookup, registration order, rewind before each native callback, last non-void result retained |
 
 `storm-core` forbids unsafe code. Format `a` now uses a checked attribute handle;
-raw `p/e` pointer formats remain rejected. See the [attribute port](ATTRIBUTES.md).
+`p` carries opaque 64-bit tokens; raw script-variable `e` fields remain rejected. See the [attribute port](ATTRIBUTES.md).
 No C++ addresses are represented as Rust pointers.
 Stamp exhaustion returns an error instead of wrapping into an old ID. Invalid
 layer indices and message types return errors instead of unchecked memory access.
@@ -81,13 +81,13 @@ script VM and combat compatibility remain under development.
 
 Five core tests cover deletion/drop timing, slot reuse/stale IDs, priority ties,
 cross-layer duplicates, freezing, direct delivery, numeric widths, cursor failures,
-unsupported pointer formats, event rewind/results and retained C++ hash constants.
+unsupported script-variable formats, event rewind/results and retained C++ hash constants.
 Integration tests cover the original sail payloads, repeated damage, unknown
 characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 203 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 212 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The [script source subset](SCRIPT_RUNTIME.md) and [object/reference subset](SCRIPT_OBJECTS.md)
 now feed the [immediate event integration](SCRIPT_EVENTS.md). The generated
@@ -105,7 +105,7 @@ The later [script entity API](ENTITY_SCRIPT_API.md) binds `IsEntity` and
 attribute callbacks and stale-ID rejection. Persistent `EntityUpdate` controls
 notifications from script assignments. The later [creation port](ENTITY_CREATION.md)
 adds factories/Init and script `CreateEntity`/`CreateClass`; original commercial
-native classes and `SendMessage` remain pending.
+native classes remain pending. Script `SendMessage` now has a checked [binding](ENTITY_MESSAGES.md).
 
 At commit `402d469ee72885832cc3f4cec2a305faeb3866ec`, both
 [push CI](https://github.com/STG-44/storm-engine/actions/runs/39079242564) and

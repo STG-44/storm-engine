@@ -6,6 +6,7 @@ pub(crate) const MAX_STRING: usize = 4096;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Type {
     Int,
+    Ptr,
     Float,
     String,
     Object,
@@ -18,6 +19,8 @@ pub enum Type {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i32),
+    /// Original VAR_PTR bits. Never interpreted as a Rust memory address.
+    Ptr(u64),
     Float(f32),
     String(String),
     Object(Object),
@@ -49,6 +52,7 @@ impl Type {
     pub(crate) fn initial(self) -> Value {
         match self {
             Self::Int => Value::Int(0),
+            Self::Ptr => Value::Ptr(0),
             Self::Float => Value::Float(0.0),
             Self::String => Value::String(String::new()),
             Self::Reference => Value::Reference(Reference::default()),
@@ -63,6 +67,7 @@ impl Value {
     pub fn kind(&self) -> Type {
         match self {
             Self::Int(_) => Type::Int,
+            Self::Ptr(_) => Type::Ptr,
             Self::Float(_) => Type::Float,
             Self::String(_) => Type::String,
             Self::Object(_) => Type::Object,
@@ -76,6 +81,7 @@ impl Value {
     pub fn integer(&self) -> Result<i32> {
         match self {
             Self::Int(v) => Ok(*v),
+            Self::Ptr(v) => Ok(*v as i32),
             Self::Float(v) => {
                 let truncated = v.trunc() as f64;
                 ensure!(
@@ -118,6 +124,7 @@ impl Value {
     pub(crate) fn truth(&self) -> Result<bool> {
         Ok(match self {
             Self::Int(v) => *v != 0,
+            Self::Ptr(v) => *v != 0,
             Self::Float(v) => *v != 0.0,
             Self::String(s) => !s.is_empty(),
             _ => bail!("non-scalar condition"),
@@ -129,7 +136,7 @@ impl Value {
             Self::Int(v) => Self::Int(v.wrapping_neg()),
             Self::Float(v) => Self::Float(-v),
             // DATA::Inverse leaves non-numeric scalars unchanged.
-            Self::String(_) => self,
+            Self::String(_) | Self::Ptr(_) => self,
             _ => bail!("non-scalar unary operand"),
         })
     }
@@ -191,6 +198,9 @@ impl Value {
             return Ok(Self::String(a));
         }
         if matches!(op, Op::Eq | Op::Ne | Op::Lt | Op::Le | Op::Gt | Op::Ge) {
+            if let Self::Ptr(n) = self {
+                self = Self::Int(n as i32);
+            }
             if let (Self::String(a), Self::String(b)) = (&self, &rhs) {
                 ensure!(
                     a.is_ascii() && b.is_ascii(),
@@ -237,6 +247,7 @@ impl Value {
             match v {
                 Self::Int(n) => Ok(*n as f32),
                 Self::Float(n) => Ok(*n),
+                Self::Ptr(n) if matches!(op, Op::And | Op::Or) => Ok(f32::from(*n != 0)),
                 _ => bail!("unsupported operand {:?}", v.kind()),
             }
         };

@@ -44,6 +44,16 @@ pub trait Host {
     ) -> Result<EntityId> {
         bail!("entity creation is not bound by this host")
     }
+    /// Synchronous native dispatch. Attribute handles belong to this store and
+    /// are only borrowed for this call; pointer tokens are opaque 64-bit values.
+    fn send_message(
+        &mut self,
+        _entity: EntityId,
+        _message: &mut storm_core::Message,
+        _attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        bail!("entity messages are not bound by this host")
+    }
     fn attribute_changed(
         &mut self,
         _entity: EntityId,
@@ -428,11 +438,16 @@ impl Program {
                             *value == (function.returns != Type::Void),
                             "{name} return value presence does not match declaration"
                         );
-                        let result = if *value {
+                        let mut result = if *value {
                             pop(&mut stack)?
                         } else {
                             Value::Void
                         };
+                        // The retained FUNCTION_RETURN permits exactly this
+                        // implicit mismatch, keeping the low int32 bits.
+                        if function.returns == Type::Int && result.kind() == Type::Ptr {
+                            result = result.convert(Type::Int)?;
+                        }
                         ensure!(
                             result.kind() == function.returns,
                             "{name} return type mismatch: expected {:?}, got {:?}",

@@ -120,12 +120,13 @@ fn layers_keep_priority_ties_duplicates_and_frozen_message_delivery() -> Result<
 fn owned_message_preserves_widths_and_failed_reads_do_not_advance() -> Result<()> {
     let id = EntityId::from_raw(0x1234_5678_90ab_cdef);
     let mut m = Message::new(
-        "bwlufdics",
+        "bwlupfdics",
         vec![
             Value::Byte(255),
             Value::Word(65535),
             Value::Long(i32::MIN),
             Value::Dword(u32::MAX),
+            Value::Pointer(0xfedc_ba98_7654_3210),
             Value::Float(0.1),
             Value::Double(1.0 / 3.0),
             Value::Entity(id),
@@ -139,6 +140,8 @@ fn owned_message_preserves_widths_and_failed_reads_do_not_advance() -> Result<()
     assert_eq!(m.word()?, 65535);
     assert_eq!(m.long()?, i32::MIN);
     assert_eq!(m.dword()?, -1);
+    assert!(m.long().is_err());
+    assert_eq!(m.pointer()?, 0xfedc_ba98_7654_3210);
     assert_eq!(m.float()?.to_bits(), 0.1_f32.to_bits());
     assert_eq!(m.double()?, 1.0 / 3.0);
     assert_eq!(m.entity()?, id);

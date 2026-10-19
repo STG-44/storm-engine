@@ -330,7 +330,8 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_c
 ```
 
 The registered observer/reject classes are diagnostic fixtures. Original game
-classes and script `SendMessage` remain pending.
+classes remain pending. The next [message binding](../docs/ENTITY_MESSAGES.md)
+supports synchronous `SendMessage` and opaque 64-bit `ptr` values.
 
 [Original address expressions](../docs/ADDRESS_REFERENCES.md) now support
 `CreateEntity(&ship, class)` and `&array[index]`. The same creation scenario
@@ -339,3 +340,16 @@ with `--entry AddressMain` produces an identical complete report:
 ```sh
 cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_creation.c --entry AddressMain --report address-script-state.json
 ```
+
+### Native entity messages
+
+```sh
+cargo run -p storm-script --locked -- \
+  rust/crates/storm-script/fixtures/entity_messages.c \
+  --report message-script-state.json
+```
+
+This resource-free diagnostic creates a native test entity, sends `lfsiap`
+fields, echoes a 64-bit result through a `p` field and verifies zero after
+pending deletion. The original commercial classes/message codes remain
+unfinished. See [formats, pointer scope and reference checks](../docs/ENTITY_MESSAGES.md).

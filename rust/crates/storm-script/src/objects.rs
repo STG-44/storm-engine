@@ -105,7 +105,15 @@ impl World {
     pub fn live_nodes(&self) -> Result<usize> {
         self.read(|s| s.len())
     }
-    /// A native Init can populate the selected attribute store directly.
+    pub(crate) fn attribute_id(&self, attribute: &AttributeReference) -> Result<AttributeId> {
+        let owner = attribute.owner()?;
+        ensure!(
+            Rc::ptr_eq(&self.0, &owner.world.0),
+            "foreign attribute world"
+        );
+        Ok(attribute.node)
+    }
+    /// A native callback can populate the selected attribute store directly.
     /// The embedding host is trusted native code; script budgets are checked
     /// again on return. Re-entry and foreign roots fail before the callback.
     pub(crate) fn initialize<T>(

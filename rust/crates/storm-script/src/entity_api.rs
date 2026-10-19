@@ -8,9 +8,18 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "isentity" => (1, Type::Int),
         "createentity" => (2, Type::Int),
         "createclass" => (1, Type::Object),
+        "sendmessage" => (2, Type::Ptr),
         "deleteclass" | "entityupdate" => (1, Type::Void),
         _ => return None,
     })
+}
+
+pub(crate) fn arguments_valid(name: &str, count: usize) -> bool {
+    if name == "sendmessage" {
+        (2..=130).contains(&count)
+    } else {
+        signature(name).is_some_and(|(expected, _)| count == expected)
+    }
 }
 
 fn entity(value: &Value) -> Result<EntityId> {
@@ -27,10 +36,21 @@ pub(crate) fn call(
     execution: &mut Execution<'_, impl Host>,
 ) -> Result<Value> {
     ensure!(
-        arguments.len() == signature(name).expect("entity builtin").0,
+        arguments_valid(name, arguments.len()),
         "entity builtin argument count"
     );
     match name {
+        "sendmessage" => {
+            let id = entity(&arguments[0])?;
+            let mut message = messages::make(&arguments[1..], &execution.world)?;
+            message.move_to_start();
+            execution.world.initialize(None, |store, _| {
+                execution
+                    .host
+                    .send_message(id, &mut message, store)
+                    .map(Value::Ptr)
+            })
+        }
         "createentity" => {
             // Loading a plain object already made a stack copy; only ref
             // arguments can replace the caller's entity identity.
@@ -105,5 +125,6 @@ fn create(
 
 #[cfg(test)]
 mod creation_tests;
+mod messages;
 #[cfg(test)]
 mod tests;

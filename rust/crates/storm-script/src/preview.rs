@@ -3,7 +3,9 @@ use crate::{Host, Value, Variable, World};
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
-use storm_core::{AttributeId, AttributeStore, Entity, EntityId, EntityInit, EntityManager};
+use storm_core::{
+    AttributeId, AttributeStore, Entity, EntityId, EntityInit, EntityManager, Message,
+};
 
 #[derive(Default)]
 struct Notifications {
@@ -40,6 +42,40 @@ impl Entity for Reject {
     }
 }
 
+struct MessageProbe(Rc<RefCell<Notifications>>);
+impl Entity for MessageProbe {
+    fn process_message(&mut self, message: &mut Message) -> Result<u64> {
+        let format = message.format().to_owned();
+        let result = match format.as_str() {
+            "lfsiap" => {
+                ensure!(message.long()? == 548, "diagnostic message command");
+                ensure!(message.float()? == 7.0, "diagnostic float field");
+                ensure!(message.string()? == "парус", "diagnostic string field");
+                ensure!(
+                    message.entity()? != EntityId::INVALID,
+                    "diagnostic entity field"
+                );
+                message.attribute()?;
+                ensure!(message.pointer()? == u64::MAX, "diagnostic pointer field");
+                0xfedc_ba98_7654_3210
+            }
+            "p" => message.pointer()?,
+            "" => 0,
+            _ => bail!("unsupported diagnostic message format"),
+        };
+        ensure!(!message.param_valid(), "unread diagnostic message fields");
+        let mut records = self.0.borrow_mut();
+        records.total += 1;
+        if records.recent.len() == 256 {
+            records.recent.pop_front();
+        }
+        records
+            .recent
+            .push_back(json!({"format":format,"result":result}));
+        Ok(result)
+    }
+}
+
 pub struct AttributeHost {
     attributes: AttributeStore,
     root: AttributeId,
@@ -48,6 +84,7 @@ pub struct AttributeHost {
     ship: Variable,
     entities: EntityManager,
     notifications: Rc<RefCell<Notifications>>,
+    messages: Rc<RefCell<Notifications>>,
     ship_used: bool,
 }
 
@@ -63,6 +100,11 @@ impl AttributeHost {
             Ok(Box::new(Observer(records.clone())))
         })?;
         entities.register_class("script_attribute_reject", || Ok(Box::new(Reject)))?;
+        let messages = Rc::new(RefCell::new(Notifications::default()));
+        let message_records = messages.clone();
+        entities.register_class("script_message_probe", move || {
+            Ok(Box::new(MessageProbe(message_records.clone())))
+        })?;
         let entity =
             entities.insert("script_attribute_observer", Observer(notifications.clone()))?;
         let object = world.object(entity)?;
@@ -77,6 +119,7 @@ impl AttributeHost {
             world,
             entities,
             notifications,
+            messages,
             ship_used: false,
         })
     }
@@ -89,6 +132,7 @@ impl AttributeHost {
         }
         let result = match result {
             Value::Int(n) => json!({"type":"int", "value":n}),
+            Value::Ptr(n) => json!({"type":"ptr", "value":n}),
             Value::Float(n) => json!({"type":"float", "bits":n.to_bits()}),
             Value::String(s) => json!({"type":"string", "value":s}),
             Value::Void => json!({"type":"void"}),
@@ -109,6 +153,10 @@ impl AttributeHost {
             let records = self.notifications.borrow();
             report["ship_attribute_notifications"] = json!(records.total);
             report["ship_attribute_changes"] = json!(records.recent);
+        }
+        let messages = self.messages.borrow();
+        if messages.total != 0 {
+            report["entity_messages"] = json!({"total":messages.total,"recent":messages.recent});
         }
         report
     }
@@ -144,6 +192,14 @@ impl Host for AttributeHost {
                 .notify_attribute_changed(entity, store, changed)?;
         }
         Ok(())
+    }
+    fn send_message(
+        &mut self,
+        entity: EntityId,
+        message: &mut Message,
+        _attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        self.entities.send_message(entity, message)
     }
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         match (name, arguments) {

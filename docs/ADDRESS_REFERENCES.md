@@ -33,8 +33,8 @@ Reference storage remains weak and checked. An address does not retain a local
 variable, a removed array cell or a destroyed runtime. Runtime globals stay
 alive across calls/frames, while fresh `Program::call` storage is temporary.
 Uninitialized refs, expired aliases, invalid indices and foreign attribute
-worlds retain their existing located errors and budgets. Numeric pointer values
-and script `SendMessage` remain separate pending work.
+worlds retain their existing located errors and budgets. Numeric pointer values and script `SendMessage` are covered by the later
+[message binding](ENTITY_MESSAGES.md).
 
 ## Verification
 
@@ -80,6 +80,6 @@ The local resource-dependent audit still checks all 40 ship roots and 368 sail
 masks through 2,204 source handlers, 1,105 notifications and 1,099 native damage
 callbacks. All 80 complete layout/event reports equal the preceding phase.
 The generated ship presents three native Metal frames. Commercial resources
-and dependent reports stay outside Git. Original native game classes, numeric
-message pointers, script SendMessage and complete commercial startup remain
-pending.
+and dependent reports stay outside Git. Original native game classes and complete commercial startup remain pending.
+The later [message binding](ENTITY_MESSAGES.md) adds opaque numeric pointer
+values and script SendMessage; raw script-variable message pointers remain pending.

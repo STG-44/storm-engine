@@ -7,6 +7,8 @@ pub enum Value {
     Byte(u8),
     Word(u16),
     Long(i32),
+    /// Opaque original uintptr_t bits, never dereferenced by the runtime.
+    Pointer(u64),
     Dword(u32),
     Float(f32),
     Double(f64),
@@ -22,6 +24,7 @@ impl Value {
             Self::Byte(_) => 'b',
             Self::Word(_) => 'w',
             Self::Long(_) => 'l',
+            Self::Pointer(_) => 'p',
             Self::Dword(_) => 'u',
             Self::Float(_) => 'f',
             Self::Double(_) => 'd',
@@ -50,9 +53,9 @@ impl Message {
             ensure!(
                 matches!(
                     code,
-                    'b' | 'w' | 'l' | 'u' | 'f' | 'd' | 'i' | 'a' | 'c' | 's'
+                    'b' | 'w' | 'l' | 'p' | 'u' | 'f' | 'd' | 'i' | 'a' | 'c' | 's'
                 ),
-                "unsupported message format {code:?} at {index}; raw pointers and script-variable references are not ported"
+                "unsupported message format {code:?} at {index}; script-variable references are not ported"
             );
             ensure!(
                 code == value.format(),
@@ -110,6 +113,13 @@ impl Message {
     pub fn long(&mut self) -> Result<i32> {
         match self.read('l')? {
             Value::Long(v) => Ok(*v),
+            _ => unreachable!(),
+        }
+    }
+    /// Read an opaque 64-bit token; this grants no access to native memory.
+    pub fn pointer(&mut self) -> Result<u64> {
+        match self.read('p')? {
+            Value::Pointer(v) => Ok(*v),
             _ => unreachable!(),
         }
     }

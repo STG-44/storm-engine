@@ -25,6 +25,7 @@ impl Value {
         }
         Ok(match (self, kind) {
             (value, Type::Int) => Self::Int(value.integer()?),
+            (Self::Int(n), Type::Ptr) => Self::Ptr(n as u64),
             (Self::Int(n), Type::Float) => Self::Float(n as f32),
             (Self::String(s), Type::Float) => Self::Float(parse_float(&s)),
             (Self::Int(n), Type::String) => Self::String(n.to_string()),
@@ -85,6 +86,12 @@ impl Value {
                 rhs.resolved()?,
                 fuel,
             );
+        }
+        if matches!(op, Op::Eq | Op::Ne | Op::Lt | Op::Le | Op::Gt | Op::Ge)
+            && let Self::Reference(reference) = &self
+            && matches!(reference.value()?, Self::Ptr(_))
+        {
+            reference.convert(Type::Int)?;
         }
         let value = self.resolved()?.binary(op, rhs.resolved()?, fuel)?;
         if matches!(
