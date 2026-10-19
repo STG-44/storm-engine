@@ -422,3 +422,11 @@ script tests, plus all 13 explicit Linux software Vulkan GPU tests. Four
 verified ZIP digests and all 48 complete scenario reports match local results.
 All eleven preceding reports remain unchanged; the twelfth checks native
 output parameters and retains a global across synchronous sends.
+
+[Original SHIP sail messages](SHIP_SAIL_MESSAGES.md) now store and return the
+raw float32 command through the checked native `e` bridge. Both handlers also
+control the real preview sailing state; the raw request, selected sail set and
+gradually deployed canvas remain separate. A startup source fixture exercises
+all three sets and deletion. The C++/DATA reference covers 20 cases, including
+signed zero, threshold neighbors and non-finite patterns. Full SHIP mounting,
+character binding and the remaining native messages are still pending.

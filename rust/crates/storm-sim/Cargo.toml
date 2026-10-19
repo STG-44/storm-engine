@@ -7,7 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 glam = { workspace = true, features = ["f64"] }
+storm-core = { path = "../storm-core" }
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

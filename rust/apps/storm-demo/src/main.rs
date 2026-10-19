@@ -6,6 +6,7 @@ mod flags;
 mod rig_report;
 mod sailing;
 mod ship_controls;
+mod ship_script;
 mod timeline;
 use storm_render::{
     DiagnosticScene, Gpu, create_instance,
@@ -115,6 +116,12 @@ struct Options {
     /// Requested sail set after starting: 0, 0.5, or 1.
     #[arg(long, requires = "sail", value_parser = sail_setting)]
     sail_target: Option<f32>,
+    /// Run a bounded startup source with the two ported SHIP sail messages.
+    #[arg(long, requires = "sail")]
+    sail_script: Option<PathBuf>,
+    /// Save script and sailing state, then exit without creating a GPU device.
+    #[arg(long, requires = "sail_script", conflicts_with_all = ["headless", "frames", "gpu_info"])]
+    sail_script_report: Option<PathBuf>,
     /// Initial held rudder, -1 port to +1 starboard; useful for deterministic replay.
     #[arg(long, requires = "sail", default_value_t = 0.0, value_parser = rudder, allow_negative_numbers = true)]
     rudder: f32,
@@ -935,6 +942,17 @@ fn main() -> Result<()> {
     if let Some(path) = &options.rig_report {
         let asset = asset.as_ref().expect("model required by CLI");
         std::fs::write(path, serde_json::to_vec_pretty(&rig_report::report(asset))?)?;
+        return Ok(());
+    }
+    if let Some(path) = &options.sail_script_report {
+        let sailing = sailing::Session::new(
+            &options,
+            asset
+                .as_ref()
+                .map_or_else(storm_sim::RigLayout::default, |a| a.rig_layout()),
+        )?
+        .expect("sailing required by CLI");
+        std::fs::write(path, serde_json::to_vec_pretty(&sailing.report())?)?;
         return Ok(());
     }
     let instance = create_instance(options.backend.flags())?;

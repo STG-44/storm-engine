@@ -1,6 +1,7 @@
 use super::Options;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
+use storm_core::{Entity, Message, Value as MessageValue};
 use storm_render::model::{ModelPose, SailWind};
 use storm_sim::{Helm, RigLayout, Sailing, ShipConfig, Waves, Wind};
 use winit::{event::ElementState, keyboard::KeyCode};
@@ -13,6 +14,7 @@ pub struct Session {
     sail_up: bool,
     sail_down: bool,
     pub initial_yaw: f32,
+    script_report: Option<Value>,
 }
 
 fn wind(value: SailWind) -> Wind {
@@ -61,6 +63,13 @@ impl Session {
                     .to_radians(),
             ),
         })?;
+        let script_report = if let Some(path) = &options.sail_script {
+            let (scripted, report) = super::ship_script::run(simulation, path)?;
+            simulation = scripted;
+            Some(report)
+        } else {
+            None
+        };
         simulation.advance(f64::from(options.time))?;
         Ok(Some(Self {
             simulation,
@@ -70,6 +79,7 @@ impl Session {
             sail_up: false,
             sail_down: false,
             initial_yaw: heading + std::f32::consts::PI,
+            script_report,
         }))
     }
 
@@ -109,28 +119,40 @@ impl Session {
 
     pub fn key(&mut self, key: KeyCode, state: ElementState) -> Result<()> {
         let pressed = state == ElementState::Pressed;
-        let mut helm = self.simulation.helm();
+        let helm = self.simulation.helm();
         match key {
             KeyCode::KeyA => self.left = pressed,
             KeyCode::KeyD => self.right = pressed,
             KeyCode::KeyW => {
                 if pressed && !self.sail_up {
-                    helm.sail = (helm.sail + 0.5).min(1.0);
+                    self.set_sails((helm.sail + 0.5).min(1.0) as f32)?;
                 }
                 self.sail_up = pressed;
             }
             KeyCode::KeyS => {
                 if pressed && !self.sail_down {
-                    helm.sail = (helm.sail - 0.5).max(0.0);
+                    self.set_sails((helm.sail - 0.5).max(0.0) as f32)?;
                 }
                 self.sail_down = pressed;
             }
             _ => {}
         }
         if matches!(key, KeyCode::KeyA | KeyCode::KeyD) {
-            helm.rudder = f64::from(i8::from(self.right) - i8::from(self.left));
+            self.simulation
+                .set_rudder(f64::from(i8::from(self.right) - i8::from(self.left)))?;
         }
-        self.simulation.set_helm(helm)?;
+        Ok(())
+    }
+    fn set_sails(&mut self, setting: f32) -> Result<()> {
+        let mut message = Message::new(
+            "lf",
+            vec![
+                MessageValue::Long(storm_sim::ship_sails::MSG_SHIP_SET_SAIL_STATE),
+                MessageValue::Float(setting),
+            ],
+        )?;
+        self.simulation.process_message(&mut message)?;
+        self.simulation.advance(0.0)?;
         Ok(())
     }
     pub fn release_rudder(&mut self) -> Result<()> {
@@ -138,10 +160,7 @@ impl Session {
         self.right = false;
         self.sail_up = false;
         self.sail_down = false;
-        self.simulation.set_helm(Helm {
-            rudder: 0.0,
-            ..self.simulation.helm()
-        })?;
+        self.simulation.set_rudder(0.0)?;
         Ok(())
     }
 
@@ -166,7 +185,7 @@ impl Session {
         let motion = self.simulation.motion();
         let rig = self.simulation.rig();
         let layout = self.simulation.rig_layout();
-        json!({ "model": "new approximate sailing and damped wave response", "step_seconds": storm_sim::STEP_SECONDS,
+        let mut report = json!({ "model": "new approximate sailing and damped wave response", "step_seconds": storm_sim::STEP_SECONDS,
             "simulation_seconds": self.simulation.time(), "position_xz_m": s.position.to_array(),
             "velocity_xz_mps": s.velocity.to_array(), "speed_knots": s.speed_knots(),
             "heading_degrees": s.heading.to_degrees().rem_euclid(360.0),
@@ -181,7 +200,12 @@ impl Session {
             "sail_deploy_rate_per_second": storm_sim::SAIL_DEPLOY_RATE, "rudder": helm.rudder,
             "wind": { "speed_mps": wind.speed_mps, "direction_degrees": wind.direction.to_degrees().rem_euclid(360.0) },
             "config": { "mass_kg": config.mass_kg, "length_m": config.length_m, "sail_area_m2": config.sail_area_m2 },
-        })
+        });
+        if let Some(script) = &self.script_report {
+            report["ship_sail_script"] = script.clone();
+            report["sail_request_bits"] = json!(self.simulation.sail_request().to_bits());
+        }
+        report
     }
 }
 
@@ -189,6 +213,27 @@ impl Session {
 mod tests {
     use super::*;
     use clap::Parser;
+
+    #[test]
+    fn rudder_and_focus_changes_preserve_the_raw_native_sail_command() {
+        let options = Options::try_parse_from(["storm-demo", "--sail-demo", "--sail"]).unwrap();
+        let mut session = Session::new(&options, RigLayout::default())
+            .unwrap()
+            .unwrap();
+        session.set_sails(0.4).unwrap();
+        session.key(KeyCode::KeyA, ElementState::Pressed).unwrap();
+        session.release_rudder().unwrap();
+        session.update(0.0, options.wind()).unwrap();
+        assert_eq!(
+            session.simulation.sail_request().to_bits(),
+            0.4f32.to_bits()
+        );
+        assert_eq!(session.simulation.helm().sail, 0.5);
+        assert_eq!(
+            session.simulation.rig(),
+            storm_sim::RigState::for_mode(storm_sim::SailMode::Full)
+        );
+    }
 
     #[test]
     fn sail_keys_select_three_modes_on_activation_without_key_repeat_steps() {

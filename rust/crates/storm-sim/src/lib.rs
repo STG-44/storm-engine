@@ -4,6 +4,7 @@ use glam::DVec2;
 use std::{error::Error, fmt};
 mod flags;
 mod rig;
+pub mod ship_sails;
 pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 mod waves;
 pub use rig::{RigLayout, RigState, SailMode, SailTier};
@@ -146,6 +147,7 @@ pub struct Sailing {
     rig: RigState,
     rig_layout: RigLayout,
     sail_mode: SailMode,
+    sail_request: ship_sails::ShipSailState,
     remainder: f64,
     ticks: u64,
 }
@@ -185,6 +187,11 @@ impl Sailing {
             rig: RigState::for_mode(SailMode::Full),
             rig_layout: RigLayout::default(),
             sail_mode: SailMode::Full,
+            sail_request: {
+                let mut state = ship_sails::ShipSailState::default();
+                state.set(1.0);
+                state
+            },
             remainder: 0.0,
             ticks: 0,
         })
@@ -205,6 +212,10 @@ impl Sailing {
     }
     pub fn helm(&self) -> Helm {
         self.helm
+    }
+    /// Raw original SHIP command; applied by the preview on advance, even at zero dt.
+    pub fn sail_request(&self) -> f32 {
+        self.sail_request.get()
     }
     pub fn sail_deployed(&self) -> f64 {
         self.rig.fraction(self.rig_layout)
@@ -240,8 +251,18 @@ impl Sailing {
     pub fn set_helm(&mut self, mut helm: Helm) -> Result<()> {
         helm.validate()?;
         self.sail_mode = SailMode::from_setting(helm.sail)?;
+        self.sail_request.set(helm.sail as f32);
         helm.sail = self.sail_mode.setting();
         self.helm = helm;
+        Ok(())
+    }
+    pub fn set_rudder(&mut self, rudder: f64) -> Result<()> {
+        Helm {
+            rudder,
+            ..self.helm
+        }
+        .validate()?;
+        self.helm.rudder = rudder;
         Ok(())
     }
 
@@ -252,6 +273,10 @@ impl Sailing {
                 "simulation interval must be finite and 0..=3600 seconds",
             ));
         }
+        // Native SHIP keeps every float bit pattern. The approximate solver has
+        // a narrower domain; reject invalid commands here without rewriting them.
+        self.sail_mode = SailMode::from_setting(f64::from(self.sail_request.get()))?;
+        self.helm.sail = self.sail_mode.setting();
         let total = self.remainder + seconds;
         let steps = ((total + STEP_SECONDS * 1e-9) / STEP_SECONDS).floor() as u64;
         for _ in 0..steps {

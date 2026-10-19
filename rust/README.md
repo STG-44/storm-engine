@@ -343,6 +343,20 @@ cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_c
 
 ### Native entity messages
 
+The first two original SHIP sail commands also drive the preview simulation.
+Run the resource-free startup source and export its state without a GPU:
+
+```sh
+cargo run -p storm-demo --locked -- --sail-demo --sail \
+  --wind-speed 0 --wind-direction 0 --wave-height 0 \
+  --sail-script rust/apps/storm-demo/fixtures/ship_sails.c \
+  --sail-script-report ship-sails-script-state.json
+```
+
+Omit `--sail-script-report` to open a native window with that state. This ports
+`50305`/`50325` only; the adapter is not a complete original SHIP class. See
+[native sail-command scope](../docs/SHIP_SAIL_MESSAGES.md).
+
 ```sh
 cargo run -p storm-script --locked -- \
   rust/crates/storm-script/fixtures/entity_messages.c \

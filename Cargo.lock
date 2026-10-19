@@ -1804,7 +1804,10 @@ dependencies = [
 name = "storm-sim"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "glam",
+ "serde_json",
+ "storm-core",
 ]
 
 [[package]]
