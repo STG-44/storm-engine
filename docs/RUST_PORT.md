@@ -390,3 +390,18 @@ plus all 13 explicit Linux software Vulkan GPU tests. Four ZIP digests and all
 exactly equals the ninth creation report; all nine preceding reports and all
 80 fleet reports remain unchanged. Full original classes/programs and script
 message pointers remain pending.
+
+
+[Script entity messages](ENTITY_MESSAGES.md) add synchronous `SendMessage`,
+original `l/p/f/i/a/s` fields and opaque full-width `ptr` results. Attribute
+payloads use the checked runtime store. The C++ reference checks cover 53
+message cases and 208 DATA pointer cases. Script-variable `e` fields and the
+original commercial class/message API remain pending.
+
+The [message CI run](https://github.com/STG-44/storm-engine/actions/runs/39204491289)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39204487728)
+pass all four native hosts for `1df6617e`: 212 CPU tests, including 125 script
+tests, plus all 13 explicit Linux software Vulkan GPU tests. Four verified
+ZIP digests and all 44 complete scenario reports match local results. All ten
+preceding reports remain unchanged; the eleventh preserves a complete 64-bit
+message result and checks pending deletion.

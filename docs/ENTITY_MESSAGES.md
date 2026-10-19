@@ -96,3 +96,24 @@ The eleventh standalone diagnostic sends `lfsiap`, echoes
 all bits as the JSON integer `18364758544493064720`. The JSON artifact preserves
 the integer; consumers using floating-point numbers must avoid rounding it.
 The ten earlier standalone reports remain unchanged locally.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `1df6617eb192bd58367cb81a1165685a04621df8` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39204491289) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39204487728):
+212 CPU tests, including 125 script tests, formatting, Clippy with warnings
+denied, native builds and all eleven standalone scenarios on each host.
+Verified Rust hosts are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`. Linux additionally
+passes all 13 explicit software Vulkan GPU tests and native-window fixtures.
+Hosted Windows/macOS checks cover CPU behavior and native builds; physical
+GPU coverage remains pending.
+
+Four downloaded PR script-state archives have verified SHA-256 digests.
+All 44 complete parsed JSON reports match local results. The new message
+report preserves the full 64-bit result, three actual native deliveries,
+the caller's float conversion and a zero result after deletion. All ten
+preceding reports remain unchanged. This increment does not change rendering
+or sailing code; no new resource-dependent fleet audit was run.
