@@ -250,8 +250,9 @@ impl Sailing {
     }
     pub fn set_helm(&mut self, mut helm: Helm) -> Result<()> {
         helm.validate()?;
-        self.sail_mode = SailMode::from_setting(helm.sail)?;
-        self.sail_request.set(helm.sail as f32);
+        let request = helm.sail as f32;
+        self.sail_mode = SailMode::from_setting(f64::from(request))?;
+        self.sail_request.set(request);
         helm.sail = self.sail_mode.setting();
         self.helm = helm;
         Ok(())

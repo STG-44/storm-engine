@@ -112,6 +112,18 @@ fn malformed_payloads_do_not_write_state_and_unported_codes_are_explicit() {
 #[test]
 fn native_request_changes_real_cloth_gradually_and_helm_uses_the_same_state() {
     let mut sim = simulation();
+    // A double just outside a threshold can round onto its float32 boundary.
+    // Initial selection and zero-time application must use the same precision.
+    for setting in [0.299999999, 0.700000001] {
+        sim.set_helm(Helm {
+            sail: setting,
+            rudder: 0.0,
+        })
+        .unwrap();
+        let mode = sim.sail_mode();
+        sim.advance(0.0).unwrap();
+        assert_eq!(sim.sail_mode(), mode);
+    }
     sim.process_message(&mut set(0.4)).unwrap();
     assert_eq!(sim.sail_request().to_bits(), 0.4f32.to_bits());
     assert_eq!(sim.rig(), RigState::for_mode(SailMode::Full));
