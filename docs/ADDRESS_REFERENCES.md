@@ -57,3 +57,29 @@ Its complete report equals the ninth scenario that passes an existing ref:
 return 19, six notifications, silent Init writes, failed replacement preserving
 identity, null-binding class creation and deletion of the prior identities.
 The nine preceding reports remain unchanged.
+
+## Four-platform evidence, 2026-10-19
+
+Code `f48256f14cacf4e9a968b051780c8f9b172eb95e` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39202728588) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39202725517):
+203 CPU tests, including 116 script tests, formatting, Clippy with warnings
+denied, native builds and all ten standalone scenarios on each host. Rust host
+triples verified from logs are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`. Linux additionally passes
+all 13 explicit software Vulkan GPU tests and native-window fixtures. Physical
+Windows/macOS GPU coverage remains pending.
+
+Four downloaded PR script-state ZIP archives have verified SHA-256 digests.
+All 40 complete parsed JSON reports match local results. The tenth address
+report equals the ninth creation report, and all nine preceding reports remain
+unchanged. Both creation spellings return 19 with six notifications and the
+same complete persistent tree and identity checks.
+
+The local resource-dependent audit still checks all 40 ship roots and 368 sail
+masks through 2,204 source handlers, 1,105 notifications and 1,099 native damage
+callbacks. All 80 complete layout/event reports equal the preceding phase.
+The generated ship presents three native Metal frames. Commercial resources
+and dependent reports stay outside Git. Original native game classes, numeric
+message pointers, script SendMessage and complete commercial startup remain
+pending.

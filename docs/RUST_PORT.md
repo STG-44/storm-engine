@@ -374,3 +374,18 @@ checks 15 sequences / 404 complete snapshots. Four archive digests and all
 36 complete scenario reports are verified; the eight preceding reports and all
 80 fleet reports remain unchanged. Original native game classes and script
 `SendMessage` remain pending.
+
+
+[Original address references](ADDRESS_REFERENCES.md) add `&variable` and
+`&array[index]`, including `CreateEntity(&ship, class)`. References resolve
+before later argument side effects; arrays and arefs keep checked identity,
+index evaluation and weak lifetimes. Six source tests check these contracts.
+
+The [address CI run](https://github.com/STG-44/storm-engine/actions/runs/39202728588)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39202725517)
+pass all four hosts for `f48256f1`: 203 CPU tests, including 116 script tests,
+plus all 13 explicit Linux software Vulkan GPU tests. Four ZIP digests and all
+40 complete scenario reports match local results. The tenth AddressMain report
+exactly equals the ninth creation report; all nine preceding reports and all
+80 fleet reports remain unchanged. Full original classes/programs and script
+message pointers remain pending.
