@@ -95,3 +95,39 @@ legacy text, atlas UVs, native stop/tail retention and appearance bounds. One
 additional explicit GPU test samples a colored atlas cell through XPS style
 curves and verifies that clearing native emissions restores the unlit image.
 The synthetic CLI decoder is the sixteenth resource-free CI scenario.
+
+
+## Four-platform evidence, 2026-10-20
+
+Code `2768d83c629dc835720b5804b9bd3d56a9502e52` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39324451435) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39324443081) on
+macOS Apple Silicon/Intel, Windows and Linux: 264 CPU tests, including 135
+interpreter tests, formatting, Clippy with warnings denied, native builds and
+all sixteen standalone scenarios. The Rust host triples are
+`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and
+`x86_64-unknown-linux-gnu`. Linux also passes 15 explicit software Vulkan GPU
+tests and native windows. Four downloaded archive SHA-256 digests and all
+64 complete JSON scenario reports match local results. All fifteen preceding
+reports remain unchanged; the sixteenth decodes the synthetic XPS container.
+
+The resource audit decodes all 66 local XPS files and reloads all 40 original
+ship roots. It counts 274 fireplace positions and 117 XPS style patches across
+the 39 models with locators. All 40 complete native-fire scenario reports equal
+the previous fire phase, including the rig state. Locator arrays, sail
+count/topology/source weights and rigging metadata match the earlier layout
+reports. Those older layouts contain sail damage, so their reduced aggregate
+weights are not compared against these intact layout runs. Original damage
+layout/event audits were not regenerated for this appearance increment.
+
+The new explicit local Metal GPU test verifies the selected colored atlas
+cell and exact restoration of the unlit frame after native emission clearing.
+Original ArabellaShip1 renders all three XPS billboard descriptions through
+local Metal at two seconds; its source atlas/curve-driven fire and smoke image
+was visually inspected. Commercial resources, captures and local audit reports
+remain outside Git. Previous local native-window attempts timed out; that
+surface/window check was not repeated. Hosted Windows/macOS jobs cover CPU
+behavior/builds; physical GPU/window verification there remains pending.
+Full schema conversion, native birth/physics/RNG, dynamic message profile
+selection, project selection, remaining original blend techniques and audio
+remain unfinished.

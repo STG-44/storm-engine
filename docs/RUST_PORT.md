@@ -496,3 +496,16 @@ and the original default atlas; it samples profile size/transparency/RGB/UV/trac
 on deterministic preview slots. The native service retains longer profile tails.
 Full schema conversion, emission/physics/RNG, arbitrary native profile selection,
 project selection, original blend techniques and audio remain pending.
+
+
+The [XPS PR run](https://github.com/STG-44/storm-engine/actions/runs/39324451435)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39324443081)
+pass all four native hosts for `2768d83c`: 264 CPU tests, including 135
+interpreter tests, plus 15 explicit Linux software Vulkan GPU tests and native
+windows. Four archive digests and all 64 complete scenario reports match local
+results; all fifteen preceding reports remain unchanged. Local decoding accepts
+all 66 XPS profiles. Reloading 40 original ship roots finds 274 fire positions
+and 117 XPS style patches; all 40 native fire reports equal the previous phase.
+The new Metal atlas pixel test and original ArabellaShip1 XPS fire/smoke capture
+pass. Full particle dynamics, arbitrary native profile selection and audio remain
+pending; see [scope and evidence](PARTICLE_PROFILES.md#four-platform-evidence-2026-10-20).
