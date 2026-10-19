@@ -51,7 +51,8 @@ they share the single preview sailing simulation by design.
 The application supplies `FirePoint` records from the loaded model's
 `ShipAsset::fires`, not a fabricated count. The loader already collects the
 original case-sensitive `fireplace`/`fireplaces` groups. These are locator
-records for the preview, not ported C++ particle/sound `FirePlace` objects.
+records for the preview. Their [native lifecycle](SHIP_FIRE_MESSAGES.md) now
+uses the retained activation and cleanup behavior through explicit service ports.
 
 ```sh
 cargo run -p storm-demo --locked -- --ship-demo --sail \
@@ -85,12 +86,11 @@ full-width return preservation, Init reentry, separate entity bindings and
 loaded-model record counts. The standalone query fixture is included in each
 native CI job.
 
-This adds two queries to the existing two sail handlers. Full SHIP mounting,
-original `SetACharacter` side effects, service initialization, particle/sound
-objects, `MSG_SHIP_SAFE_DELETE`, damage/fire activation, original physics and
-commercial program startup remain pending. The preview keeps its existing
-fire/crew/damage presentation; querying locators does not port those native
-game systems.
+This adds two queries to the two sail handlers. The subsequent
+[fireplace increment](SHIP_FIRE_MESSAGES.md) adds activation, SAFE_DELETE and
+Stop/Drop lifecycle. Full SHIP mounting, original `SetACharacter` side effects,
+service initialization, original particle simulation/audio, remaining damage
+messages, original physics and commercial program startup remain pending.
 
 
 ## Four-platform evidence, 2026-10-19
@@ -125,5 +125,6 @@ local reports remain outside Git.
 The preceding phase's local native-window attempts timed out; that check was
 not repeated for this data/query change. Hosted macOS/Windows jobs establish
 CPU behavior and builds; physical GPU/window coverage there remains pending.
-Full SHIP mounting, original particle/sound objects, SAFE_DELETE and remaining
-native game messages remain unfinished.
+Full SHIP mounting, original particle simulation/audio and remaining native
+game messages remain unfinished. Activation and SAFE_DELETE were subsequently
+added in the [fireplace increment](SHIP_FIRE_MESSAGES.md).

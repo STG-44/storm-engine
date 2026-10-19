@@ -462,3 +462,15 @@ query audit covers all 40 original ship roots and 274 fireplace locators;
 Original ArabellaShip1 also executes the query source and renders through
 local offscreen Metal. Full mounting, particle/sound objects and native
 cleanup remain pending; see [scope and evidence](SHIP_QUERIES.md#four-platform-evidence-2026-10-19).
+
+
+[Native fireplace messages](SHIP_FIRE_MESSAGES.md) add 50304/50315 to the four
+existing SHIP handlers. Run/Stop/Execute now preserve active rerun behavior,
+raw float32 timing, owner/profile state, service validation and pause/cleanup
+order. SAFE_DELETE clears the same live record vector used by the count query.
+The selected controller survives startup for replay/live simulation; the
+preview service retains paused particle tails across entity deletion. Sound
+requests are recorded but audio playback and original particle simulation
+remain pending. The new C++ reference has 60 sequences / 480 complete lifecycle
+snapshots and 15 native-message sequences; its service/GetPos/storage adapters
+and canonical libc++ destruction order are documented with the feature.

@@ -33,7 +33,16 @@ impl DynamicMesh {
     pub fn visible(&self, state: &ShipState, seconds: f32) -> bool {
         match self {
             Self::Crew(_) => state.crew_visible,
-            Self::Particles(_) => state.fire_started.is_some_and(|t| seconds >= t),
+            Self::Particles(patch) => state.native_fire.as_ref().map_or_else(
+                || state.fire_started.is_some_and(|t| seconds >= t),
+                |emissions| {
+                    emissions.iter().any(|e| {
+                        e.smoke == patch.smoke
+                            && seconds >= e.started
+                            && e.stopped.is_none_or(|stop| seconds < stop + patch.lifetime)
+                    })
+                },
+            ),
         }
     }
     #[allow(clippy::too_many_arguments)]
@@ -85,10 +94,18 @@ impl ParticlePatch {
         asset: &ShipAsset,
         state: &ShipState,
     ) {
-        let elapsed = (seconds - state.fire_started.unwrap_or(seconds)).max(0.0);
         let air = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos()) * wind.speed;
         let mut particles = Vec::with_capacity(self.points.len() * self.per_point);
         for (emitter, point) in self.points.iter().enumerate() {
+            let emission = state.native_fire.as_ref().and_then(|emissions| {
+                emissions
+                    .iter()
+                    .filter(|e| e.point == emitter && e.smoke == self.smoke)
+                    .max_by(|a, b| a.started.total_cmp(&b.started))
+            });
+            let start =
+                emission.map_or_else(|| state.fire_started.unwrap_or(seconds), |e| e.started);
+            let elapsed = (seconds - start).max(0.0);
             let transform = asset
                 .transform(&point.node, state, seconds)
                 .unwrap_or_default();
@@ -109,7 +126,14 @@ impl ParticlePatch {
                 } else {
                     0.18 + life * 0.85
                 };
-                let alpha = if asset.hidden(&point.node, state, seconds) {
+                let birth = seconds - age;
+                let native_hidden = state.native_fire.is_some()
+                    && emission.is_none_or(|e| {
+                        seconds < e.started
+                            || birth < e.started
+                            || e.stopped.is_some_and(|stop| birth > stop)
+                    });
+                let alpha = if native_hidden || asset.hidden(&point.node, state, seconds) {
                     0.0
                 } else {
                     (if self.smoke { 0.42 } else { 0.8 }) * (1.0 - life) * ((life * 8.0).min(1.0))

@@ -10,7 +10,9 @@ mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
 pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
-pub use ship::{FirePoint, ShipAsset, ShipNode, ShipState, mast_falls_with, part_number};
+pub use ship::{
+    FireEmission, FirePoint, ShipAsset, ShipNode, ShipState, mast_falls_with, part_number,
+};
 #[cfg(test)]
 mod presentation_tests;
 #[cfg(test)]
@@ -48,7 +50,7 @@ pub struct ModelPose {
     pub roll: f32,
 }
 impl ModelPose {
-    fn matrix(self) -> Result<Mat4> {
+    pub fn matrix(self) -> Result<Mat4> {
         ensure!(
             self.translation.iter().all(|v| v.is_finite())
                 && [self.yaw, self.pitch, self.roll]

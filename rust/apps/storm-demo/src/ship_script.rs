@@ -1,4 +1,5 @@
 //! Explicit startup-source embedding for the ported SHIP sail/query messages.
+use super::ship_fire::{Controller, Controllers, EffectsWorld, PreviewEffects};
 use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, path::Path, rc::Rc};
@@ -8,14 +9,22 @@ use storm_core::{
 use storm_render::model::FirePoint;
 use storm_script::{DirectorySource, Host, Limits, Runtime, Value, Variable, World};
 use storm_sim::Sailing;
-use storm_sim::ship_queries::{
-    MSG_SHIP_GET_CHARACTER_INDEX, MSG_SHIP_GET_NUM_FIRE_PLACES, ShipQueries,
-};
+use storm_sim::fire::{MSG_SHIP_ACTIVATE_FIRE_PLACE, MSG_SHIP_SAFE_DELETE, ShipFire};
+use storm_sim::ship_queries::{MSG_SHIP_GET_CHARACTER_INDEX, MSG_SHIP_GET_NUM_FIRE_PLACES};
 
 struct Ship {
     simulation: Rc<RefCell<Sailing>>,
-    queries: Rc<RefCell<ShipQueries<FirePoint>>>,
+    fire: Rc<RefCell<Controller>>,
+    controllers: Controllers,
     initial_index: i32,
+}
+fn is_fire(message: &Message) -> bool {
+    matches!(
+        message.current_value(),
+        Some(storm_core::Value::Long(
+            MSG_SHIP_ACTIVATE_FIRE_PLACE | MSG_SHIP_SAFE_DELETE
+        ))
+    )
 }
 fn is_query(message: &Message) -> bool {
     matches!(
@@ -30,19 +39,24 @@ impl Entity for Ship {
         let root = context
             .attributes
             .context("preview ship requires character attributes")?;
-        self.queries
+        self.fire
             .try_borrow_mut()?
+            .queries
             .bind_character(context.store, Some(root))?;
         if context.store.child(root, "index").is_none() {
             context
                 .store
                 .set_attribute(root, "index", Some(&self.initial_index.to_string()))?;
         }
+        self.fire.borrow_mut().effects.entity = context.id;
+        self.controllers
+            .borrow_mut()
+            .insert(context.id.raw(), Rc::downgrade(&self.fire));
         Ok(true)
     }
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
-        if is_query(message) {
-            return self.queries.try_borrow_mut()?.process_message(message);
+        if is_query(message) || is_fire(message) {
+            return self.fire.try_borrow_mut()?.process_message(message);
         }
         self.simulation
             .try_borrow_mut()
@@ -54,8 +68,8 @@ impl Entity for Ship {
         message: &mut Message,
         attributes: &mut AttributeStore,
     ) -> Result<u64> {
-        if is_query(message) {
-            self.queries
+        if is_query(message) || is_fire(message) {
+            self.fire
                 .try_borrow_mut()?
                 .process_message_with_attributes(message, attributes)
         } else {
@@ -71,37 +85,65 @@ struct SailHost {
     messages: Vec<Json>,
     advances: Vec<Json>,
     queries_used: bool,
+    fire_used: bool,
+    controllers: Controllers,
+    effects: Rc<RefCell<EffectsWorld>>,
 }
 impl SailHost {
     fn new(simulation: Sailing, fire_places: Vec<FirePoint>, initial_index: i32) -> Result<Self> {
         let world = World::default();
         let simulation = Rc::new(RefCell::new(simulation));
         let mut entities = EntityManager::default();
+        let controllers = Controllers::default();
+        let effects = Rc::new(RefCell::new(EffectsWorld::default()));
+        effects
+            .borrow_mut()
+            .set_clock(simulation.borrow().time() as f32)?;
         let factory_simulation = simulation.clone();
         let factory_fires = fire_places.clone();
+        let factory_controllers = controllers.clone();
+        let factory_effects = effects.clone();
         entities.register_class("preview_ship_sails", move || {
             Ok(Box::new(Ship {
                 simulation: factory_simulation.clone(),
-                queries: Rc::new(RefCell::new(ShipQueries::new(factory_fires.clone()))),
+                fire: Rc::new(RefCell::new(ShipFire::new(
+                    factory_fires.clone(),
+                    PreviewEffects {
+                        world: factory_effects.clone(),
+                        entity: EntityId::INVALID,
+                    },
+                ))),
+                controllers: factory_controllers.clone(),
                 initial_index,
             }))
         })?;
         // This adapter exposes no factory named SHIP: Mount and the rest of the
         // original native class are still pending.
-        let queries = Rc::new(RefCell::new(ShipQueries::new(fire_places)));
+        let fire = Rc::new(RefCell::new(ShipFire::new(
+            fire_places,
+            PreviewEffects {
+                world: effects.clone(),
+                entity: EntityId::INVALID,
+            },
+        )));
         let entity = entities.insert(
             "preview_ship_sails",
             Ship {
                 simulation: simulation.clone(),
-                queries: queries.clone(),
+                fire: fire.clone(),
+                controllers: controllers.clone(),
                 initial_index,
             },
         )?;
         let object = world.object(entity)?;
         object.root().inspect(|store, root| {
             entities.bind_attributes(entity, store, Some(root))?;
-            queries.borrow_mut().bind_character(store, Some(root))
+            fire.borrow_mut().queries.bind_character(store, Some(root))
         })??;
+        fire.borrow_mut().effects.entity = entity;
+        controllers
+            .borrow_mut()
+            .insert(entity.raw(), Rc::downgrade(&fire));
         Ok(Self {
             world,
             ship: Variable::new(Value::Object(object)),
@@ -110,7 +152,37 @@ impl SailHost {
             messages: Vec::new(),
             advances: Vec::new(),
             queries_used: false,
+            fire_used: false,
+            controllers,
+            effects,
         })
+    }
+    fn current_entity(&self) -> Result<EntityId> {
+        let Value::Object(object) = self.ship.value()? else {
+            bail!("preview ship is not an object");
+        };
+        Ok(object.entity())
+    }
+    fn current_fire(&self) -> Result<Option<Rc<RefCell<Controller>>>> {
+        let id = self.current_entity()?;
+        if !self.entities.is_valid(id) {
+            return Ok(None);
+        }
+        Ok(self
+            .controllers
+            .borrow()
+            .get(&id.raw())
+            .and_then(std::rc::Weak::upgrade))
+    }
+    fn active_fires(&self) -> Result<i32> {
+        Ok(self.current_fire()?.map_or(0, |fire| {
+            fire.borrow()
+                .queries
+                .fire_places()
+                .iter()
+                .filter(|s| s.state.is_active())
+                .count() as i32
+        }))
     }
 }
 impl Host for SailHost {
@@ -144,6 +216,17 @@ impl Host for SailHost {
         );
         let delivered = self.entities.is_valid(entity);
         self.queries_used |= is_query(message);
+        self.fire_used |= is_fire(message);
+        if delivered
+            && let Some(fire) = self
+                .controllers
+                .borrow()
+                .get(&entity.raw())
+                .and_then(std::rc::Weak::upgrade)
+        {
+            fire.borrow_mut()
+                .set_transform(super::sailing::pose(&self.simulation.borrow()).matrix()?)?;
+        }
         let code = match message.values().first() {
             Some(storm_core::Value::Long(code)) => Some(*code),
             _ => None,
@@ -158,6 +241,7 @@ impl Host for SailHost {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         match (name, arguments) {
             ("previewship", []) => Ok(self.ship.reference()),
+            ("previewactivefires", []) => Ok(Value::Int(self.active_fires()?)),
             ("previewadvancesailing", [Value::Float(seconds)]) => {
                 ensure!(
                     self.advances.len() < 256,
@@ -169,13 +253,28 @@ impl Host for SailHost {
                     "sail script simulation time budget"
                 );
                 simulation.advance(f64::from(*seconds))?;
-                self.advances
-                    .push(json!({"seconds":seconds, "time":simulation.time(),
+                let mut record = json!({"seconds":seconds, "time":simulation.time(),
                     "sail_request_bits":simulation.sail_request().to_bits(),
                     "sail_mode":simulation.sail_mode().name(),
                     "normal_deployed":simulation.rig().normal,
-                    "full_only_deployed":simulation.rig().full_only}));
-                Ok(Value::Float(simulation.sail_deployed() as f32))
+                    "full_only_deployed":simulation.rig().full_only});
+                let time = simulation.time() as f32;
+                let pose = super::sailing::pose(&simulation);
+                let deployed = simulation.sail_deployed() as f32;
+                drop(simulation);
+                self.effects.borrow_mut().set_clock(time)?;
+                for (id, fire) in self.controllers.borrow().iter() {
+                    if self.entities.is_valid(EntityId::from_raw(*id))
+                        && let Some(fire) = fire.upgrade()
+                    {
+                        super::ship_fire::update(&mut fire.borrow_mut(), *seconds, pose)?;
+                    }
+                }
+                if self.fire_used {
+                    record["active_fires"] = json!(self.active_fires()?);
+                }
+                self.advances.push(record);
+                Ok(Value::Float(deployed))
             }
             _ => bail!("unsupported sail script native {name} or argument types"),
         }
@@ -187,7 +286,7 @@ fn execute_with_ship(
     mut runtime: Runtime,
     fire_places: Vec<FirePoint>,
     initial_index: i32,
-) -> Result<(Sailing, Json)> {
+) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
     let mut host = SailHost::new(simulation, fire_places, initial_index)?;
     let result = runtime.call("main", &[], &mut host, Limits::default())?;
     let result = match result {
@@ -209,12 +308,21 @@ fn execute_with_ship(
         }
         report["ship_query_attributes"] = host.ship.value()?.attributes()?.inspect(tree)?;
     }
+    let controller = if host.fire_used {
+        host.current_fire()?
+    } else {
+        None
+    };
     drop(runtime);
     drop(host.entities);
+    let fire = host.fire_used.then(|| super::ship_fire::Session {
+        controller,
+        world: host.effects.clone(),
+    });
     let simulation = Rc::try_unwrap(host.simulation)
         .map_err(|_| anyhow::anyhow!("sailing adapter still has a live owner"))?
         .into_inner();
-    Ok((simulation, report))
+    Ok((simulation, report, fire))
 }
 
 pub fn run(
@@ -222,7 +330,7 @@ pub fn run(
     path: &Path,
     fire_places: Vec<FirePoint>,
     initial_index: i32,
-) -> Result<(Sailing, Json)> {
+) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
     let entry = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -237,8 +345,87 @@ pub fn run(
 mod tests {
     use super::*;
     use storm_sim::{ShipConfig, Wind};
+    #[test]
+    fn original_fire_source_retains_a_live_controller_after_cleanup_and_recreation() {
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let runtime = Runtime::compile(include_str!("../fixtures/ship_fires.c")).unwrap();
+        let (simulation, report, fire) =
+            execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 19).unwrap();
+        assert_eq!(
+            report["result"],
+            json!({"type":"int","value":asset.ship.fires.len()})
+        );
+        assert_eq!(simulation.time(), 2.125);
+        assert_eq!(
+            report["advances"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s["active_fires"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            [1, 0, 1]
+        );
+        let fire = fire.unwrap();
+        let snapshot = fire.report();
+        assert_eq!(snapshot["places"][0]["active"], true);
+        assert_eq!(snapshot["places"][0]["remaining_bits"], 1.0f32.to_bits());
+        assert_eq!(snapshot["places"][0]["owner"], 23);
+        let events = snapshot["effects"]["recent"].as_array().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e["op"] == "create_particle")
+                .count(),
+            6
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| e["op"] == "pause_particle")
+                .count(),
+            4
+        );
+        assert!(!events.iter().any(|e| e["profile"] == "ignored"));
+    }
+    #[test]
+    fn deletion_runs_native_cleanup_while_emitted_particles_outlive_the_entity() {
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let runtime = Runtime::compile(
+            r#"
+            native ref PreviewShip();
+            void main(){ref ship;ship=PreviewShip();CreateEntity(&ship,"preview_ship_sails");
+                SendMessage(ship,"llsssfl",50304,0,"s","f","a",2.0,7);
+                DeleteClass(ship);SendMessage(ship,"l",50315);}
+        "#,
+        )
+        .unwrap();
+        let (_, _, fire) =
+            execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 19).unwrap();
+        let fire = fire.unwrap();
+        assert!(fire.controller.is_none());
+        let snapshot = fire.report();
+        assert_eq!(snapshot["places"], json!([]));
+        assert_eq!(snapshot["emissions"].as_array().unwrap().len(), 2);
+        assert!(
+            snapshot["emissions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| e["stopped_bits"] == 0)
+        );
+        assert_eq!(
+            snapshot["effects"]["recent"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["op"] == "pause_particle")
+                .count(),
+            2
+        );
+    }
     fn execute(simulation: Sailing, runtime: Runtime) -> Result<(Sailing, Json)> {
-        execute_with_ship(simulation, runtime, Vec::new(), 19)
+        let (simulation, report, _) = execute_with_ship(simulation, runtime, Vec::new(), 19)?;
+        Ok((simulation, report))
     }
     #[test]
     fn initialized_query_source_reads_live_character_and_loaded_model_fireplaces() {
@@ -246,7 +433,7 @@ mod tests {
         let count = asset.ship.fires.len();
         assert!(count > 0);
         let runtime = Runtime::compile(include_str!("../fixtures/ship_queries.c")).unwrap();
-        let (_, report) =
+        let (_, report, _) =
             execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 37).unwrap();
         assert_eq!(report["result"], json!({"type":"int","value":count}));
         let attributes = report["ship_query_attributes"]["children"]
@@ -297,7 +484,7 @@ mod tests {
         "#,
         )
         .unwrap();
-        let (_, report) = execute_with_ship(simulation(), runtime, Vec::new(), 37).unwrap();
+        let (_, report, _) = execute_with_ship(simulation(), runtime, Vec::new(), 37).unwrap();
         assert_eq!(report["result"], json!({"type":"int","value":48}));
     }
     #[test]

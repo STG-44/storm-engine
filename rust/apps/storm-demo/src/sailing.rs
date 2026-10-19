@@ -15,6 +15,7 @@ pub struct Session {
     sail_down: bool,
     pub initial_yaw: f32,
     script_report: Option<Value>,
+    native_fire: Option<super::ship_fire::Session>,
 }
 
 fn wind(value: SailWind) -> Wind {
@@ -67,19 +68,26 @@ impl Session {
                     .to_radians(),
             ),
         })?;
+        let mut native_fire = None;
         let script_report = if let Some(path) = &options.sail_script {
-            let (scripted, report) = super::ship_script::run(
+            let (scripted, report, fire) = super::ship_script::run(
                 simulation,
                 path,
                 ship.map_or_else(Vec::new, |ship| ship.fires.clone()),
                 options.ship_character,
             )?;
             simulation = scripted;
+            native_fire = fire;
             Some(report)
         } else {
             None
         };
         simulation.advance(f64::from(options.time))?;
+        if options.time > 0.0
+            && let Some(fire) = &mut native_fire
+        {
+            fire.advance(simulation.time() as f32, options.time, pose(&simulation))?;
+        }
         Ok(Some(Self {
             simulation,
             last_clock: options.time,
@@ -89,6 +97,7 @@ impl Session {
             sail_down: false,
             initial_yaw: heading + std::f32::consts::PI,
             script_report,
+            native_fire,
         }))
     }
 
@@ -97,24 +106,38 @@ impl Session {
         // Cap live catch-up after stalls; headless replay always integrates the full interval.
         let delta = f64::from(seconds - self.last_clock).clamp(0.0, 0.25);
         self.simulation.advance(delta)?;
+        let pose = self.pose();
+        if delta > 0.0
+            && let Some(fire) = &mut self.native_fire
+        {
+            fire.advance(self.simulation.time() as f32, delta as f32, pose)?;
+        }
         self.last_clock = seconds;
         Ok(())
     }
 
     pub fn pose(&self) -> ModelPose {
-        let state = self.simulation.state();
-        let motion = self.simulation.motion();
-        ModelPose {
-            translation: [
-                state.position.x as f32,
-                motion.heave_m as f32,
-                state.position.y as f32,
-            ],
-            // Storm bows point +Z; the static loader reflects Z into renderer coordinates.
-            yaw: (state.heading + std::f64::consts::PI) as f32,
-            pitch: motion.pitch as f32,
-            // After the Z reflection, model +X is port in the heading frame.
-            roll: -motion.roll as f32,
+        pose(&self.simulation)
+    }
+    pub fn apply_fire(&self, state: &mut storm_render::model::ShipState) -> bool {
+        if let Some(fire) = &self.native_fire {
+            fire.apply(state);
+            true
+        } else {
+            false
+        }
+    }
+    pub fn fire_key(&mut self, key: KeyCode) -> Result<Option<bool>> {
+        let Some(fire) = &mut self.native_fire else {
+            return Ok(None);
+        };
+        match key {
+            KeyCode::KeyB => Ok(Some(fire.toggle()?)),
+            KeyCode::Digit0 => {
+                fire.reset();
+                Ok(None)
+            }
+            _ => Ok(None),
         }
     }
 
@@ -214,7 +237,26 @@ impl Session {
             report["ship_sail_script"] = script.clone();
             report["sail_request_bits"] = json!(self.simulation.sail_request().to_bits());
         }
+        if let Some(fire) = &self.native_fire {
+            report["native_fire"] = fire.report();
+        }
         report
+    }
+}
+
+pub fn pose(simulation: &Sailing) -> ModelPose {
+    let state = simulation.state();
+    let motion = simulation.motion();
+    ModelPose {
+        translation: [
+            state.position.x as f32,
+            motion.heave_m as f32,
+            state.position.y as f32,
+        ],
+        // Renderer +Z reflects the original Storm model orientation.
+        yaw: (state.heading + std::f64::consts::PI) as f32,
+        pitch: motion.pitch as f32,
+        roll: -motion.roll as f32,
     }
 }
 
@@ -222,6 +264,41 @@ impl Session {
 mod tests {
     use super::*;
     use clap::Parser;
+    #[test]
+    fn native_fire_follows_replay_and_live_time_but_pause_keeps_remaining_time() {
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/ship_fires.c");
+        let options = Options::try_parse_from([
+            "storm-demo",
+            "--ship-demo",
+            "--sail",
+            "--sail-script",
+            path.to_str().unwrap(),
+        ])
+        .unwrap();
+        let mut session = Session::new(&options, asset.rig_layout(), Some(&asset.ship))
+            .unwrap()
+            .unwrap();
+        let before = session.report()["native_fire"]["places"][0]["remaining_bits"].clone();
+        session.update(0.0, options.wind()).unwrap();
+        assert_eq!(
+            session.report()["native_fire"]["places"][0]["remaining_bits"],
+            before
+        );
+        session.update(0.25, options.wind()).unwrap();
+        assert_eq!(
+            session.report()["native_fire"]["places"][0]["remaining_bits"],
+            0.75f32.to_bits()
+        );
+        let mut state = storm_render::model::ShipState::default();
+        assert!(session.apply_fire(&mut state));
+        state.validate(&asset.ship).unwrap();
+        session.update(0.25, options.wind()).unwrap();
+        assert_eq!(
+            session.report()["native_fire"]["places"][0]["remaining_bits"],
+            0.75f32.to_bits()
+        );
+    }
 
     #[test]
     fn rudder_and_focus_changes_preserve_the_raw_native_sail_command() {

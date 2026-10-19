@@ -15,6 +15,18 @@ pub struct FirePoint {
     pub name: String,
     pub position: Vec3,
 }
+impl storm_sim::fire::FireLocator for FirePoint {
+    fn fire_position(&self) -> [f32; 3] {
+        self.position.to_array()
+    }
+}
+#[derive(Clone, Debug)]
+pub struct FireEmission {
+    pub point: usize,
+    pub smoke: bool,
+    pub started: f32,
+    pub stopped: Option<f32>,
+}
 #[derive(Clone, Debug, Default)]
 pub struct ShipAsset {
     pub deck_center: Option<Vec3>,
@@ -50,6 +62,8 @@ pub struct ShipState {
     pub broken_masts: BTreeMap<u32, f32>,
     pub broken_hulls: BTreeMap<String, f32>,
     pub fire_started: Option<f32>,
+    /// None keeps the manual preview; Some selects native particle emissions.
+    pub native_fire: Option<Vec<FireEmission>>,
     pub crew_visible: bool,
 }
 impl Default for ShipState {
@@ -59,6 +73,7 @@ impl Default for ShipState {
             broken_masts: BTreeMap::new(),
             broken_hulls: BTreeMap::new(),
             fire_started: None,
+            native_fire: None,
             crew_visible: true,
         }
     }
@@ -87,6 +102,18 @@ impl ShipState {
             self.fire_started.is_none_or(f32::is_finite),
             "invalid fire time"
         );
+        if let Some(emissions) = &self.native_fire {
+            ensure!(
+                emissions.len() <= asset.fires.len() * 2,
+                "too many native fire emissions"
+            );
+            ensure!(
+                emissions.iter().all(|e| e.point < asset.fires.len()
+                    && e.started.is_finite()
+                    && e.stopped.is_none_or(|t| t.is_finite() && t >= e.started)),
+                "invalid native fire emission"
+            );
+        }
         Ok(())
     }
 }

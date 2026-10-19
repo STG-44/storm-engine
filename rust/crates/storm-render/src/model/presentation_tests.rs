@@ -1,4 +1,5 @@
 use super::*;
+use bytemuck::Zeroable;
 use std::sync::Arc;
 use storm_formats::waypoints::{DeckGraph, DeckPoint};
 
@@ -184,6 +185,123 @@ fn fire_billboards_face_the_camera_have_soft_alpha_and_follow_visibility_state()
     assert!(dynamic.visible(&state, 2.0));
     state.fire_started = None;
     assert!(!dynamic.visible(&state, 2.0));
+}
+
+#[test]
+fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() {
+    let asset = ModelAsset::ship_demo().unwrap();
+    let first = asset.ship.fires[0].clone();
+    let mut second = first.clone();
+    second.position.x += 100.0;
+    let patch = ParticlePatch {
+        points: std::sync::Arc::new(vec![first, second]),
+        smoke: true,
+        per_point: 20,
+        lifetime: 7.0,
+    };
+    let dynamic = DynamicMesh::Particles(patch);
+    let mut vertices = vec![ModelVertex::zeroed(); dynamic.vertex_count()];
+    let mut state = ShipState {
+        fire_started: Some(0.0),
+        native_fire: Some(vec![FireEmission {
+            point: 1,
+            smoke: true,
+            started: 0.0,
+            stopped: Some(2.0),
+        }]),
+        ..Default::default()
+    };
+    dynamic
+        .deform(
+            &mut vertices,
+            2.5,
+            SailWind::default(),
+            Vec3::new(10.0, 10.0, 10.0),
+            &asset.ship,
+            &state,
+        )
+        .unwrap();
+    assert!(vertices.iter().any(|v| v.color[3] > 0.0));
+    assert!(
+        vertices
+            .iter()
+            .filter(|v| v.color[3] > 0.0)
+            .all(|v| v.position[0] > 50.0)
+    );
+    dynamic
+        .deform(
+            &mut vertices,
+            9.5,
+            SailWind::default(),
+            Vec3::new(10.0, 10.0, 10.0),
+            &asset.ship,
+            &state,
+        )
+        .unwrap();
+    assert!(vertices.iter().all(|v| v.color[3] == 0.0));
+    assert!(!dynamic.visible(&state, 9.5));
+    state.native_fire = Some(vec![]);
+    assert!(!dynamic.visible(&state, 2.5));
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn native_fire_emission_renders_and_cleanup_restores_the_unlit_frame() {
+    let mut asset = ModelAsset::ship_demo().unwrap();
+    asset
+        .meshes
+        .retain(|m| matches!(m.dynamic, Some(DynamicMesh::Particles(_))));
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let mut camera = OrbitCamera::new(&asset);
+    camera.target = asset.ship.fires[0].position;
+    camera.distance = 10.0;
+    camera.yaw = 0.4;
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut capture = |state| {
+        scene.set_ship_state(state).unwrap();
+        crate::render_offscreen_with(&gpu, 321, 181, 2.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                2.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+    };
+    let unlit = capture(ShipState::default());
+    let active = capture(ShipState {
+        native_fire: Some(vec![
+            FireEmission {
+                point: 0,
+                smoke: true,
+                started: 0.0,
+                stopped: None,
+            },
+            FireEmission {
+                point: 0,
+                smoke: false,
+                started: 0.0,
+                stopped: None,
+            },
+        ]),
+        ..Default::default()
+    });
+    assert_ne!(unlit.rgba, active.rgba);
+    let clear = capture(ShipState {
+        native_fire: Some(vec![]),
+        fire_started: Some(0.0),
+        ..Default::default()
+    });
+    assert_eq!(unlit.rgba, clear.rgba);
 }
 
 fn mask_red(frame: &crate::Frame) -> Vec<u8> {

@@ -367,6 +367,22 @@ cargo run -p storm-demo --locked -- --ship-demo --sail \
   --sail-script-report ship-queries-script-state.json
 ```
 
+The [native fireplace lifecycle](../docs/SHIP_FIRE_MESSAGES.md) adds
+50304 activation and 50315 cleanup over the same loaded records. Run its
+resource-free source and inspect timing, owner, emission and service traces:
+
+```sh
+cargo run -p storm-demo --locked -- --ship-demo --sail \
+  --wind-speed 0 --wind-direction 0 --wave-height 0 --ship-character 19 \
+  --sail-script rust/apps/storm-demo/fixtures/ship_fires.c \
+  --sail-script-report ship-fire-script-state.json
+```
+
+Omit the report option for a native window, or replace it with
+`--headless fire.png --time 0.5`. B controls existing native fireplaces;
+zero resets their preview. The lifecycle is retained behavior, while particle
+appearance remains a billboard preview and audio playback is not yet bound.
+
 ```sh
 cargo run -p storm-script --locked -- \
   rust/crates/storm-script/fixtures/entity_messages.c \

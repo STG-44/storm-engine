@@ -72,13 +72,15 @@ output behavior, deletion and preservation through rudder/focus changes. The
 standalone source scenario requests normal, furled and full sails, then sends
 to a deleted entity. Native CI executes it without game assets or a GPU.
 
-This is a two-message SHIP subset. The embedding calls its adapter
+These are the first two handlers in the SHIP subset. The embedding calls its adapter
 `preview_ship_sails` and registers no factory named `SHIP`. Other ship messages
 return an explicit unsupported error, unlike the original switch's zero
 fallback. Character indices and live fireplace counts now have a separate
 [checked query subset](SHIP_QUERIES.md). `MSG_SHIP_CREATE`, full native
 `SetACharacter` side effects, service initialization, movement impulses,
-particle cleanup and original ship physics remain pending. Original commercial
+original particle simulation/audio and ship physics remain pending. Native
+fire activation and cleanup are covered by the subsequent
+[fireplace subset](SHIP_FIRE_MESSAGES.md). Original commercial
 programs still do not boot in this port.
 
 

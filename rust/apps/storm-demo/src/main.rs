@@ -6,6 +6,7 @@ mod flags;
 mod rig_report;
 mod sailing;
 mod ship_controls;
+mod ship_fire;
 mod ship_script;
 mod timeline;
 use storm_render::{
@@ -385,6 +386,12 @@ impl WindowState {
             ship_state: asset.map_or_else(Default::default, |a| a.ship_state.clone()),
         };
         state.resize(size);
+        if let Some(sailing) = &state.sailing
+            && sailing.apply_fire(&mut state.ship_state)
+            && let Scene::Model(scene) = &mut state.scene
+        {
+            scene.set_ship_state(state.ship_state.clone())?;
+        }
         state.refresh_title();
         eprintln!(
             "Controls: drag/arrows orbit, scroll zoom, R camera, Space pause, +/- wind speed, ,/. wind direction; physical F nation, G flag role, H hide flags, J surrender, C crew, B fire, M break next mast, P break next hull piece, X test shot, 0 repair/reset; Esc close"
@@ -429,7 +436,12 @@ impl WindowState {
                 } else {
                     "off"
                 },
-                self.ship_state.fire_started.is_some(),
+                self.ship_state
+                    .native_fire
+                    .as_ref()
+                    .map_or(self.ship_state.fire_started.is_some(), |v| v
+                        .iter()
+                        .any(|e| e.stopped.is_none())),
                 self.ship_state.broken_masts.len(),
                 self.ship_state.broken_hulls.len()
             )
@@ -499,6 +511,9 @@ impl WindowState {
                 scene.set_pose(pose)?;
                 scene.set_waves(sailing.simulation.waves())?;
                 scene.set_rig_state(sailing.simulation.rig())?;
+                if sailing.apply_fire(&mut self.ship_state) {
+                    scene.set_ship_state(self.ship_state.clone())?;
+                }
             }
             if let Some(camera) = &mut self.camera {
                 // Follow horizontal travel without rolling the camera with the hull.
@@ -701,7 +716,17 @@ impl ApplicationHandler for Application {
                             }
                         }
                     } else {
-                        ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds)
+                        let native =
+                            match state.sailing.as_mut().map(|s| s.fire_key(code)).transpose() {
+                                Ok(value) => value.flatten(),
+                                Err(error) => {
+                                    self.fail(event_loop, error);
+                                    return;
+                                }
+                            };
+                        native.unwrap_or_else(|| {
+                            ship_controls::key(&asset.ship, &mut state.ship_state, code, seconds)
+                        })
                     };
                     if changed {
                         let update_attributes = if code == KeyCode::Digit0 {
@@ -966,6 +991,13 @@ fn main() -> Result<()> {
                 .map_or_else(storm_sim::RigLayout::default, |a| a.rig_layout()),
             asset.as_ref().map(|asset| &asset.ship),
         )?;
+        if let (Some(sailing), Some(asset)) = (&sailing, &mut asset) {
+            sailing.apply_fire(
+                &mut Arc::get_mut(asset)
+                    .expect("unique headless asset")
+                    .ship_state,
+            );
+        }
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();
         eprintln!("GPU: {} ({:?})", info.name, info.backend);

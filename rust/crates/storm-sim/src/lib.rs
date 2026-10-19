@@ -2,6 +2,7 @@
 //! Units: metres, seconds, kilograms, radians. Heading 0 points +Z, +pi/2 points +X.
 use glam::DVec2;
 use std::{error::Error, fmt};
+pub mod fire;
 mod flags;
 mod rig;
 pub mod ship_queries;
