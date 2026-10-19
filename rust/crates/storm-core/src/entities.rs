@@ -43,6 +43,15 @@ pub trait Entity {
     fn process_message(&mut self, _message: &mut Message) -> Result<u64> {
         Ok(0)
     }
+    /// Native callbacks may read/write the selected script attribute store
+    /// without re-entering its owner. Existing message handlers still apply.
+    fn process_message_with_attributes(
+        &mut self,
+        message: &mut Message,
+        _attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        self.process_message(message)
+    }
     fn attribute_changed(
         &mut self,
         _attributes: &AttributeStore,
@@ -421,6 +430,27 @@ impl EntityManager {
                 .process_message(message),
             None => Ok(0),
         }
+    }
+    pub fn send_message_with_attributes(
+        &mut self,
+        id: EntityId,
+        message: &mut Message,
+        attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        let Some(entry) = self.entry_mut(id).filter(|e| e.valid) else {
+            return Ok(0);
+        };
+        ensure!(
+            entry
+                .attributes
+                .is_none_or(|root| attributes.get(root).is_some()),
+            "invalid entity attribute binding in message context"
+        );
+        entry
+            .entity
+            .try_borrow_mut()
+            .context("reentrant entity callback")?
+            .process_message_with_attributes(message, attributes)
     }
 }
 

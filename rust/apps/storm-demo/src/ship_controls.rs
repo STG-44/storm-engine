@@ -79,9 +79,13 @@ mod tests {
         .unwrap();
         let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
         let mut state = ShipState::default();
-        let healthy = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
-            .unwrap()
-            .unwrap();
+        let healthy = crate::sailing::Session::new(
+            &options,
+            asset.rig_layout_at(&state, 0.0),
+            Some(&asset.ship),
+        )
+        .unwrap()
+        .unwrap();
         asset
             .sail_volley(
                 &mut state,
@@ -91,21 +95,33 @@ mod tests {
                 storm_sim::RigState::uniform(1.0),
             )
             .unwrap();
-        let holed = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
-            .unwrap()
-            .unwrap();
+        let holed = crate::sailing::Session::new(
+            &options,
+            asset.rig_layout_at(&state, 0.0),
+            Some(&asset.ship),
+        )
+        .unwrap()
+        .unwrap();
         assert!(holed.simulation.state().speed_knots() < healthy.simulation.state().speed_knots());
         key(&asset.ship, &mut state, KeyCode::KeyM, 0.0);
         key(&asset.ship, &mut state, KeyCode::KeyM, 0.0);
-        let dismasted = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
-            .unwrap()
-            .unwrap();
+        let dismasted = crate::sailing::Session::new(
+            &options,
+            asset.rig_layout_at(&state, 0.0),
+            Some(&asset.ship),
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(dismasted.simulation.sail_deployed(), 0.0);
         assert_eq!(dismasted.simulation.state().speed_knots(), 0.0);
         key(&asset.ship, &mut state, KeyCode::Digit0, 0.0);
-        let repaired = crate::sailing::Session::new(&options, asset.rig_layout_at(&state, 0.0))
-            .unwrap()
-            .unwrap();
+        let repaired = crate::sailing::Session::new(
+            &options,
+            asset.rig_layout_at(&state, 0.0),
+            Some(&asset.ship),
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(healthy.report(), repaired.report());
     }
 }

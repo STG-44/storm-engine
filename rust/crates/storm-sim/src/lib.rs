@@ -4,6 +4,7 @@ use glam::DVec2;
 use std::{error::Error, fmt};
 mod flags;
 mod rig;
+pub mod ship_queries;
 pub mod ship_sails;
 pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 mod waves;

@@ -112,6 +112,8 @@ jobs:
           python3 -c "import json; a=json.load(open('intact-sailing.json')); b=json.load(open('holed-sailing.json')); assert b['rig']['missing_weight']>0; assert b['sail_deployed']<a['sail_deployed']; assert b['speed_knots']<a['speed_knots']; assert len(b['ship']['sail_holes'])==2"
       - name: Verify original sail-set metadata without a GPU device
         run: |
+          cargo run -p storm-demo --locked -- --ship-demo --sail --wind-speed 0 --wind-direction 0 --wave-height 0 --ship-character 19 --sail-script rust/apps/storm-demo/fixtures/ship_queries.c --sail-script-report ship-queries-script-state.json
+          python -c "import json; s=json.load(open('ship-queries-script-state.json')); r=s['ship_sail_script']; assert r['original_game_scripts'] is False; assert r['sources']==['ship_queries.c']; assert r['result']=={'type':'int','value':1}; assert {a['name']:a['value'] for a in r['ship_query_attributes']['children']}=={'index':'-7','initial_index':'19','fire_place_count':'1','updated_index':'27','negative_index':'-7','deleted_index':'-7','deleted_count':'1'}; assert [(m['code'],m['delivered'],m['result']) for m in r['messages']]==[(50307,True,0),(50306,True,0),(50307,True,0),(50307,True,0),(50307,True,0),(50307,False,0),(50306,False,0)]; assert all(m['sail_request_bits']==1065353216 for m in r['messages']); assert s['simulation_seconds']==0 and s['sail_setting']==s['sail_deployed']==1"
           cargo run -p storm-demo --locked -- --sail-demo --sail --wind-speed 0 --wind-direction 0 --wave-height 0 --sail-script rust/apps/storm-demo/fixtures/ship_sails.c --sail-script-report ship-sails-script-state.json
           python -c "import json; s=json.load(open('ship-sails-script-state.json')); r=s['ship_sail_script']; assert r['original_game_scripts'] is False and r['native_class']=='preview_ship_sails'; assert r['sources']==['ship_sails.c']; assert r['result']=={'type':'int','value':3}; assert [a['sail_mode'] for a in r['advances']]==['normal','furled','full']; assert [(a['normal_deployed'],a['full_only_deployed']) for a in r['advances']]==[(1,0),(0,0),(1,1)]; assert [(m['code'],m['delivered'],m['result']) for m in r['messages']]==[(50305,True,0),(50325,True,0)]*3+[(50305,False,0),(50325,False,0)]; assert s['simulation_seconds']==12 and s['sail_setting']==s['sail_deployed']==1; assert s['sail_request_bits']==1065353216"
           cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --rig-report ship-layout.json --event-report sail-events.json --shot-owner 7 --ship-character 19
@@ -145,6 +147,7 @@ jobs:
             message-script-state.json
             variable-script-state.json
             ship-sails-script-state.json
+            ship-queries-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

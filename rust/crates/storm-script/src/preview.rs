@@ -255,9 +255,10 @@ impl Host for AttributeHost {
         &mut self,
         entity: EntityId,
         message: &mut Message,
-        _attributes: &mut AttributeStore,
+        attributes: &mut AttributeStore,
     ) -> Result<u64> {
-        self.entities.send_message(entity, message)
+        self.entities
+            .send_message_with_attributes(entity, message, attributes)
     }
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         match (name, arguments) {

@@ -2,7 +2,7 @@ use super::Options;
 use anyhow::{Result, ensure};
 use serde_json::{Value, json};
 use storm_core::{Entity, Message, Value as MessageValue};
-use storm_render::model::{ModelPose, SailWind};
+use storm_render::model::{ModelPose, SailWind, ShipAsset};
 use storm_sim::{Helm, RigLayout, Sailing, ShipConfig, Waves, Wind};
 use winit::{event::ElementState, keyboard::KeyCode};
 
@@ -24,7 +24,11 @@ fn wind(value: SailWind) -> Wind {
     }
 }
 impl Session {
-    pub fn new(options: &Options, layout: RigLayout) -> Result<Option<Self>> {
+    pub fn new(
+        options: &Options,
+        layout: RigLayout,
+        ship: Option<&ShipAsset>,
+    ) -> Result<Option<Self>> {
         if !options.sail {
             return Ok(None);
         }
@@ -64,7 +68,12 @@ impl Session {
             ),
         })?;
         let script_report = if let Some(path) = &options.sail_script {
-            let (scripted, report) = super::ship_script::run(simulation, path)?;
+            let (scripted, report) = super::ship_script::run(
+                simulation,
+                path,
+                ship.map_or_else(Vec::new, |ship| ship.fires.clone()),
+                options.ship_character,
+            )?;
             simulation = scripted;
             Some(report)
         } else {
@@ -217,7 +226,7 @@ mod tests {
     #[test]
     fn rudder_and_focus_changes_preserve_the_raw_native_sail_command() {
         let options = Options::try_parse_from(["storm-demo", "--sail-demo", "--sail"]).unwrap();
-        let mut session = Session::new(&options, RigLayout::default())
+        let mut session = Session::new(&options, RigLayout::default(), None)
             .unwrap()
             .unwrap();
         session.set_sails(0.4).unwrap();
@@ -238,7 +247,7 @@ mod tests {
     #[test]
     fn sail_keys_select_three_modes_on_activation_without_key_repeat_steps() {
         let options = Options::try_parse_from(["storm-demo", "--sail-demo", "--sail"]).unwrap();
-        let mut session = Session::new(&options, RigLayout::default())
+        let mut session = Session::new(&options, RigLayout::default(), None)
             .unwrap()
             .unwrap();
         for expected in [0.5, 0.0, 0.0] {
@@ -270,7 +279,7 @@ mod tests {
             "2",
         ])
         .unwrap();
-        let mut session = Session::new(&options, RigLayout::default())
+        let mut session = Session::new(&options, RigLayout::default(), None)
             .unwrap()
             .unwrap();
         assert!((session.simulation.sail_deployed() - 0.5).abs() < 1e-12);
@@ -306,7 +315,7 @@ mod tests {
             "--sail",
         ])
         .unwrap();
-        let mut session = Session::new(&options, RigLayout::default())
+        let mut session = Session::new(&options, RigLayout::default(), None)
             .unwrap()
             .unwrap();
         let pose = session.pose();

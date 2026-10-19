@@ -357,6 +357,16 @@ Omit `--sail-script-report` to open a native window with that state. This ports
 `50305`/`50325` only; the adapter is not a complete original SHIP class. See
 [native sail-command scope](../docs/SHIP_SAIL_MESSAGES.md).
 
+The [character/fireplace query subset](../docs/SHIP_QUERIES.md) adds original
+50307/50306 messages over live character attributes and loaded model locators:
+
+```sh
+cargo run -p storm-demo --locked -- --ship-demo --sail \
+  --wind-speed 0 --wind-direction 0 --wave-height 0 --ship-character 19 \
+  --sail-script rust/apps/storm-demo/fixtures/ship_queries.c \
+  --sail-script-report ship-queries-script-state.json
+```
+
 ```sh
 cargo run -p storm-script --locked -- \
   rust/crates/storm-script/fixtures/entity_messages.c \

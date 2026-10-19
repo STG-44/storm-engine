@@ -441,3 +441,11 @@ The twelve preceding reports remain unchanged. The phase's 40-ship resource
 audit reproduces all 80 previous layout/event reports; final code also renders
 original ArabellaShip1 through offscreen Metal with scripted sail commands.
 Local native-window checks timed out; see [scope and evidence](SHIP_SAIL_MESSAGES.md#four-platform-evidence-2026-10-19).
+
+[SHIP character and fireplace queries](SHIP_QUERIES.md) add the original
+50307/50306 handlers over the live runtime attribute store and loaded locator
+records. A checked message callback context avoids copying or re-entering the
+script tree. Preview factories now bind characters during native Init;
+indices update on every query and record counts follow the current vector.
+The retained reference covers 56 sequences / 224 complete query snapshots.
+Full SHIP mounting and native fireplace particle/sound objects remain pending.

@@ -81,7 +81,10 @@ impl Message {
         self.cursor = 0;
     }
     pub fn current_type(&self) -> Option<char> {
-        self.values.get(self.cursor).map(Value::format)
+        self.current_value().map(Value::format)
+    }
+    pub fn current_value(&self) -> Option<&Value> {
+        self.values.get(self.cursor)
     }
     pub fn param_valid(&self) -> bool {
         self.cursor < self.values.len()

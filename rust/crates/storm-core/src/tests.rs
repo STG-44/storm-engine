@@ -3,6 +3,124 @@ use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
 #[test]
+fn attribute_message_context_preserves_legacy_handlers_cursor_and_invalid_lookup() -> Result<()> {
+    let mut manager = EntityManager::default();
+    let mut store = AttributeStore::default();
+    let root = store.create_root()?;
+    let id = manager.insert(
+        "probe",
+        Probe {
+            name: 10,
+            log: Rc::new(RefCell::new(vec![])),
+        },
+    )?;
+    manager.bind_attributes(id, &store, Some(root))?;
+    let mut message = Message::new("ll", vec![Value::Long(99), Value::Long(5)])?;
+    assert_eq!(message.long()?, 99);
+    assert_eq!(message.current_value(), Some(&Value::Long(5)));
+    assert_eq!(
+        manager.send_message_with_attributes(id, &mut message, &mut store)?,
+        15
+    );
+    assert_eq!(message.current_value(), None);
+    manager.erase(id);
+    let mut foreign = AttributeStore::default();
+    let mut message = Message::new("l", vec![Value::Long(7)])?;
+    assert_eq!(
+        manager.send_message_with_attributes(id, &mut message, &mut foreign)?,
+        0
+    );
+    assert_eq!(message.current_value(), Some(&Value::Long(7)));
+    Ok(())
+}
+
+#[test]
+fn context_callbacks_mutate_the_selected_store_and_preserve_full_width_results() -> Result<()> {
+    struct ContextEntity(AttributeId);
+    impl Entity for ContextEntity {
+        fn process_message_with_attributes(
+            &mut self,
+            message: &mut Message,
+            store: &mut AttributeStore,
+        ) -> Result<u64> {
+            let before = store.as_dword(self.0, Some("index"), 0);
+            store.set_dword(self.0, Some("index"), before + message.long()? as u32)?;
+            Ok(u64::MAX)
+        }
+    }
+    let mut manager = EntityManager::default();
+    let mut store = AttributeStore::default();
+    let root = store.create_root()?;
+    store.set_dword(root, Some("index"), 19)?;
+    let id = manager.insert("context", ContextEntity(root))?;
+    manager.bind_attributes(id, &store, Some(root))?;
+    assert_eq!(
+        manager.send_message_with_attributes(
+            id,
+            &mut Message::new("l", vec![Value::Long(8)])?,
+            &mut store
+        )?,
+        u64::MAX
+    );
+    assert_eq!(store.as_dword(root, Some("index"), 0), 27);
+    Ok(())
+}
+
+#[test]
+fn context_checks_foreign_and_stale_bindings_before_consuming_messages() -> Result<()> {
+    let mut manager = EntityManager::default();
+    let mut store = AttributeStore::default();
+    let root = store.create_root()?;
+    let id = manager.insert(
+        "probe",
+        Probe {
+            name: 10,
+            log: Rc::new(RefCell::new(vec![])),
+        },
+    )?;
+    manager.bind_attributes(id, &store, Some(root))?;
+    let mut foreign = AttributeStore::default();
+    foreign.create_root()?;
+    let mut message = Message::new("l", vec![Value::Long(5)])?;
+    assert!(
+        manager
+            .send_message_with_attributes(id, &mut message, &mut foreign)
+            .is_err()
+    );
+    assert_eq!(message.current_value(), Some(&Value::Long(5)));
+    store.drop_root(root)?;
+    assert!(
+        manager
+            .send_message_with_attributes(id, &mut message, &mut store)
+            .is_err()
+    );
+    assert_eq!(message.current_value(), Some(&Value::Long(5)));
+    Ok(())
+}
+
+#[test]
+fn attribute_message_callbacks_reject_reentry_during_init() -> Result<()> {
+    struct Reentrant;
+    impl Entity for Reentrant {
+        fn init(&mut self, context: &mut EntityInit<'_>) -> Result<bool> {
+            let mut message = Message::new("", vec![])?;
+            let error = context
+                .manager
+                .send_message_with_attributes(context.id, &mut message, context.store)
+                .unwrap_err();
+            assert!(error.to_string().contains("reentrant entity callback"));
+            Ok(true)
+        }
+    }
+    let mut manager = EntityManager::default();
+    let mut store = AttributeStore::default();
+    manager.register_class("reentrant", || Ok(Box::new(Reentrant)))?;
+    let id = manager.create("reentrant", &mut store, None)?;
+    assert!(manager.is_valid(id));
+    Ok(())
+}
+
+#[test]
 fn script_variable_message_cursor_and_weak_native_access_are_checked() -> Result<()> {
     use anyhow::Context;
     struct Cell(std::rc::Weak<RefCell<ScriptScalar>>);

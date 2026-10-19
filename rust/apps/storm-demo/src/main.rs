@@ -116,7 +116,7 @@ struct Options {
     /// Requested sail set after starting: 0, 0.5, or 1.
     #[arg(long, requires = "sail", value_parser = sail_setting)]
     sail_target: Option<f32>,
-    /// Run a bounded startup source with the two ported SHIP sail messages.
+    /// Run a bounded startup source with the ported SHIP sail/query messages.
     #[arg(long, requires = "sail")]
     sail_script: Option<PathBuf>,
     /// Save script and sailing state, then exit without creating a GPU device.
@@ -336,6 +336,7 @@ impl WindowState {
         let sailing = sailing::Session::new(
             options,
             asset.map_or_else(storm_sim::RigLayout::default, ModelAsset::rig_layout),
+            asset.map(|asset| &asset.ship),
         )?;
         if let Scene::Model(scene) = &mut scene {
             scene.set_rig_state(storm_sim::RigState::for_mode(
@@ -950,6 +951,7 @@ fn main() -> Result<()> {
             asset
                 .as_ref()
                 .map_or_else(storm_sim::RigLayout::default, |a| a.rig_layout()),
+            asset.as_ref().map(|asset| &asset.ship),
         )?
         .expect("sailing required by CLI");
         std::fs::write(path, serde_json::to_vec_pretty(&sailing.report())?)?;
@@ -962,6 +964,7 @@ fn main() -> Result<()> {
             asset
                 .as_ref()
                 .map_or_else(storm_sim::RigLayout::default, |a| a.rig_layout()),
+            asset.as_ref().map(|asset| &asset.ship),
         )?;
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();

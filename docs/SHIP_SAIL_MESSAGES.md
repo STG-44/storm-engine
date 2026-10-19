@@ -75,9 +75,11 @@ to a deleted entity. Native CI executes it without game assets or a GPU.
 This is a two-message SHIP subset. The embedding calls its adapter
 `preview_ship_sails` and registers no factory named `SHIP`. Other ship messages
 return an explicit unsupported error, unlike the original switch's zero
-fallback. `MSG_SHIP_CREATE`, character binding/index queries, live fireplace
-counts, service initialization, movement impulses and original ship physics
-remain pending. Original commercial programs still do not boot in this port.
+fallback. Character indices and live fireplace counts now have a separate
+[checked query subset](SHIP_QUERIES.md). `MSG_SHIP_CREATE`, full native
+`SetACharacter` side effects, service initialization, movement impulses,
+particle cleanup and original ship physics remain pending. Original commercial
+programs still do not boot in this port.
 
 
 ## Four-platform evidence, 2026-10-19
