@@ -406,3 +406,19 @@ tests, plus all 13 explicit Linux software Vulkan GPU tests. Four verified
 ZIP digests and all 44 complete scenario reports match local results. All ten
 preceding reports remain unchanged; the eleventh preserves a complete 64-bit
 message result and checks pending deletion.
+
+
+[Native variable message fields](SCRIPT_VARIABLE_MESSAGES.md) now pass `e`
+output parameters, including scalars, checked arrays, object/aref attributes
+and complete entity IDs. Handles follow actual local/global/array lifetimes;
+plain stack temporaries expire after the send. The original binding and ten
+DATA getter/setter methods match 120 complete C++ result snapshots under UBSan.
+Event e fields and the remaining VDATA/commercial API are still pending.
+
+The [variable-message PR run](https://github.com/STG-44/storm-engine/actions/runs/39207766932)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39207762638)
+pass all four native hosts for `59c82681`: 223 CPU tests, including 135
+script tests, plus all 13 explicit Linux software Vulkan GPU tests. Four
+verified ZIP digests and all 48 complete scenario reports match local results.
+All eleven preceding reports remain unchanged; the twelfth checks native
+output parameters and retains a global across synchronous sends.

@@ -93,3 +93,25 @@ int/float/string/ptr outputs, fills three array cells, leaves a plain argument
 unchanged, retains a global across two sends and skips a pending-deletion
 destination. It returns 19 with one pre-construction observer notification.
 The eleven preceding complete standalone reports remain the regression baseline.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `59c826817252afcabf68a2d7493fac28d840be8e` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39207766932) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39207762638):
+223 CPU tests, including 135 script tests, formatting, Clippy with warnings
+denied, native builds and all twelve standalone scenarios on each host.
+Rust host triples verified from logs are `aarch64-apple-darwin`,
+`x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`.
+Linux additionally passes 13 explicit software Vulkan GPU tests and native
+window fixtures. Hosted Windows/macOS validation covers CPU behavior/builds;
+physical GPU coverage there remains pending.
+
+Four PR script-state archives have verified SHA-256 digests. All 48 complete
+parsed JSON reports match local results. The newest report preserves five
+native deliveries, retyped scalar outputs, array contents, the untouched plain
+argument and the retained global. All eleven preceding reports remain unchanged.
+CI enables Python UTF-8 mode for Cyrillic report values on Windows.
+Rendering and sailing code did not change; no new resource-dependent fleet
+audit was run. Original commercial class/game startup remains unfinished.
