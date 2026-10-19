@@ -108,3 +108,37 @@ locator-specific particle decay. An additional explicit GPU test compares
 active-fire pixels and verifies that clearing native emissions restores the
 unlit image. Native CI runs the fifteenth standalone scenario on all four
 hosts; Linux also opens its native Vulkan window.
+
+
+## Four-platform evidence, 2026-10-19
+
+Code `615e5ebb6e3d3a8c9a496613d3e913fa0379cc9f` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39313370736) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39313359331) on
+macOS Apple Silicon/Intel, Windows and Linux: 253 CPU tests, including 135
+interpreter tests, formatting, Clippy with warnings denied, native builds and
+all fifteen standalone scenarios. The four Rust host triples are
+`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and
+`x86_64-unknown-linux-gnu`. Linux additionally passes 14 explicit software
+Vulkan GPU tests and native windows, including the new fire-script window.
+Four downloaded archive SHA-256 digests and all 60 complete JSON scenario
+reports match local results. All fourteen preceding reports remain unchanged.
+
+The new resource audit reloads all 40 original ship roots and checks 274
+fireplace records against the preceding count audit. Each of the 39 models
+with locators passes activation, strict-negative expiry, vector clearing and
+fresh entity creation, leaving exactly one active fireplace; the model with
+zero locators executes just its count query. All 352 delivered messages pass.
+Only the first available locator on each model is activated in this audit;
+the full set of 274 positions is counted, not individually burned. Prior
+damage/layout reports were not regenerated for this lifecycle increment.
+
+Local Metal passes the new GPU comparison of active and cleared emissions.
+Original ArabellaShip1 executes the new source, returns seven real locators
+and renders offscreen at 2.625 seconds with an active fireplace (0.5 seconds
+remaining). Its image was visually inspected. Assets, captures and local
+reports remain outside Git. Previous local native-window attempts timed out;
+that surface/window check was not repeated. Hosted macOS/Windows checks cover
+CPU/build behavior, while physical GPU/window verification remains pending.
+Original particle profiles/simulation, audio playback, complete SHIP mounting,
+remaining messages and commercial program startup remain unfinished.

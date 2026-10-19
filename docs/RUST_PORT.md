@@ -474,3 +474,16 @@ requests are recorded but audio playback and original particle simulation
 remain pending. The new C++ reference has 60 sequences / 480 complete lifecycle
 snapshots and 15 native-message sequences; its service/GetPos/storage adapters
 and canonical libc++ destruction order are documented with the feature.
+
+
+The [fireplace PR run](https://github.com/STG-44/storm-engine/actions/runs/39313370736)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39313359331)
+pass all four native hosts for `615e5ebb`: 253 CPU tests, including 135
+interpreter tests, plus 14 explicit Linux software Vulkan GPU tests and native
+windows. Four archive digests and all 60 complete scenario reports match local
+results; the fourteen preceding reports remain unchanged. The new audit reloads
+40 original ship roots, counts 274 fireplace records and verifies first-locator
+activation/expiry/cleanup/recreation on all 39 models with locators (352 native
+deliveries overall). Local Metal passes the new emission pixel test and renders
+original ArabellaShip1 after the new source. Particle appearance and sound
+remain explicit preview/unbound services; see [scope and evidence](SHIP_FIRE_MESSAGES.md#four-platform-evidence-2026-10-19).
