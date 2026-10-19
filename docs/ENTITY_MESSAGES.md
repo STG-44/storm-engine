@@ -29,8 +29,9 @@ earlier conversion effects survive a later field error. Surplus arguments
 are evaluated but ignored. Empty messages are accepted. The subset bounds
 calls to 2–130 arguments and messages to 128 fields.
 
-The original `e` format passes a raw `DATA*` into native code. Its safe script
-variable equivalent is pending. Unsupported formats, missing fields, invalid
+The original `e` format passes a raw `DATA*` into native code. The later
+[script-variable binding](SCRIPT_VARIABLE_MESSAGES.md) supplies checked cells
+for synchronous sends. Unsupported formats, missing fields, invalid
 types, expired/removed attributes and foreign attribute worlds fail before
 native dispatch. This intentionally replaces unsafe native error paths and
 unknown-format fallthrough with explicit errors.

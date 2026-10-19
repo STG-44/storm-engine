@@ -2,6 +2,45 @@ use super::*;
 use anyhow::Result;
 use std::{cell::RefCell, rc::Rc};
 
+#[test]
+fn script_variable_message_cursor_and_weak_native_access_are_checked() -> Result<()> {
+    use anyhow::Context;
+    struct Cell(std::rc::Weak<RefCell<ScriptScalar>>);
+    impl ScriptVariableAccess for Cell {
+        fn read(&self) -> Result<ScriptScalar> {
+            Ok(self
+                .0
+                .upgrade()
+                .context("expired cell")?
+                .try_borrow()?
+                .clone())
+        }
+        fn write(&self, value: ScriptScalar) -> Result<()> {
+            *self.0.upgrade().context("expired cell")?.try_borrow_mut()? = value;
+            Ok(())
+        }
+    }
+    let owner = Rc::new(RefCell::new(ScriptScalar::Int(7)));
+    let variable = ScriptVariable::new(Cell(Rc::downgrade(&owner)));
+    let mut message = Message::new("e", vec![Value::ScriptVariable(variable.clone())])?;
+    assert!(message.long().is_err());
+    assert_eq!(message.current_type(), Some('e'));
+    let cell = message.script_variable()?;
+    assert_eq!(cell, variable);
+    assert_eq!(cell.integer()?, 7);
+    cell.set(ScriptScalar::Float(3.25))?;
+    assert_eq!(cell.float()?, 3.25);
+    assert!(cell.integer().is_err());
+    assert!(!message.param_valid());
+    assert!(message.script_variable().is_err());
+    message.move_to_start();
+    assert_eq!(message.script_variable()?, cell);
+    drop(owner);
+    assert!(cell.read().is_err());
+    assert!(cell.set(ScriptScalar::Int(1)).is_err());
+    Ok(())
+}
+
 struct Probe {
     name: u32,
     log: Rc<RefCell<Vec<u32>>>,

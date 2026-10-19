@@ -1,20 +1,30 @@
 //! COMPILER::CreateMessage's script formats, with checked owned payloads.
+use crate::objects::native::NativeArguments;
 use crate::{Type, Value, World};
 use anyhow::{Result, bail, ensure};
 use storm_core::{Message, Value as Field};
 
-pub(super) fn make(arguments: &[Value], world: &World) -> Result<Message> {
+pub(super) struct Prepared {
+    pub message: Message,
+    // Keep by-value stack cells alive until native dispatch returns. Captured
+    // ref targets stay weak and follow their own local/global/array lifetimes.
+    _arguments: NativeArguments,
+}
+
+pub(super) fn make(arguments: &[Value], world: &World) -> Result<Prepared> {
     let format = arguments[0].resolved()?;
     let format = format.text()?;
     ensure!(
-        format.len() <= 128 && format.bytes().all(|c| b"lpfisa".contains(&c)),
-        "unsupported SendMessage format or field budget; script-variable e fields are pending"
+        format.len() <= 128 && format.bytes().all(|c| b"lpfisae".contains(&c)),
+        "unsupported SendMessage format or field budget"
     );
     // CreateMessage consumes the format's fields and ignores surplus arguments.
     ensure!(arguments.len() > format.len(), "missing SendMessage fields");
     let mut fields = Vec::with_capacity(format.len());
+    let mut native = NativeArguments::new(world);
     for (code, value) in format.bytes().zip(&arguments[1..]) {
         fields.push(match code {
+            b'e' => Field::ScriptVariable(native.capture(value)?),
             b'l' => {
                 let Value::Int(n) = value.resolved()? else {
                     bail!("SendMessage l field requires int");
@@ -53,7 +63,10 @@ pub(super) fn make(arguments: &[Value], world: &World) -> Result<Message> {
             _ => unreachable!(),
         });
     }
-    Message::new(format, fields)
+    Ok(Prepared {
+        message: Message::new(format, fields)?,
+        _arguments: native,
+    })
 }
 
 #[cfg(test)]

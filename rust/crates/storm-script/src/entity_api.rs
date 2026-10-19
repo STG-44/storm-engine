@@ -42,12 +42,12 @@ pub(crate) fn call(
     match name {
         "sendmessage" => {
             let id = entity(&arguments[0])?;
-            let mut message = messages::make(&arguments[1..], &execution.world)?;
-            message.move_to_start();
+            let mut prepared = messages::make(&arguments[1..], &execution.world)?;
+            prepared.message.move_to_start();
             execution.world.initialize(None, |store, _| {
                 execution
                     .host
-                    .send_message(id, &mut message, store)
+                    .send_message(id, &mut prepared.message, store)
                     .map(Value::Ptr)
             })
         }

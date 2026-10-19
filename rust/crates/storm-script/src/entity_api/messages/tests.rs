@@ -292,7 +292,7 @@ fn invalid_payloads_fail_before_native_dispatch_with_source_locations() -> Resul
             "SendMessage(target,\"s\",r)",
         ),
         ("", "SendMessage(target,\"ll\",1)"),
-        ("", "SendMessage(target,\"e\",1)"),
+        ("ref r;", "SendMessage(target,\"e\",r)"),
         ("", "SendMessage(target,\"b\",1)"),
         ("", "SendMessage(1,\"\")"),
         ("aref a;", "SendMessage(target,\"a\",a)"),

@@ -1,4 +1,4 @@
-use crate::{AttributeId, EntityId};
+use crate::{AttributeId, EntityId, ScriptVariable};
 use anyhow::{Result, bail, ensure};
 
 /// Owned, platform-independent subset of MESSAGE::MessageParam.
@@ -16,6 +16,7 @@ pub enum Value {
     Attribute(AttributeId),
     Vector([f32; 3]),
     String(String),
+    ScriptVariable(ScriptVariable),
 }
 
 impl Value {
@@ -32,6 +33,7 @@ impl Value {
             Self::Attribute(_) => 'a',
             Self::Vector(_) => 'c',
             Self::String(_) => 's',
+            Self::ScriptVariable(_) => 'e',
         }
     }
 }
@@ -53,9 +55,9 @@ impl Message {
             ensure!(
                 matches!(
                     code,
-                    'b' | 'w' | 'l' | 'p' | 'u' | 'f' | 'd' | 'i' | 'a' | 'c' | 's'
+                    'b' | 'w' | 'l' | 'p' | 'u' | 'f' | 'd' | 'i' | 'a' | 'c' | 's' | 'e'
                 ),
-                "unsupported message format {code:?} at {index}; script-variable references are not ported"
+                "unsupported message format {code:?} at {index}"
             );
             ensure!(
                 code == value.format(),
@@ -164,6 +166,12 @@ impl Message {
     pub fn string(&mut self) -> Result<&str> {
         match self.read('s')? {
             Value::String(v) => Ok(v),
+            _ => unreachable!(),
+        }
+    }
+    pub fn script_variable(&mut self) -> Result<ScriptVariable> {
+        match self.read('e')? {
+            Value::ScriptVariable(variable) => Ok(variable.clone()),
             _ => unreachable!(),
         }
     }

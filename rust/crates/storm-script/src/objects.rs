@@ -9,6 +9,7 @@ use storm_core::{AttributeId, AttributeStore, EntityId};
 
 const MAX_NODES: usize = 32768;
 const MAX_NAMES: usize = 8192;
+pub(crate) mod native;
 
 #[derive(Clone, Default)]
 pub struct World(Rc<Storage>);

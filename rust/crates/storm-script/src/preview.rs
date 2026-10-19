@@ -5,6 +5,7 @@ use serde_json::{Value as Json, json};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use storm_core::{
     AttributeId, AttributeStore, Entity, EntityId, EntityInit, EntityManager, Message,
+    ScriptScalar, ScriptVariable,
 };
 
 #[derive(Default)]
@@ -42,7 +43,10 @@ impl Entity for Reject {
     }
 }
 
-struct MessageProbe(Rc<RefCell<Notifications>>);
+struct MessageProbe {
+    records: Rc<RefCell<Notifications>>,
+    saved: Option<ScriptVariable>,
+}
 impl Entity for MessageProbe {
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
         let format = message.format().to_owned();
@@ -60,11 +64,62 @@ impl Entity for MessageProbe {
                 0xfedc_ba98_7654_3210
             }
             "p" => message.pointer()?,
+            "leeee" => {
+                ensure!(message.long()? == 1, "diagnostic variable command");
+                let integer = message.script_variable()?;
+                let wind = message.script_variable()?;
+                let text = message.script_variable()?;
+                let token = message.script_variable()?;
+                ensure!(integer.integer()? == 7, "diagnostic variable input");
+                integer.set(ScriptScalar::Int(19))?;
+                wind.set(ScriptScalar::Float(0.5))?;
+                text.set(ScriptScalar::String("парус".into()))?;
+                token.set(ScriptScalar::Ptr(0xfedc_ba98_7654_3210))?;
+                0xfedc_ba98_7654_3210
+            }
+            "lee" => {
+                ensure!(message.long()? == 2, "diagnostic array command");
+                let array = message.script_variable()?;
+                let count = message.script_variable()?;
+                ensure!(array.elements()? == 3, "diagnostic array size");
+                for index in 0..3 {
+                    array
+                        .element(index)?
+                        .set(ScriptScalar::Int((index + 1) * 10))?;
+                }
+                count.set(ScriptScalar::Int(3))?;
+                0
+            }
+            "le" => {
+                let command = message.long()?;
+                let value = message.script_variable()?;
+                match command {
+                    3 => {
+                        ensure!(value.integer()? == 99, "diagnostic temporary input");
+                        value.set(ScriptScalar::Int(88))?;
+                        88
+                    }
+                    4 => {
+                        value.set(ScriptScalar::Int(7))?;
+                        self.saved = Some(value);
+                        7
+                    }
+                    _ => bail!("unsupported diagnostic variable command"),
+                }
+            }
+            "l" => {
+                ensure!(message.long()? == 5, "diagnostic retained variable command");
+                self.saved
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("no saved script variable"))?
+                    .set(ScriptScalar::Int(19))?;
+                19
+            }
             "" => 0,
             _ => bail!("unsupported diagnostic message format"),
         };
         ensure!(!message.param_valid(), "unread diagnostic message fields");
-        let mut records = self.0.borrow_mut();
+        let mut records = self.records.borrow_mut();
         records.total += 1;
         if records.recent.len() == 256 {
             records.recent.pop_front();
@@ -103,7 +158,10 @@ impl AttributeHost {
         let messages = Rc::new(RefCell::new(Notifications::default()));
         let message_records = messages.clone();
         entities.register_class("script_message_probe", move || {
-            Ok(Box::new(MessageProbe(message_records.clone())))
+            Ok(Box::new(MessageProbe {
+                records: message_records.clone(),
+                saved: None,
+            }))
         })?;
         let entity =
             entities.insert("script_attribute_observer", Observer(notifications.clone()))?;

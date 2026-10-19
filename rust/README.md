@@ -353,3 +353,13 @@ This resource-free diagnostic creates a native test entity, sends `lfsiap`
 fields, echoes a 64-bit result through a `p` field and verifies zero after
 pending deletion. The original commercial classes/message codes remain
 unfinished. See [formats, pointer scope and reference checks](../docs/ENTITY_MESSAGES.md).
+
+The [native variable binding](../docs/SCRIPT_VARIABLE_MESSAGES.md) adds `e`
+output parameters, exact scalar reads/setters, array element handles and
+checked local/global/temporary lifetimes. Run its resource-free diagnostic:
+
+```sh
+cargo run -p storm-script --locked -- \
+  rust/crates/storm-script/fixtures/variable_messages.c \
+  --report variable-script-state.json
+```

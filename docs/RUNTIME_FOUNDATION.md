@@ -19,7 +19,8 @@ The fork is public; the original storm-devs repository is archived.
 | `compiler.cpp::ProcessEvent`, `s_eventtab.cpp::FindEvent` | Case-insensitive ASCII event lookup, registration order, rewind before each native callback, last non-void result retained |
 
 `storm-core` forbids unsafe code. Format `a` now uses a checked attribute handle;
-`p` carries opaque 64-bit tokens; raw script-variable `e` fields remain rejected. See the [attribute port](ATTRIBUTES.md).
+`p` carries opaque 64-bit tokens; `e` uses checked weak script-variable handles
+for synchronous sends ([scope](SCRIPT_VARIABLE_MESSAGES.md)). See the [attribute port](ATTRIBUTES.md).
 No C++ addresses are represented as Rust pointers.
 Stamp exhaustion returns an error instead of wrapping into an old ID. Invalid
 layer indices and message types return errors instead of unchecked memory access.
@@ -87,7 +88,7 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 212 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 223 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The [script source subset](SCRIPT_RUNTIME.md) and [object/reference subset](SCRIPT_OBJECTS.md)
 now feed the [immediate event integration](SCRIPT_EVENTS.md). The generated

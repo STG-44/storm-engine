@@ -72,6 +72,8 @@ jobs:
           python -c "import json; a=json.load(open('creation-script-state.json')); b=json.load(open('address-script-state.json')); assert a==b"
           cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_messages.c --report message-script-state.json
           python -c "import json; s=json.load(open('message-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'ptr','value':18364758544493064720}; assert s['entity_messages']=={'total':3,'recent':[{'format':'lfsiap','result':18364758544493064720},{'format':'p','result':18364758544493064720},{'format':'','result':0}]}; assert s['ship_attribute_notifications']==1; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','number':'7.0000000','low_bits':'1985229328','deleted_result':'0'}"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/variable_messages.c --report variable-script-state.json
+          python -c "import json; s=json.load(open('variable-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':19}; assert s['entity_messages']=={'total':5,'recent':[{'format':'leeee','result':18364758544493064720},{'format':'lee','result':0},{'format':'le','result':88},{'format':'le','result':7},{'format':'l','result':19}]}; assert s['ship_attribute_notifications']==1; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','native_value':'19','native_wind':'0.5000000','native_text':'парус','native_ptr_low':'1985229328','array_total':'60','array_count':'3','temporary':'99','kept':'19','deleted_value':'19'}"
       - name: Test software Vulkan rendering and native window
         if: runner.os == 'Linux'
         env:
@@ -138,6 +140,7 @@ jobs:
             creation-script-state.json
             address-script-state.json
             message-script-state.json
+            variable-script-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

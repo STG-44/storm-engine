@@ -4,6 +4,7 @@ mod attributes;
 mod entities;
 mod events;
 mod message;
+mod script_variable;
 
 pub use attributes::{AttributeId, AttributeNode, AttributeStore, format_float};
 pub use entities::{
@@ -11,6 +12,7 @@ pub use entities::{
 };
 pub use events::EventDispatcher;
 pub use message::{Message, Value};
+pub use script_variable::{ScriptScalar, ScriptVariable, ScriptVariableAccess, ScriptVariableKind};
 
 #[cfg(test)]
 mod tests;

@@ -51,6 +51,9 @@ impl PartialEq for Array {
     }
 }
 impl Array {
+    pub(crate) fn world(&self) -> &World {
+        &self.0.world
+    }
     fn new(kind: Type, count: usize, world: &World, budget: &Budget) -> Result<Self> {
         ensure!(
             count > 0 && count <= MAX_ELEMENTS,

@@ -49,6 +49,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Bind `IsEntity`, `DeleteClass` and persistent `EntityUpdate` ([scope](ENTITY_SCRIPT_API.md)).
   - [x] Add native class factories/Init and `CreateEntity`/`CreateClass` ([scope](ENTITY_CREATION.md)); original native classes remain pending.
   - [x] Bind synchronous `SendMessage` with original field types and full 64-bit results ([scope](ENTITY_MESSAGES.md)).
+  - [x] Pass checked `e` variable cells to native messages, including output parameters, arrays and retained globals ([scope](SCRIPT_VARIABLE_MESSAGES.md)).
   - [x] Accept original `&variable` / `&array[index]` reference expressions, including direct entity creation ([scope](ADDRESS_REFERENCES.md)).
   - [x] Execute [immediate script handlers for sail damage](SCRIPT_EVENTS.md).
   - [x] Add [nested calls and the original frame-driven event queue](SCHEDULED_EVENTS.md).
