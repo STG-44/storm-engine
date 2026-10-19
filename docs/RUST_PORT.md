@@ -355,3 +355,21 @@ plus all 13 explicit Linux software Vulkan GPU tests. Four ZIP digests and all
 32 complete standalone fixture reports are verified against local results.
 The seven preceding reports and all 80 resource-dependent fleet reports remain
 unchanged. See [scope and evidence](ENTITY_SCRIPT_API.md#four-platform-evidence-2026-10-19).
+
+
+[Native entity creation](ENTITY_CREATION.md) adds registered class factories,
+pre-Init identity/attribute binding, nested construction, deferred rejection
+cleanup and `CreateEntity`/`CreateClass`. References update caller identity;
+plain object arguments retain their original stack-copy semantics. Class
+queries now preserve allocation-stamp order after slot reuse. Checked callback
+borrows and bounded initialization errors have explicit documented differences
+from unsafe C++ re-entry and thrown initializers.
+
+The [creation CI run](https://github.com/STG-44/storm-engine/actions/runs/39175675359)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39175672054)
+pass all four hosts for `044efa10`: 197 CPU tests, including 110 script tests,
+plus all 13 explicit Linux software Vulkan GPU tests. The native C++ oracle
+checks 15 sequences / 404 complete snapshots. Four archive digests and all
+36 complete scenario reports are verified; the eight preceding reports and all
+80 fleet reports remain unchanged. Original native game classes and script
+`SendMessage` remain pending.

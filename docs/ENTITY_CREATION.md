@@ -107,3 +107,30 @@ ship tree, checks a rejected replacement, creates a class with null attributes
 and erases the old identities. It returns 19 with six notifications. Init
 population remains visible in the tree without notifications; the replacement
 is valid and the previous entity is invalid.
+
+## Four-platform evidence, 2026-10-19
+
+Code `044efa10faf3955e0552dc08fb11a680e3073386` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39175675359) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39175672054):
+197 CPU tests, including 110 script tests, formatting, Clippy with warnings
+denied, native builds and all nine standalone scenarios on each host. Verified
+Rust host triples are `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-pc-windows-msvc` and `x86_64-unknown-linux-gnu`. Linux also passes all
+13 explicit software Vulkan GPU tests and native-window fixtures. Hosted
+Windows/macOS physical GPU coverage remains pending.
+
+Four downloaded PR script-state ZIPs have verified SHA-256 digests. All 36
+complete parsed JSON reports match local results. All eight preceding reports
+are unchanged. The ninth returns 19 with six notifications and retains the
+silent Init/rejected-Init attribute writes, successful replacement identity,
+null-binding class creation and deletion of the previous identities.
+
+The native C++ oracle passes 15 sequences / 404 snapshots under UBSan. All
+40 original ship roots and 368 sail masks pass through 2,204 source handlers,
+1,105 notifications and 1,099 native damage callbacks. All 80 complete fleet
+layout/event reports match the preceding phase. The generated ship presents
+three native Metal frames. Commercial resources and reports stay outside Git.
+These results verify this creation framework and preserve existing previews;
+original game classes, script message pointers and commercial startup remain
+pending.

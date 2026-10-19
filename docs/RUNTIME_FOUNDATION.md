@@ -87,7 +87,7 @@ characters, no-hit segments, per-sail callback order, nearest-hit selection and
 bounded history. The hash constants were checked by compiling the retained
 `vma.hpp` on the local Mac.
 
-The workspace now has 177 CPU tests plus 13 separately enabled GPU tests. CI runs the
+The workspace now has 197 CPU tests plus 13 separately enabled GPU tests. CI runs the
 event-report fixture without commercial resources on all four native build hosts.
 The [script source subset](SCRIPT_RUNTIME.md) and [object/reference subset](SCRIPT_OBJECTS.md)
 now feed the [immediate event integration](SCRIPT_EVENTS.md). The generated
