@@ -198,6 +198,7 @@ fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() 
         smoke: true,
         per_point: 20,
         lifetime: 7.0,
+        style: None,
     };
     let dynamic = DynamicMesh::Particles(patch);
     let mut vertices = vec![ModelVertex::zeroed(); dynamic.vertex_count()];

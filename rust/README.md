@@ -403,3 +403,20 @@ cargo run -p storm-script --locked -- \
   rust/crates/storm-script/fixtures/variable_messages.c \
   --report variable-script-state.json
 ```
+
+
+### Original XPS particle profiles
+
+Decode PSYS v3.5 data, including all seven field types and raw float32 values:
+
+```sh
+cargo run -p storm-formats --locked -- decode \
+  rust/crates/storm-formats/reference/particles/synthetic.xps
+cargo run -p storm-formats --locked -- decode /path/to/RESOURCE/Particles/Ship_Fire.xps
+```
+
+Real-resource ship loading now uses Ship_Fire/Ship_Smoke profiles and the default
+particle atlas for preview appearance. The generated ship fixture stays resource
+free. This ports data/curve evaluation and appearance; full emission/physics,
+project selection, dynamic message profile selection and audio remain pending.
+See [format limits, reference checks and rendering scope](../docs/PARTICLE_PROFILES.md).

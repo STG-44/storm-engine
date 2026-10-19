@@ -41,11 +41,16 @@ pub fn report(asset: &ModelAsset) -> Value {
 
 pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
     let state = &asset.ship_state;
-    json!({"crew_count":asset.ship.crew_count,"crew_visible":state.crew_visible,"waypoint_counts":asset.ship.waypoint_counts,"waypoint_missing_links":asset.ship.waypoint_missing_links,"crew_source":asset.ship.crew_source,
+    let mut report = json!({"crew_count":asset.ship.crew_count,"crew_visible":state.crew_visible,"waypoint_counts":asset.ship.waypoint_counts,"waypoint_missing_links":asset.ship.waypoint_missing_links,"crew_source":asset.ship.crew_source,
         "masts":asset.ship.masts(),"hulls":asset.ship.hulls(),
         "fire_points":asset.ship.fires.iter().map(|p|json!({"node":p.node,"name":p.name,"position":p.position.to_array()})).collect::<Vec<_>>(),
         "sail_holes":state.sail_holes,"broken_masts":state.broken_masts,"broken_hulls":state.broken_hulls,"fire_started":state.fire_started,"seconds":seconds,
         "crew_positions":asset.meshes.iter().filter_map(|m|match &m.dynamic {
             Some(storm_render::model::DynamicMesh::Crew(c))=>{let(p,_)=c.route.sample(seconds+c.phase);Some([p.x,p.y,-p.z])},_=>None
-        }).collect::<Vec<_>>()})
+        }).collect::<Vec<_>>()});
+    let profiles=asset.meshes.iter().filter_map(|m| match &m.dynamic {Some(storm_render::model::DynamicMesh::Particles(p))=>p.style.as_ref().map(|s|json!({"source":s.source,"kind":if p.smoke {"smoke"}else{"fire"},"slots_per_locator":p.per_point,"maximum_lifetime":p.lifetime,"uv_frames":s.frames.len()})),_=>None}).collect::<Vec<_>>();
+    if !profiles.is_empty() {
+        report["xps_particle_styles"] = json!(profiles);
+    }
+    report
 }

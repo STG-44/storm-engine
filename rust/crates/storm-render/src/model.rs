@@ -2,6 +2,8 @@
 mod assets;
 mod crew;
 mod effects;
+mod particle_style;
+pub use particle_style::{MAX_PARTICLE_LIFETIME, ParticleStyle};
 mod rigging;
 mod sail_damage;
 mod sails;

@@ -75,6 +75,7 @@ impl Session {
                 path,
                 ship.map_or_else(Vec::new, |ship| ship.fires.clone()),
                 options.ship_character,
+                ship.map_or(7.0, |ship| ship.fire_tail_seconds.max(7.0)),
             )?;
             simulation = scripted;
             native_fire = fire;

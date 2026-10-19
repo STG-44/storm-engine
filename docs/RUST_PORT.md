@@ -487,3 +487,12 @@ activation/expiry/cleanup/recreation on all 39 models with locators (352 native
 deliveries overall). Local Metal passes the new emission pixel test and renders
 original ArabellaShip1 after the new source. Particle appearance and sound
 remain explicit preview/unbound services; see [scope and evidence](SHIP_FIRE_MESSAGES.md#four-platform-evidence-2026-10-19).
+
+
+[XPS particle profiles](PARTICLE_PROFILES.md) now have a bounded PSYS v3.5
+reader for all seven field types, billboard/model records and retained
+scalar/color curve arithmetic. Real ship presentation loads Ship_Fire/Ship_Smoke
+and the original default atlas; it samples profile size/transparency/RGB/UV/track
+on deterministic preview slots. The native service retains longer profile tails.
+Full schema conversion, emission/physics/RNG, arbitrary native profile selection,
+project selection, original blend techniques and audio remain pending.

@@ -404,8 +404,61 @@ impl Builder {
         });
         Ok(())
     }
+    fn add_xps_fire_effects(&mut self) -> Result<bool> {
+        let Some(files) = &self.files else {
+            return Ok(false);
+        };
+        let resource = files.root.parent().context("missing resource root")?;
+        let has_particles = std::fs::read_dir(resource)?
+            .collect::<std::io::Result<Vec<_>>>()?
+            .iter()
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("Particles")
+            });
+        if !has_particles {
+            return Ok(false);
+        }
+        let directory = find_child(resource, "Particles")?;
+        let points = Arc::new(self.asset.ship.fires.clone());
+        let texture = self.texture("particles_list.tga")?;
+        for (name, smoke) in [("Ship_Fire.xps", false), ("Ship_Smoke.xps", true)] {
+            let path = find_child(&directory, name)?;
+            let profile = storm_formats::particles::Profile::read(&read_asset_bytes(&path)?)?;
+            for emitter in &profile.emitters {
+                for particle in &emitter.particles {
+                    ensure!(
+                        particle.kind == 1,
+                        "XPS ship preview does not support model particles"
+                    );
+                    let style = Arc::new(crate::model::ParticleStyle::read(
+                        name.into(),
+                        &emitter.fields,
+                        &particle.fields,
+                    )?);
+                    let lifetime = style.lifetime.maximum();
+                    self.asset.ship.fire_tail_seconds =
+                        self.asset.ship.fire_tail_seconds.max(lifetime);
+                    let patch = ParticlePatch {
+                        points: points.clone(),
+                        smoke,
+                        per_point: style.count,
+                        lifetime,
+                        style: Some(style),
+                    };
+                    let indices = patch.indices();
+                    self.add_dynamic(DynamicMesh::Particles(patch), indices, texture)?;
+                }
+            }
+        }
+        Ok(true)
+    }
     fn add_fire_effects(&mut self) -> Result<()> {
         if self.asset.ship.fires.is_empty() {
+            return Ok(());
+        }
+        if self.add_xps_fire_effects()? {
             return Ok(());
         }
         let mut fire = "fire3.tga".to_owned();
@@ -448,6 +501,7 @@ impl Builder {
                 smoke,
                 per_point,
                 lifetime,
+                style: None,
             };
             let indices = patch.indices();
             self.add_dynamic(DynamicMesh::Particles(patch), indices, texture)?;

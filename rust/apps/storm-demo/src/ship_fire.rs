@@ -12,15 +12,36 @@ use storm_sim::fire::{FireEffects, ParticleId, ParticleKind, ShipFire};
 
 pub type Controller = ShipFire<FirePoint, PreviewEffects>;
 pub type Controllers = Rc<RefCell<BTreeMap<u64, Weak<RefCell<Controller>>>>>;
-#[derive(Default)]
 pub struct EffectsWorld {
     now: f32,
+    retention: f32,
     next_id: u64,
     particles: BTreeMap<ParticleId, FireEmission>,
     total: u64,
     recent: VecDeque<Json>,
 }
+impl Default for EffectsWorld {
+    fn default() -> Self {
+        Self {
+            now: 0.0,
+            retention: 7.0,
+            next_id: 0,
+            particles: Default::default(),
+            total: 0,
+            recent: Default::default(),
+        }
+    }
+}
 impl EffectsWorld {
+    pub fn set_retention(&mut self, seconds: f32) -> Result<()> {
+        ensure!(
+            seconds.is_finite()
+                && (0.0..=storm_render::model::MAX_PARTICLE_LIFETIME).contains(&seconds),
+            "invalid preview particle retention"
+        );
+        self.retention = seconds.max(7.0);
+        Ok(())
+    }
     fn record(&mut self, entity: EntityId, mut event: Json) {
         event["entity"] = json!(entity.raw());
         self.total += 1;
@@ -36,7 +57,7 @@ impl EffectsWorld {
         );
         self.now = now;
         self.particles
-            .retain(|_, e| e.stopped.is_none_or(|t| now < t + 7.0));
+            .retain(|_, e| e.stopped.is_none_or(|t| now < t + self.retention));
         Ok(())
     }
     pub fn emissions(&self) -> Vec<FireEmission> {

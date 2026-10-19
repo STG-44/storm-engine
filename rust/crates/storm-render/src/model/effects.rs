@@ -14,6 +14,7 @@ pub struct ParticlePatch {
     pub smoke: bool,
     pub per_point: usize,
     pub lifetime: f32,
+    pub style: Option<Arc<super::ParticleStyle>>,
 }
 #[derive(Clone, Debug)]
 pub enum DynamicMesh {
@@ -138,14 +139,45 @@ impl ParticlePatch {
                 } else {
                     (if self.smoke { 0.42 } else { 0.8 }) * (1.0 - life) * ((life * 8.0).min(1.0))
                 };
-                particles.push((center, radius, alpha));
+                let (center, radius, color, uv) = if let Some(style) = &self.style {
+                    match style.sample(seconds, start, i) {
+                        Some(sample) => {
+                            let mut color = sample.color;
+                            if (state.native_fire.is_some()
+                                && emission.is_none_or(|e| seconds < e.started))
+                                || emission.is_some_and(|e| {
+                                    e.stopped.is_some_and(|stop| sample.birth > stop)
+                                })
+                                || asset.hidden(&point.node, state, seconds)
+                            {
+                                color[3] = 0.0;
+                            }
+                            (source + sample.offset, sample.radius, color, sample.uv)
+                        }
+                        None => (source, 0.0, [0.0; 4], [0.0; 4]),
+                    }
+                } else {
+                    (
+                        center,
+                        radius,
+                        if self.smoke {
+                            [0.23, 0.24, 0.25, alpha]
+                        } else {
+                            [1.0, 0.9, 0.8, alpha]
+                        },
+                        [0.0, 0.0, 1.0, 1.0],
+                    )
+                };
+                particles.push((center, radius, color, uv));
             }
         }
         particles.sort_by(|a, b| {
             b.0.distance_squared(eye)
                 .total_cmp(&a.0.distance_squared(eye))
         });
-        for ((center, radius, alpha), quad) in particles.into_iter().zip(out.chunks_exact_mut(4)) {
+        for ((center, radius, color, uv), quad) in
+            particles.into_iter().zip(out.chunks_exact_mut(4))
+        {
             let normal = (eye - center).normalize_or_zero();
             let mut right = Vec3::Y.cross(normal).normalize_or_zero();
             if right.length_squared() < 0.5 {
@@ -164,12 +196,8 @@ impl ParticlePatch {
                 *vertex = ModelVertex {
                     position: (center + (right * x + up * y) * radius).to_array(),
                     normal: normal.to_array(),
-                    uv: [u, v],
-                    color: if self.smoke {
-                        [0.23, 0.24, 0.25, alpha]
-                    } else {
-                        [1.0, 0.9, 0.8, alpha]
-                    },
+                    uv: [uv[0] + (uv[2] - uv[0]) * u, uv[1] + (uv[3] - uv[1]) * v],
+                    color,
                 };
             }
         }

@@ -32,6 +32,7 @@ pub struct ShipAsset {
     pub deck_center: Option<Vec3>,
     pub nodes: Vec<ShipNode>,
     pub fires: Vec<FirePoint>,
+    pub fire_tail_seconds: f32,
     pub crew_count: usize,
     pub waypoint_counts: Option<[usize; 2]>,
     pub waypoint_missing_links: usize,

@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use storm_formats::{GmHeader, TxHeader};
 
 #[derive(Parser)]
-#[command(about = "Inspect or decode original Storm GM/TX files without running the game")]
+#[command(about = "Inspect or decode original Storm GM/TX/XPS files without running the game")]
 struct Args {
     #[command(subcommand)]
     command: Command,
@@ -21,7 +21,7 @@ struct Args {
 enum Command {
     /// Inspect one .gm or .tx file's header and minimum table length.
     Inspect { file: PathBuf },
-    /// Decode static render geometry or every 2D mip into CPU memory and report validation.
+    /// Decode static geometry, 2D mips or PSYS v3.5 particle fields into CPU memory and report validation.
     Decode { file: PathBuf },
     /// Check GM/TX headers recursively, skipping symbolic links.
     Scan { directory: PathBuf },
@@ -104,7 +104,8 @@ fn decode(path: &Path) -> Result<Value> {
                 })).collect::<Vec<_>>(),
             })
         }
-        _ => bail!("expected a .gm or .tx file"),
+        "xps" => storm_formats::particles::Profile::read(&bytes)?.report(),
+        _ => bail!("expected a .gm, .tx or .xps file"),
     };
     Ok(json!({"file":path.display().to_string(),"decoded":decoded}))
 }

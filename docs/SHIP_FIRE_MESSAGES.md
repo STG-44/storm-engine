@@ -62,7 +62,7 @@ within the preview lifetimes (2.4 / 7 seconds). An explicit empty emission list
 suppresses fire even when the legacy manual fire flag was set. The service
 tracks particle IDs separately, but presentation shows only the latest
 emission per locator/kind. Overlapping generations/instances at the same
-locator, original particle profile configuration, particle physics and audio
+locator, full particle profile/service integration, particle physics and audio
 playback remain unfinished. Profile names and owner IDs are retained; sound
 requests are explicitly reported as undelivered with ID zero.
 
@@ -142,3 +142,12 @@ that surface/window check was not repeated. Hosted macOS/Windows checks cover
 CPU/build behavior, while physical GPU/window verification remains pending.
 Original particle profiles/simulation, audio playback, complete SHIP mounting,
 remaining messages and commercial program startup remain unfinished.
+
+
+The subsequent [XPS profile increment](PARTICLE_PROFILES.md) decodes the original
+particle data and uses fixed ship fire/smoke appearance profiles plus the default
+atlas on real resources. Native message profile names still do not dynamically
+select presentation. Service tail retention now follows the loaded maximum
+particle lifetime; the seven-second bound above describes the generated/legacy
+preview. Original birth scheduling, physics, project selection and audio remain
+unfinished.

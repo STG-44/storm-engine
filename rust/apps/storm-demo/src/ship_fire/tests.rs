@@ -87,3 +87,23 @@ fn native_preview_controls_stop_restart_and_reset_without_repopulating_safe_dele
     controller.borrow_mut().clear();
     assert!(!session.toggle().unwrap());
 }
+#[test]
+fn loaded_profile_lifetimes_keep_native_tails_beyond_the_legacy_seven_seconds() {
+    let mut world = EffectsWorld::default();
+    world.set_retention(15.0).unwrap();
+    world.particles.insert(
+        ParticleId(1),
+        FireEmission {
+            point: 0,
+            smoke: true,
+            started: 0.0,
+            stopped: Some(1.0),
+        },
+    );
+    world.set_clock(8.0).unwrap();
+    assert_eq!(world.emissions().len(), 1);
+    world.set_clock(16.0).unwrap();
+    assert!(world.emissions().is_empty());
+    assert!(world.set_retention(f32::INFINITY).is_err());
+    assert!(world.set_retention(61.0).is_err());
+}
