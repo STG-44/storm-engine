@@ -556,3 +556,13 @@ preceding birth counters and 40 native-fire reports match. Local Metal verifies
 moving/spinning repeated-draw stability and an inspected ArabellaShip1 frame.
 Historical world transforms, attached/model particles and full global service
 behavior remain pending; see [scope and evidence](PARTICLE_MOTION.md#four-platform-evidence-2026-10-21).
+
+
+Real XPS ship fire now retains native world-space birth transforms, including
+the wrapper's fixed one-radian yaw, old/new matrix interpolation and saved
+particle track matrices. The approximate sailing preview records every existing
+physics-step pose before startup source execution, supporting headless/live
+world trails independently of display cadence. The new reference covers 49
+matrix pairs / 1,617 complete birth transform/point/normal snapshots. Generic
+caller history sampling, explicit teleports and full native service/ship
+physics remain limited; see [world scope](PARTICLE_WORLD.md).

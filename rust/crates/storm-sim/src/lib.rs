@@ -6,6 +6,8 @@ pub mod fire;
 mod flags;
 pub mod particle_emitter;
 pub mod particle_motion;
+pub mod particle_transform;
+pub mod pose_history;
 mod rig;
 pub mod ship_queries;
 pub mod ship_sails;
@@ -154,6 +156,7 @@ pub struct Sailing {
     sail_request: ship_sails::ShipSailState,
     remainder: f64,
     ticks: u64,
+    pose_history: Option<std::sync::Arc<pose_history::PoseHistory>>,
 }
 impl Sailing {
     /// Start with the requested sails already set; later helm changes take time.
@@ -198,6 +201,7 @@ impl Sailing {
             },
             remainder: 0.0,
             ticks: 0,
+            pose_history: None,
         })
     }
     pub fn state(&self) -> ShipState {
@@ -247,6 +251,31 @@ impl Sailing {
     pub fn time(&self) -> f64 {
         self.ticks as f64 * STEP_SECONDS
     }
+    pub fn pose_sample(&self) -> pose_history::PoseSample {
+        pose_history::PoseSample {
+            seconds: self.time(),
+            translation: [
+                self.state.position.x as f32,
+                self.motion.heave_m as f32,
+                self.state.position.y as f32,
+            ],
+            yaw: (self.state.heading + std::f64::consts::PI) as f32,
+            pitch: self.motion.pitch as f32,
+            roll: -self.motion.roll as f32,
+        }
+    }
+    pub fn enable_pose_history(&mut self) -> Result<std::sync::Arc<pose_history::PoseHistory>> {
+        if let Some(history) = &self.pose_history {
+            return Ok(history.clone());
+        }
+        let history = std::sync::Arc::new(pose_history::PoseHistory::default());
+        history.record(self.pose_sample())?;
+        self.pose_history = Some(history.clone());
+        Ok(history)
+    }
+    pub fn pose_history(&self) -> Option<&std::sync::Arc<pose_history::PoseHistory>> {
+        self.pose_history.as_ref()
+    }
     pub fn set_wind(&mut self, wind: Wind) -> Result<()> {
         wind.validate()?;
         self.wind = wind;
@@ -284,9 +313,18 @@ impl Sailing {
         self.helm.sail = self.sail_mode.setting();
         let total = self.remainder + seconds;
         let steps = ((total + STEP_SECONDS * 1e-9) / STEP_SECONDS).floor() as u64;
+        if let Some(history) = &self.pose_history
+            && (history.read()?.len() as u64 + steps > pose_history::MAX_SAMPLES as u64
+                || (self.ticks + steps) as f64 * STEP_SECONDS > 7200.0)
+        {
+            return Err(SimError("sailing pose history budget exceeded"));
+        }
         for _ in 0..steps {
             self.step()?;
             self.ticks += 1;
+            if let Some(history) = &self.pose_history {
+                history.record(self.pose_sample())?;
+            }
         }
         self.remainder = (total - steps as f64 * STEP_SECONDS).max(0.0);
         Ok(())

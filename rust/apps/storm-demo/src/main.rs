@@ -136,7 +136,7 @@ struct Options {
     #[arg(long, requires = "sail", value_parser = finite, allow_negative_numbers = true)]
     wave_direction: Option<f32>,
     /// Export original per-sail set membership and exit without creating a GPU device.
-    #[arg(long, requires = "preview", conflicts_with_all = ["headless", "frames", "gpu_info", "sail"])]
+    #[arg(long, requires = "preview", conflicts_with_all = ["headless", "frames", "gpu_info"])]
     rig_report: Option<PathBuf>,
     /// TEHO ship nation: england, france, spain, holland or pirate.
     #[arg(long, requires = "preview")]
@@ -966,10 +966,20 @@ fn main() -> Result<()> {
         )?;
     }
     if let Some(path) = &options.rig_report {
-        let asset = asset.as_ref().expect("model required by CLI");
+        let asset = Arc::get_mut(asset.as_mut().expect("model required by CLI"))
+            .expect("unique report asset");
+        let sailing = sailing::Session::new(&options, asset.rig_layout(), Some(&asset.ship))?;
+        if let Some(sailing) = &sailing {
+            sailing.apply_fire(&mut asset.ship_state);
+        }
         std::fs::write(
             path,
-            serde_json::to_vec_pretty(&rig_report::report(asset, options.time))?,
+            serde_json::to_vec_pretty(&rig_report::report(
+                asset,
+                sailing
+                    .as_ref()
+                    .map_or(options.time, |s| s.simulation.time() as f32),
+            ))?,
         )?;
         return Ok(());
     }

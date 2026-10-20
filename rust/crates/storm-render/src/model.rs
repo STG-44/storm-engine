@@ -3,6 +3,8 @@ mod assets;
 mod crew;
 mod effects;
 mod particle_replay;
+mod particle_world;
+pub use particle_world::WorldEmitter;
 mod particle_style;
 pub use particle_replay::{BirthStats, MotionStats};
 pub use particle_style::{MAX_PARTICLE_LIFETIME, MotionProfile, ParticleStyle};
@@ -238,6 +240,7 @@ pub struct ModelScene {
     meshes: Vec<DrawMesh>,
     depth: wgpu::TextureView,
     size: (u32, u32),
+    particle_history: std::sync::Arc<storm_sim::pose_history::PoseHistory>,
 }
 
 fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
@@ -731,6 +734,7 @@ impl ModelScene {
             meshes,
             depth: depth_view(device, 1, 1),
             size: (1, 1),
+            particle_history: Default::default(),
         })
     }
     pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
@@ -795,16 +799,53 @@ impl ModelScene {
             uniform.eye_time[1],
             uniform.eye_time[2],
         ));
+        let has_xps = self
+            .meshes
+            .iter()
+            .any(|m| matches!(&m.dynamic,Some((DynamicMesh::Particles(p),_)) if p.style.is_some()));
+        let history = if let Some(history) = &self.ship_state.particle_history {
+            history.clone()
+        } else {
+            if has_xps {
+                let sample = self.pose.sample(f64::from(seconds));
+                let reset = self.particle_history.read()?.last().is_some_and(|s| {
+                    s.seconds > sample.seconds || (s.seconds == sample.seconds && *s != sample)
+                });
+                if reset {
+                    self.particle_history = Default::default();
+                }
+                self.particle_history.record(sample)?;
+            }
+            self.particle_history.clone()
+        };
         for mesh in &mut self.meshes {
             if let Some((dynamic, vertices)) = &mut mesh.dynamic {
-                dynamic.deform(
-                    vertices,
-                    seconds,
-                    local_wind,
-                    eye,
-                    &self.ship,
-                    &self.ship_state,
-                )?;
+                if let DynamicMesh::Particles(patch) = dynamic
+                    && patch.style.is_some()
+                {
+                    patch.deform(
+                        vertices,
+                        seconds,
+                        wind,
+                        Vec3::new(
+                            uniform.eye_time[0],
+                            uniform.eye_time[1],
+                            uniform.eye_time[2],
+                        ),
+                        &self.ship,
+                        &self.ship_state,
+                        Some(&history),
+                    )?;
+                } else {
+                    dynamic.deform(
+                        vertices,
+                        seconds,
+                        local_wind,
+                        eye,
+                        &self.ship,
+                        &self.ship_state,
+                    )?;
+                }
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }
@@ -864,7 +905,7 @@ impl ModelScene {
             let offset = (i + 1) * self.pose_stride as usize;
             self.pose_bytes[offset..offset + OBJECT_BYTES].copy_from_slice(bytemuck::bytes_of(
                 &ObjectUniform::new(
-                    base * transform,
+                    if matches!(&mesh.dynamic,Some((DynamicMesh::Particles(p),_)) if p.style.is_some()) {Mat4::IDENTITY} else {base * transform},
                     self.ship_state.sail_holes.get(&i).copied().unwrap_or(0),
                     mesh.sail.as_ref().is_some_and(|(p, _)| p.is_triangle()),
                 ),

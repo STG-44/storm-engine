@@ -40,6 +40,8 @@ pub trait BirthPort {
     fn rate(&mut self, particle_type: usize, time: f32, lifetime: f32) -> f32;
     /// False models processor allocation failure, which undoes the active increment.
     fn birth(&mut self, birth: Birth) -> bool;
+    /// Native BornParticles commits old=new only after all substeps finish.
+    fn finish(&mut self) {}
 }
 #[derive(Clone, Debug)]
 pub struct Emitter {
@@ -124,6 +126,7 @@ impl Emitter {
         }
         // Matrix history is handled by the embedding. Substep time is temporary.
         self.elapsed = saved;
+        port.finish();
         Ok(())
     }
     pub fn execute(&mut self, delta: f32, port: &mut impl BirthPort) -> Result<()> {

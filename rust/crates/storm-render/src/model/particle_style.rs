@@ -168,7 +168,7 @@ impl ParticleStyle {
             .replay
             .lock()
             .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
-            .snapshot(self, seconds, start, stop, locator)?;
+            .snapshot(self, seconds, start, stop, locator, None)?;
         if seconds < start {
             return Ok(vec![None; self.count]);
         }
@@ -190,7 +190,7 @@ impl ParticleStyle {
             .replay
             .lock()
             .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
-            .snapshot(self, seconds, start, stop, locator)?
+            .snapshot(self, seconds, start, stop, locator, None)?
             .1)
     }
     pub fn motion_stats(
@@ -204,8 +204,33 @@ impl ParticleStyle {
             .replay
             .lock()
             .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
-            .snapshot(self, seconds, start, stop, locator)?;
+            .snapshot(self, seconds, start, stop, locator, None)?;
         Ok(MotionStats::of(&particles))
+    }
+    pub fn world_samples(
+        &self,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        locator: usize,
+        world: super::WorldEmitter,
+    ) -> Result<(Vec<Option<StyleSample>>, BirthStats, MotionStats)> {
+        let (particles, births) = self
+            .replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
+            .snapshot(self, seconds, start, stop, locator, Some(world))?;
+        let motion = MotionStats::of(&particles);
+        let mut samples = if seconds < start {
+            vec![]
+        } else {
+            particles
+                .iter()
+                .map(|p| self.appearance(seconds, start, p))
+                .collect::<Vec<_>>()
+        };
+        samples.resize(self.count, None);
+        Ok((samples, births, motion))
     }
     pub fn sample(&self, seconds: f32, start: f32, index: usize) -> Option<StyleSample> {
         if index >= self.count || self.frames.is_empty() {

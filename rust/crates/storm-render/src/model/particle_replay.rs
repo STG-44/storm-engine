@@ -1,10 +1,12 @@
 //! Fixed-frame replay adapter around the retained native birth accumulator.
+use super::WorldEmitter;
 use super::{ParticleStyle, particle_style::MotionProfile};
 use anyhow::{Result, ensure};
 use std::collections::BTreeMap;
 use storm_formats::particles::Graph;
 use storm_sim::particle_emitter::{Birth, BirthPort, Emitter, Kind, ParticleType};
 use storm_sim::particle_motion::{Billboard, Curve, MotionPort, Transform};
+use storm_sim::particle_transform::EmitterTransform;
 
 pub const FRAME_SECONDS: f64 = 1.0 / 60.0;
 #[derive(Clone, Debug)]
@@ -105,9 +107,17 @@ struct Run {
     rng: u32,
     created: u64,
     particles: Vec<LiveParticle>,
+    world: Option<WorldEmitter>,
+    transform: EmitterTransform,
 }
 impl Run {
-    fn new(style: &ParticleStyle, start: f32, stop: Option<f32>, seed: usize) -> Self {
+    fn new(
+        style: &ParticleStyle,
+        start: f32,
+        stop: Option<f32>,
+        seed: usize,
+        world: Option<WorldEmitter>,
+    ) -> Self {
         // This explicit portable stream is an embedding policy, not libc rand.
         let rng = style.source.bytes().fold(2166136261u32, |a, b| {
             (a ^ u32::from(b)).wrapping_mul(16777619)
@@ -138,23 +148,37 @@ impl Run {
             rng,
             created: 0,
             particles: vec![],
+            world,
+            transform: EmitterTransform::default(),
         }
     }
-    fn process(&mut self, delta: f32, paused: bool) -> Result<()> {
+    fn process(&mut self, wall: f64, delta: f64, paused: bool) -> Result<()> {
         if !paused {
+            if let Some(world) = &self.world {
+                let start = f64::from(f32::from_bits(self.start));
+                if self.transform.old.is_none() {
+                    self.transform.set(world.at(start + wall)?);
+                }
+                self.transform.set(world.at(start + wall + delta)?);
+            }
             let mut port = Port {
                 config: &self.config,
                 rng: &mut self.rng,
                 created: &mut self.created,
                 particles: &mut self.particles,
+                transform: self.world.as_ref().map(|_| &mut self.transform),
+                error: None,
             };
-            self.emitter.execute(delta, &mut port)?;
+            self.emitter.execute(delta as f32, &mut port)?;
+            if let Some(error) = port.error {
+                return Err(error);
+            }
         }
         let mut index = 0;
         while index < self.particles.len() {
             let particle = &mut self.particles[index];
             let alive = particle.body.process(
-                delta,
+                delta as f32,
                 &mut Motion {
                     config: &self.config,
                     random: &particle.random,
@@ -175,14 +199,14 @@ impl Run {
             .map(|s| f64::from(f32::from_bits(s)) - f64::from(f32::from_bits(self.start)));
         if let Some(stop) = stop {
             if stop <= wall {
-                return self.process(delta as f32, true);
+                return self.process(wall, delta, true);
             }
             if stop < wall + delta {
-                self.process((stop - wall) as f32, false)?;
-                return self.process((wall + delta - stop) as f32, true);
+                self.process(wall, stop - wall, false)?;
+                return self.process(stop, wall + delta - stop, true);
             }
         }
-        self.process(delta as f32, false)
+        self.process(wall, delta, false)
     }
     fn stats(&self) -> BirthStats {
         BirthStats {
@@ -198,6 +222,8 @@ struct Port<'a> {
     rng: &'a mut u32,
     created: &'a mut u64,
     particles: &'a mut Vec<LiveParticle>,
+    transform: Option<&'a mut EmitterTransform>,
+    error: Option<anyhow::Error>,
 }
 impl Port<'_> {
     fn next(&mut self) -> u32 {
@@ -255,13 +281,23 @@ impl BirthPort for Port<'_> {
         let (sx, cx) = direction[0].sin_cos();
         let (sy, cy) = direction[1].sin_cos();
         let (sz, cz) = direction[2].sin_cos();
-        let velocity = [
-            (-sz * cy + cz * sx * sy) * power,
-            (cz * cx) * power,
-            (-sz * -sy + cz * sx * cy) * power,
-        ];
+        let mut velocity = [-sz * cy + cz * sx * sy, cz * cx, -sz * -sy + cz * sx * cy];
         let mut transform = Transform::default();
         transform.0[3] = self.config.position;
+        if let Some(world) = &self.transform {
+            match world.birth(birth.matrix_blend, self.config.position) {
+                Ok(value) => {
+                    transform = value;
+                    velocity = transform.normal(velocity);
+                }
+                Err(error) => {
+                    self.error = Some(error);
+                    return false;
+                }
+            }
+        }
+        // Native AddParticle rotates the direction BEFORE scaling by Velocity.
+        velocity = velocity.map(|v| v * power);
         let position = transform.point(offset);
         if ![lifetime, mass, spin]
             .into_iter()
@@ -278,6 +314,11 @@ impl BirthPort for Port<'_> {
             random: factors,
         });
         true
+    }
+    fn finish(&mut self) {
+        if let Some(transform) = &mut self.transform {
+            transform.finish();
+        }
     }
 }
 struct Motion<'a> {
@@ -303,6 +344,7 @@ pub(super) struct Replay {
     runs: BTreeMap<usize, Run>,
 }
 impl Replay {
+    #[allow(clippy::too_many_arguments)]
     pub fn snapshot(
         &mut self,
         style: &ParticleStyle,
@@ -310,6 +352,7 @@ impl Replay {
         start: f32,
         stop: Option<f32>,
         seed: usize,
+        world: Option<WorldEmitter>,
     ) -> Result<(Vec<LiveParticle>, BirthStats)> {
         ensure!(
             seconds.is_finite()
@@ -324,6 +367,19 @@ impl Replay {
             "invalid particle emission stop time"
         );
         ensure!(seed < 16_384, "particle replay locator budget exceeded");
+        if let Some(world) = &world
+            && seconds >= start
+        {
+            let through = stop.map_or(seconds, |s| s.min(seconds));
+            ensure!(
+                world
+                    .history
+                    .read()?
+                    .last()
+                    .is_some_and(|s| s.seconds as f32 >= through),
+                "pose history must cover the particle birth interval"
+            );
+        }
         let elapsed = (f64::from(seconds) - f64::from(start)).max(0.0);
         ensure!(elapsed <= 7200.0, "particle replay exceeds 7200 seconds");
         let ticks = (elapsed / FRAME_SECONDS).floor() as u32;
@@ -332,9 +388,15 @@ impl Replay {
                 || r.stop != stop.map(f32::to_bits)
                 || r.ticks > ticks
                 || !r.config.matches(style)
+                || match (&r.world, &world) {
+                    (None, None) => false,
+                    (Some(a), Some(b)) => !a.same(b),
+                    _ => true,
+                }
         });
         if reset {
-            self.runs.insert(seed, Run::new(style, start, stop, seed));
+            self.runs
+                .insert(seed, Run::new(style, start, stop, seed, world));
         }
         let run = self.runs.get_mut(&seed).unwrap();
         while run.ticks < ticks {
@@ -353,7 +415,7 @@ impl Replay {
         let mut presented = run.clone();
         let remainder = (elapsed - f64::from(ticks) * FRAME_SECONDS).max(0.0);
         if remainder > 0.0 {
-            presented.process(remainder as f32, true)?;
+            presented.process(f64::from(ticks) * FRAME_SECONDS, remainder, true)?;
         }
         let stats = presented.stats();
         Ok((presented.particles, stats))

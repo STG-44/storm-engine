@@ -224,10 +224,18 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
     let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
     let mut camera = OrbitCamera::new(&asset);
-    camera.target = asset.ship.fires[0].position + Vec3::new(1.5, 3.0, -5.0);
+    let p = storm_sim::particle_motion::Transform::from_euler([0.0, 1.0, 0.0], [0.0; 3])
+        .unwrap()
+        .point([1.5, 3.0, 5.0]);
+    camera.target = asset.ship.fires[0].position + Vec3::new(p[0], p[1], -p[2]);
     camera.distance = 10.0;
     let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
-    let mut capture = |state| {
+    let history = Arc::new(storm_sim::pose_history::PoseHistory::default());
+    history.record(ModelPose::default().sample(0.0)).unwrap();
+    history.record(ModelPose::default().sample(2.0)).unwrap();
+    let mut capture = |mut state: ShipState, pose| {
+        state.particle_history = Some(history.clone());
+        scene.set_pose(pose).unwrap();
         scene.set_ship_state(state).unwrap();
         crate::render_offscreen_with(&gpu, 321, 181, 2.0, |encoder, target| {
             scene.draw(
@@ -243,16 +251,19 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
         })
         .unwrap()
     };
-    let unlit = capture(ShipState::default());
-    let active = capture(ShipState {
-        native_fire: Some(vec![FireEmission {
-            point: 0,
-            smoke: false,
-            started: 0.0,
-            stopped: None,
-        }]),
-        ..Default::default()
-    });
+    let unlit = capture(ShipState::default(), ModelPose::default());
+    let active = capture(
+        ShipState {
+            native_fire: Some(vec![FireEmission {
+                point: 0,
+                smoke: false,
+                started: 0.0,
+                stopped: None,
+            }]),
+            ..Default::default()
+        },
+        ModelPose::default(),
+    );
     let green = |frame: &crate::Frame| {
         frame
             .rgba
@@ -263,22 +274,49 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
             .count()
     };
     assert!(green(&active) > green(&unlit) + 5);
-    let repeated = capture(ShipState {
-        native_fire: Some(vec![FireEmission {
-            point: 0,
-            smoke: false,
-            started: 0.0,
-            stopped: None,
-        }]),
-        ..Default::default()
-    });
+    let repeated = capture(
+        ShipState {
+            native_fire: Some(vec![FireEmission {
+                point: 0,
+                smoke: false,
+                started: 0.0,
+                stopped: None,
+            }]),
+            ..Default::default()
+        },
+        ModelPose::default(),
+    );
     assert_eq!(active.rgba, repeated.rgba);
+    let relocated = capture(
+        ShipState {
+            native_fire: Some(vec![FireEmission {
+                point: 0,
+                smoke: false,
+                started: 0.0,
+                stopped: None,
+            }]),
+            ..Default::default()
+        },
+        ModelPose {
+            translation: [20.0, 3.0, 0.0],
+            yaw: 1.2,
+            pitch: 0.2,
+            roll: 0.1,
+        },
+    );
+    assert_eq!(
+        active.rgba, relocated.rgba,
+        "existing world particles must not inherit the current ship pose"
+    );
     assert_eq!(
         unlit.rgba,
-        capture(ShipState {
-            native_fire: Some(vec![]),
-            ..Default::default()
-        })
+        capture(
+            ShipState {
+                native_fire: Some(vec![]),
+                ..Default::default()
+            },
+            ModelPose::default()
+        )
         .rgba
     );
 }
@@ -296,6 +334,130 @@ fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u
             )
         })
         .collect()
+}
+#[test]
+fn world_particles_keep_birth_positions_after_the_ship_moves_and_emission_pauses() {
+    use crate::model::{ModelPose, WorldEmitter};
+    use std::sync::Arc;
+    let mut style = fixture();
+    style.emitter_position = Vec3::ZERO;
+    style.track = std::array::from_fn(|_| constant(0.0));
+    style.count = 100;
+    style.rate = constant(60.0);
+    style.lifetime = constant(3.0);
+    let history = Arc::new(storm_sim::pose_history::PoseHistory::default());
+    history.record(ModelPose::default().sample(0.0)).unwrap();
+    history
+        .record(
+            ModelPose {
+                translation: [10.0, 0.0, 0.0],
+                ..Default::default()
+            }
+            .sample(1.0),
+        )
+        .unwrap();
+    let world = WorldEmitter {
+        history: history.clone(),
+        point: [0.0; 3],
+    };
+    let (first, births, _) = style
+        .world_samples(0.5, 0.0, Some(0.5), 0, world.clone())
+        .unwrap();
+    let (_, later_births, _) = style
+        .world_samples(0.75, 0.0, Some(0.5), 0, world.clone())
+        .unwrap();
+    assert_eq!(births.created, later_births.created);
+    history
+        .record(
+            ModelPose {
+                translation: [100.0, 4.0, 0.0],
+                yaw: 1.5,
+                ..Default::default()
+            }
+            .sample(2.0),
+        )
+        .unwrap();
+    let (later, _, _) = style
+        .world_samples(1.0, 0.0, Some(0.5), 0, world.clone())
+        .unwrap();
+    let coords = |v: Vec<Option<StyleSample>>| {
+        v.into_iter()
+            .flatten()
+            .map(|s| (s.serial, s.offset.to_array().map(f32::to_bits)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(coords(first), coords(later.clone()));
+    assert!(later.iter().flatten().all(|s| s.offset.x < 5.0));
+    assert_eq!(
+        sample_signature(later),
+        sample_signature(
+            style
+                .clone()
+                .world_samples(1.0, 0.0, Some(0.5), 0, world.clone())
+                .unwrap()
+                .0
+        )
+    );
+    style
+        .world_samples(0.1, 0.0, Some(0.5), 0, world.clone())
+        .unwrap();
+    assert_eq!(
+        sample_signature(
+            style
+                .world_samples(1.0, 0.0, Some(0.5), 0, world)
+                .unwrap()
+                .0
+        ),
+        sample_signature(
+            style
+                .clone()
+                .world_samples(
+                    1.0,
+                    0.0,
+                    Some(0.5),
+                    0,
+                    WorldEmitter {
+                        history,
+                        point: [0.0; 3]
+                    }
+                )
+                .unwrap()
+                .0
+        )
+    );
+}
+#[test]
+fn world_emitter_tracks_rotated_locators_but_retains_native_fixed_fire_angles() {
+    use crate::model::{ModelPose, WorldEmitter};
+    use std::sync::Arc;
+    let history = Arc::new(storm_sim::pose_history::PoseHistory::default());
+    history.record(ModelPose::default().sample(0.0)).unwrap();
+    history
+        .record(
+            ModelPose {
+                yaw: std::f32::consts::FRAC_PI_2,
+                translation: [4.0, 2.0, 0.0],
+                ..Default::default()
+            }
+            .sample(1.0),
+        )
+        .unwrap();
+    let world = WorldEmitter {
+        history,
+        point: [2.0, 0.0, 0.0],
+    };
+    let a = world.at(0.0).unwrap();
+    let b = world.at(1.0).unwrap();
+    assert!(
+        (b.0[3][0] - 4.0).abs() < 1e-5
+            && (b.0[3][1] - 2.0).abs() < 1e-5
+            && (b.0[3][2] - 2.0).abs() < 1e-5
+    );
+    assert_eq!(a.0[..3], b.0[..3]);
+    let half = world.at(0.5).unwrap();
+    assert!((half.0[3][0] - 3.0).abs() < 1e-5);
+    assert!(world.at(f64::NAN).is_err());
+    assert!(fixture().world_samples(2.0, 0.0, None, 0, world).is_err());
 }
 
 #[test]

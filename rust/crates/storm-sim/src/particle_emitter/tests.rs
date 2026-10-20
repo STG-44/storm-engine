@@ -1,5 +1,30 @@
 use super::*;
 use serde_json::{Value as Json, json};
+#[test]
+fn transform_history_commits_only_after_a_complete_visible_birth_pass() {
+    struct Hooks(usize);
+    impl BirthPort for Hooks {
+        fn rate(&mut self, _: usize, _: f32, _: f32) -> f32 {
+            0.0
+        }
+        fn birth(&mut self, _: Birth) -> bool {
+            true
+        }
+        fn finish(&mut self) {
+            self.0 += 1;
+        }
+    }
+    let mut e = Emitter::new(1.0, false, vec![ParticleType::new(Kind::Billboard, 1)]);
+    let mut p = Hooks(0);
+    e.execute(0.0, &mut p).unwrap();
+    assert_eq!(p.0, 1);
+    e.enabled = false;
+    e.execute(0.25, &mut p).unwrap();
+    assert_eq!(p.0, 1);
+    e.enabled = true;
+    e.execute(1.0, &mut p).unwrap();
+    assert_eq!(p.0, 1);
+}
 #[derive(Default)]
 struct Port {
     base: f32,

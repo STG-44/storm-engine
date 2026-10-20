@@ -65,6 +65,7 @@ pub struct ShipState {
     pub fire_started: Option<f32>,
     /// None keeps the manual preview; Some selects native particle emissions.
     pub native_fire: Option<Vec<FireEmission>>,
+    pub particle_history: Option<std::sync::Arc<storm_sim::pose_history::PoseHistory>>,
     pub crew_visible: bool,
 }
 impl Default for ShipState {
@@ -75,6 +76,7 @@ impl Default for ShipState {
             broken_hulls: BTreeMap::new(),
             fire_started: None,
             native_fire: None,
+            particle_history: None,
             crew_visible: true,
         }
     }

@@ -445,3 +445,10 @@ and counts beside unchanged birth counters. The current ship/node position
 still anchors the profile-space result; historical world birth transforms,
 speed orientation, attached/model particles and global service/RNG behavior
 remain pending. See [motion contracts and reference](../docs/PARTICLE_MOTION.md).
+
+Real XPS fire now retains world-space birth matrices through moving/turning and
+rolling ships. Sailing records every physics-step pose, including startup
+source execution; existing smoke no longer inherits the current ship pose.
+`--sail --fire --time 20 --rig-report world-state.json` inspects world bounds
+without a GPU when original resources are selected. See [history/coordinate
+contracts and limits](../docs/PARTICLE_WORLD.md).

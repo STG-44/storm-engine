@@ -1,5 +1,9 @@
 # Retained billboard motion
 
+World-space ship-fire birth transforms and history are now integrated in the
+subsequent [world increment](PARTICLE_WORLD.md), superseding the historical
+profile-space anchoring exclusion recorded below.
+
 `storm_sim::particle_motion` ports the live-particle portion of
 `BillBoardProcessor::Process`, `SolvePhysic`, `AddGravityForce` and the native
 vector/track transform arithmetic. `MotionPort` supplies seven graph values in

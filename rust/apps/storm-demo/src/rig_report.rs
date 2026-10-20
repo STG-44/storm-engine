@@ -54,6 +54,7 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
     }
     let mut births = vec![];
     let mut motions = vec![];
+    let mut world = vec![];
     for (mesh_index, mesh) in asset.meshes.iter().enumerate() {
         let Some(storm_render::model::DynamicMesh::Particles(patch)) = &mesh.dynamic else {
             continue;
@@ -83,11 +84,20 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
                 Ok(s)=>json!({"mesh":mesh_index,"locator":locator,"source":style.source,"living":s.living,"moving":s.moving,"spinning":s.spinning,"position_bounds":s.position_bounds,"angle_bounds":s.angle_bounds,"maximum_speed":s.maximum_speed}),
                 Err(error)=>json!({"mesh":mesh_index,"locator":locator,"error":error.to_string()}),
             });
+            if let Some(history) = &state.particle_history {
+                world.push(match style.world_samples(seconds,start,stop,locator,storm_render::model::WorldEmitter {history:history.clone(),point:patch.points[locator].position.to_array()}) {
+                    Ok((_,b,m))=>json!({"mesh":mesh_index,"locator":locator,"source":style.source,"created":b.created,"living":b.living,"moving":m.moving,"spinning":m.spinning,"position_bounds":m.position_bounds,"maximum_speed":m.maximum_speed,"space":"world"}),
+                    Err(error)=>json!({"mesh":mesh_index,"locator":locator,"error":error.to_string()}),
+                });
+            }
         }
     }
     if !births.is_empty() {
         report["particle_births"] = json!(births);
         report["particle_motion"] = json!(motions);
+    }
+    if !world.is_empty() {
+        report["particle_world"] = json!(world);
     }
 
     report

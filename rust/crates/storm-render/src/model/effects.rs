@@ -62,7 +62,7 @@ impl DynamicMesh {
         );
         match self {
             Self::Crew(c) => c.deform(out, seconds)?,
-            Self::Particles(p) => p.deform(out, seconds, wind, eye, asset, state)?,
+            Self::Particles(p) => p.deform(out, seconds, wind, eye, asset, state, None)?,
         }
         ensure!(
             out.iter().all(|v| v
@@ -86,7 +86,8 @@ impl ParticlePatch {
             })
             .collect()
     }
-    fn deform(
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn deform(
         &self,
         out: &mut [ModelVertex],
         seconds: f32,
@@ -94,6 +95,7 @@ impl ParticlePatch {
         eye: Vec3,
         asset: &ShipAsset,
         state: &ShipState,
+        history: Option<&Arc<storm_sim::pose_history::PoseHistory>>,
     ) -> Result<()> {
         let air = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos()) * wind.speed;
         let mut particles = Vec::with_capacity(self.points.len() * self.per_point);
@@ -115,12 +117,22 @@ impl ParticlePatch {
                 if emission.is_some()
                     || (state.native_fire.is_none() && state.fire_started.is_some())
                 {
-                    Some(style.samples(
-                        seconds,
-                        start,
-                        emission.and_then(|e| e.stopped),
-                        emitter,
-                    )?)
+                    Some(if let Some(history) = history {
+                        style
+                            .world_samples(
+                                seconds,
+                                start,
+                                emission.and_then(|e| e.stopped),
+                                emitter,
+                                super::WorldEmitter {
+                                    history: history.clone(),
+                                    point: point.position.to_array(),
+                                },
+                            )?
+                            .0
+                    } else {
+                        style.samples(seconds, start, emission.and_then(|e| e.stopped), emitter)?
+                    })
                 } else {
                     Some(vec![None; self.per_point])
                 }
@@ -161,12 +173,16 @@ impl ParticlePatch {
                             let mut color = sample.color;
                             if (state.native_fire.is_some()
                                 && emission.is_none_or(|e| seconds < e.started))
-                                || asset.hidden(&point.node, state, seconds)
+                                || (history.is_none() && asset.hidden(&point.node, state, seconds))
                             {
                                 color[3] = 0.0;
                             }
                             (
-                                source + sample.offset,
+                                if history.is_some() {
+                                    sample.offset
+                                } else {
+                                    source + sample.offset
+                                },
                                 sample.radius,
                                 color,
                                 sample.uv,
@@ -224,6 +240,16 @@ impl ParticlePatch {
                 };
             }
         }
+        ensure!(
+            out.iter().all(|v| v
+                .position
+                .iter()
+                .chain(&v.normal)
+                .chain(&v.uv)
+                .chain(&v.color)
+                .all(|f| f.is_finite())),
+            "non-finite particle vertex"
+        );
         Ok(())
     }
 }

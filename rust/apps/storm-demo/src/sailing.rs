@@ -69,6 +69,7 @@ impl Session {
             ),
         })?;
         let mut native_fire = None;
+        simulation.enable_pose_history()?;
         let script_report = if let Some(path) = &options.sail_script {
             let (scripted, report, fire) = super::ship_script::run(
                 simulation,
@@ -121,11 +122,12 @@ impl Session {
         pose(&self.simulation)
     }
     pub fn apply_fire(&self, state: &mut storm_render::model::ShipState) -> bool {
+        state.particle_history = self.simulation.pose_history().cloned();
         if let Some(fire) = &self.native_fire {
             fire.apply(state);
             true
         } else {
-            false
+            state.particle_history.is_some()
         }
     }
     pub fn fire_key(&mut self, key: KeyCode) -> Result<Option<bool>> {
@@ -246,19 +248,7 @@ impl Session {
 }
 
 pub fn pose(simulation: &Sailing) -> ModelPose {
-    let state = simulation.state();
-    let motion = simulation.motion();
-    ModelPose {
-        translation: [
-            state.position.x as f32,
-            motion.heave_m as f32,
-            state.position.y as f32,
-        ],
-        // Renderer +Z reflects the original Storm model orientation.
-        yaw: (state.heading + std::f64::consts::PI) as f32,
-        pitch: motion.pitch as f32,
-        roll: -motion.roll as f32,
-    }
+    simulation.pose_sample().into()
 }
 
 #[cfg(test)]
@@ -293,8 +283,27 @@ mod tests {
         );
         let mut state = storm_render::model::ShipState::default();
         assert!(session.apply_fire(&mut state));
+        let history = state.particle_history.as_ref().unwrap().read().unwrap();
+        assert_eq!(history.first().unwrap().seconds, 0.0);
+        assert_eq!(history.last().unwrap().seconds, session.simulation.time());
+        assert_eq!(
+            history.len(),
+            (session.simulation.time() / storm_sim::STEP_SECONDS).round() as usize + 1
+        );
+        let recorded = history.len();
+        drop(history);
         state.validate(&asset.ship).unwrap();
         session.update(0.25, options.wind()).unwrap();
+        assert_eq!(
+            state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap()
+                .len(),
+            recorded
+        );
         assert_eq!(
             session.report()["native_fire"]["places"][0]["remaining_bits"],
             0.75f32.to_bits()
