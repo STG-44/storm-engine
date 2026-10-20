@@ -105,3 +105,39 @@ unchanged. Seven added CPU tests cover reference comparisons, limits, release,
 frame cadence, repeated draw, rewinds, stop boundaries, independent locators,
 aging and capacity recovery. The existing explicit XPS atlas GPU test now also
 verifies identical pixels on a repeated draw of the same native emission state.
+
+
+## Four-platform evidence, 2026-10-21
+
+Code `3840b1f47ff10e7a68f45993e3883bc34f377d11` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39327662142) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39327654395) on
+macOS Apple Silicon/Intel, Windows and Linux: 271 CPU tests, including 135
+interpreter tests, formatting, Clippy with warnings denied, native builds and
+all sixteen standalone scenarios. Host triples are `aarch64-apple-darwin`,
+`x86_64-apple-darwin`, `x86_64-pc-windows-msvc` and
+`x86_64-unknown-linux-gnu`. Linux additionally passes all 15 explicit software
+Vulkan GPU tests and native windows. Four downloaded archive SHA-256 digests
+and all 64 complete JSON reports match local results; all sixteen preceding
+scenario reports remain unchanged.
+
+The new resource audit reloads all 40 original ship roots. It verifies 274
+fire positions, 117 style patches and 822 description/locator birth counters at
+two seconds across the 39 models with locators. The zero-locator model remains
+empty. The replay creates 38,086 particles with 10,347 still living, all within
+the configured per-description capacity. All 40 complete native-fire source
+reports equal the preceding XPS phase. Locator arrays, sail count/topology/source
+weights and rigging metadata remain unchanged; older damaged layouts are not
+compared for intact aggregate weights. The preceding whole-profile decode of
+66 XPS files and earlier damage event/layout audits were not repeated.
+
+Local Metal passes the existing XPS atlas/clear test, including identical
+pixels on repeated presentation of the same emission state. Original
+ArabellaShip1 renders at two seconds with 973 created / 264 living particles;
+the image was visually inspected. Its seven locators yield 21 description
+rows; a CPU-only report exposes the same birth counters. Commercial resources,
+captures and local evidence stay outside Git. Previous local native-window
+timeouts remain an unverified surface/window limitation; that check was not
+repeated. Hosted macOS/Windows jobs cover CPU behavior/builds; physical GPU
+coverage there remains pending. Full movement/forces, global RNG/processor
+ordering, birth transforms, native profile dispatch and audio remain unfinished.

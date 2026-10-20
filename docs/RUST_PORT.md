@@ -519,3 +519,18 @@ state while tails age. The native birth core is compared against 35 sequences /
 The renderer supplies deterministic fixed frames and a portable per-patch RNG;
 full particle movement, manager/global RNG ordering, native profile dispatch and
 audio remain pending.
+
+
+The [particle birth PR run](https://github.com/STG-44/storm-engine/actions/runs/39327662142)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39327654395)
+pass all four native hosts for `3840b1f4`: 271 CPU tests, including 135
+interpreter tests, plus all 15 explicit Linux software Vulkan GPU tests and
+native windows. Four archive digests and all 64 complete scenario reports match
+local results; all sixteen preceding reports remain unchanged. The new native
+reference matches 35 sequences / 245 complete birth snapshots and 240 random
+range samples. All 40 original ship roots reload; 274 positions / 117 style
+patches yield 822 birth-counter rows at two seconds (38,086 created, 10,347
+living). All 40 native-fire script reports match the preceding phase. Local
+Metal verifies repeated-draw stability and renders ArabellaShip1 with 973/264
+created/living particles. Full movement/forces and global service behavior
+remain pending; see [scope and evidence](PARTICLE_EMISSION.md#four-platform-evidence-2026-10-21).
