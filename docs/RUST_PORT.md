@@ -566,3 +566,17 @@ world trails independently of display cadence. The new reference covers 49
 matrix pairs / 1,617 complete birth transform/point/normal snapshots. Generic
 caller history sampling, explicit teleports and full native service/ship
 physics remain limited; see [world scope](PARTICLE_WORLD.md).
+
+
+The [world birth PR run](https://github.com/STG-44/storm-engine/actions/runs/39506026633)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39506020767)
+pass all four native hosts for `2f8a8786`: 283 CPU tests, including 135
+interpreter tests, plus 15 explicit Linux software Vulkan GPU tests and native
+windows. Four archive digests / 64 complete JSON reports match local results;
+all sixteen preceding reports remain unchanged. The retained reference matches
+49 matrix pairs / 1,617 complete birth-matrix/point/normal snapshots. All 40
+original ships reload: 274 locators / 117 patches yield 822 finite world rows;
+all prior birth counters and native-fire reports match. Local Metal verifies
+world-particle independence from the current ship pose and an inspected moving
+ArabellaShip1 smoke trail. Full native ship/service behavior, arbitrary emitter
+dispatch and generic teleport history remain pending; see [scope and evidence](PARTICLE_WORLD.md#four-platform-evidence-2026-10-21).

@@ -101,3 +101,41 @@ arbitrary profile dispatch, speed orientation, attached/model particles,
 shader techniques/frame blending, full native ship physics and audio remain
 unfinished. The retained birth/motion arithmetic is distinct from these preview
 history and coordinate adapters.
+
+
+## Four-platform evidence, 2026-10-21
+
+Code `2f8a87864301370297f2ea762e033b0acfc48298` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39506026633) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39506020767) on
+macOS Apple Silicon/Intel, Windows and Linux. All eight jobs pass 283 CPU tests,
+including 135 interpreter tests, formatting, Clippy with warnings denied,
+native builds and sixteen standalone scenarios. Actual host triples and test
+totals are verified from logs. Linux additionally passes all 15 explicit
+software Vulkan GPU tests and native-window fixtures. Four downloaded archive
+SHA-256 digests and all 64 complete JSON reports match local results. All
+sixteen preceding reports remain unchanged.
+
+The final-build resource audit reloads all 40 original ship roots. It verifies
+274 fire locators / 117 XPS patches and 822 world rows at two seconds while
+sailing/turning with waves across all 39 models with locators. Every world row
+has finite bounds/speed and the same created/living counts as the prior local
+birth counters (38,086 created / 10,347 living). All preceding birth-counter
+rows and 40 complete native-fire source reports remain unchanged. The empty
+model stays empty. Locator, sail source/topology and rigging metadata remain
+unchanged. Older whole-profile decoding and damage event/layout audits were
+not repeated; the existing generated damage/report command also passes locally.
+
+Local Metal passes the extended atlas/clear/repeated-draw test. Relocating and
+rotating the current ship at the same world particle state produces identical
+pixels. ArabellaShip1 renders after twenty seconds of sailing with waves,
+travelling about 39 metres: 9,899 created / 726 living particles and 21 world
+rows. All seven smoke locators show a trailing Z extent over twenty metres
+behind their current approximate locator position. The image was inspected;
+the final-build capture is byte-identical to it. A CPU-only report exposes
+finite world bounds and identical birth counts. Commercial resources, captures
+and local evidence stay outside Git. Previous local native-window timeouts
+remain an unverified surface/window limitation; that check was not repeated.
+Hosted macOS/Windows checks cover CPU/build behavior; physical GPU coverage
+there remains pending. Preview timing/pose history and the remaining service,
+shader and full native gameplay limits above still apply.
