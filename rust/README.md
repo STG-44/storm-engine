@@ -437,3 +437,11 @@ Rig reports honor --time; generated fixture/report defaults remain unchanged.
 The renderer uses fixed 60 Hz replay and a portable RNG adapter; original full
 particle motion/forces and global native RNG/service behavior remain pending.
 See [birth/time contracts and remaining scope](../docs/PARTICLE_EMISSION.md).
+
+Billboard particles now integrate the original signed-mass gravity,
+displacement/spin friction and track/physics blend, with XPS direction, velocity
+and spin. Rig/headless reports expose profile-space `particle_motion` bounds
+and counts beside unchanged birth counters. The current ship/node position
+still anchors the profile-space result; historical world birth transforms,
+speed orientation, attached/model particles and global service/RNG behavior
+remain pending. See [motion contracts and reference](../docs/PARTICLE_MOTION.md).

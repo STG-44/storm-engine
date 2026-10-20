@@ -5,6 +5,7 @@ use std::{error::Error, fmt};
 pub mod fire;
 mod flags;
 pub mod particle_emitter;
+pub mod particle_motion;
 mod rig;
 pub mod ship_queries;
 pub mod ship_sails;

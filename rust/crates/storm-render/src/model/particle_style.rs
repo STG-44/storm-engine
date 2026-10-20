@@ -1,11 +1,22 @@
-//! XPS appearance with retained birth accumulation and fixed-frame replay; physics is pending.
-use super::particle_replay::{BirthStats, LiveParticle, Replay};
+//! XPS appearance with retained billboard birth/motion and fixed-frame replay.
+use super::particle_replay::{BirthStats, LiveParticle, MotionStats, Replay};
 use anyhow::{Context, Result, ensure};
 use glam::Vec3;
 use std::sync::Mutex;
 use storm_formats::particles::{ColorGraph, Fields, Graph, Value};
 
 pub const MAX_PARTICLE_LIFETIME: f32 = 60.0;
+#[derive(Clone, Debug, PartialEq)]
+pub struct MotionProfile {
+    pub direction: [Graph; 3],
+    pub mass: Graph,
+    pub spin: Graph,
+    pub velocity: Graph,
+    pub drag: Graph,
+    pub spin_drag: Graph,
+    pub gravity: Graph,
+    pub blend: Graph,
+}
 #[derive(Debug)]
 pub struct ParticleStyle {
     replay: Mutex<Replay>,
@@ -22,12 +33,14 @@ pub struct ParticleStyle {
     pub frames: Vec<[f32; 4]>,
     pub animation: Graph,
     pub track: [Graph; 3],
+    pub motion: MotionProfile,
 }
 #[derive(Clone, Debug)]
 pub struct StyleSample {
     pub serial: u64,
     pub birth: f32,
     pub offset: Vec3,
+    pub angle: f32,
     pub radius: f32,
     pub color: [f32; 4],
     pub uv: [f32; 4],
@@ -36,6 +49,12 @@ impl ParticleStyle {
     pub fn read(source: String, emitter: &Fields, particle: &Fields) -> Result<Self> {
         let graph = |name| {
             particle
+                .graph(name)
+                .cloned()
+                .with_context(|| format!("XPS {source}: missing graph {name}"))
+        };
+        let emitter_graph = |name| {
+            emitter
                 .graph(name)
                 .cloned()
                 .with_context(|| format!("XPS {source}: missing graph {name}"))
@@ -85,41 +104,53 @@ impl ParticleStyle {
             frames,
             animation: graph("Animation frame")?,
             track: [graph("Track X")?, graph("Track Y")?, graph("Track Z")?],
+            motion: MotionProfile {
+                direction: [
+                    emitter_graph("Physics Dir X")?,
+                    emitter_graph("Physics Dir Y")?,
+                    emitter_graph("Physics Dir Z")?,
+                ],
+                mass: graph("Mass")?,
+                spin: graph("Spin")?,
+                velocity: graph("Velocity")?,
+                drag: graph("Friction")?,
+                spin_drag: graph("Spin Friction")?,
+                gravity: graph("ForceField_gravity")?,
+                blend: graph("Physic blend")?,
+            },
             source,
         };
         Ok(style)
     }
     fn appearance(&self, seconds: f32, start: f32, particle: &LiveParticle) -> Option<StyleSample> {
-        let age = particle.age;
-        let lifetime = particle.lifetime;
+        let age = particle.body.age;
+        let lifetime = particle.body.lifetime;
         let random = particle.random;
         if lifetime <= 0.0 || self.frames.is_empty() {
             return None;
         }
-        let radius = self.size.sample(age, lifetime, random[0]);
+        let radius = self.size.sample(age, lifetime, random[2]);
         if radius <= 0.000001 {
             return None;
         }
-        let mut color = self.color.sample(age, lifetime, random[1]);
+        let mut color = self.color.sample(age, lifetime, random[3]);
         color[3] =
-            (1.0 - self.transparency.sample(age, lifetime, random[2]) * 0.01).clamp(0.0, 1.0);
-        let frame = self.animation.sample(age, lifetime, random[3]).max(0.0) as u32 as usize
+            (1.0 - self.transparency.sample(age, lifetime, random[4]) * 0.01).clamp(0.0, 1.0);
+        let frame = self.animation.sample(age, lifetime, random[5]).max(0.0) as u32 as usize
             % self.frames.len();
-        let track = Vec3::new(
-            self.track[0].sample(age, lifetime, random[4]),
-            self.track[1].sample(age, lifetime, random[5]),
-            -self.track[2].sample(age, lifetime, random[6]),
-        );
+        let position = particle.body.render_position;
         let sample = StyleSample {
             serial: particle.serial,
             birth: (seconds - age).max(start),
-            offset: self.emitter_position + track,
+            offset: Vec3::new(position[0], position[1], -position[2]),
+            angle: particle.body.render_angle,
             radius,
             color,
             uv: self.frames[frame],
         };
         if !sample.offset.is_finite()
             || !sample.radius.is_finite()
+            || !sample.angle.is_finite()
             || !sample.color.iter().chain(&sample.uv).all(|v| v.is_finite())
         {
             return None;
@@ -162,6 +193,20 @@ impl ParticleStyle {
             .snapshot(self, seconds, start, stop, locator)?
             .1)
     }
+    pub fn motion_stats(
+        &self,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        locator: usize,
+    ) -> Result<MotionStats> {
+        let (particles, _) = self
+            .replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
+            .snapshot(self, seconds, start, stop, locator)?;
+        Ok(MotionStats::of(&particles))
+    }
     pub fn sample(&self, seconds: f32, start: f32, index: usize) -> Option<StyleSample> {
         if index >= self.count || self.frames.is_empty() {
             return None;
@@ -189,6 +234,7 @@ impl Clone for ParticleStyle {
             frames: self.frames.clone(),
             animation: self.animation.clone(),
             track: self.track.clone(),
+            motion: self.motion.clone(),
         }
     }
 }

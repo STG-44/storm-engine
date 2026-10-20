@@ -155,7 +155,7 @@ impl ParticlePatch {
                 } else {
                     (if self.smoke { 0.42 } else { 0.8 }) * (1.0 - life) * ((life * 8.0).min(1.0))
                 };
-                let (center, radius, color, uv) = if let Some(samples) = &samples {
+                let (center, radius, color, uv, angle) = if let Some(samples) = &samples {
                     match samples[i].as_ref() {
                         Some(sample) => {
                             let mut color = sample.color;
@@ -165,9 +165,15 @@ impl ParticlePatch {
                             {
                                 color[3] = 0.0;
                             }
-                            (source + sample.offset, sample.radius, color, sample.uv)
+                            (
+                                source + sample.offset,
+                                sample.radius,
+                                color,
+                                sample.uv,
+                                sample.angle,
+                            )
                         }
-                        None => (source, 0.0, [0.0; 4], [0.0; 4]),
+                        None => (source, 0.0, [0.0; 4], [0.0; 4], 0.0),
                     }
                 } else {
                     (
@@ -179,16 +185,17 @@ impl ParticlePatch {
                             [1.0, 0.9, 0.8, alpha]
                         },
                         [0.0, 0.0, 1.0, 1.0],
+                        0.0,
                     )
                 };
-                particles.push((center, radius, color, uv));
+                particles.push((center, radius, color, uv, angle));
             }
         }
         particles.sort_by(|a, b| {
             b.0.distance_squared(eye)
                 .total_cmp(&a.0.distance_squared(eye))
         });
-        for ((center, radius, color, uv), quad) in
+        for ((center, radius, color, uv, angle), quad) in
             particles.into_iter().zip(out.chunks_exact_mut(4))
         {
             let normal = (eye - center).normalize_or_zero();
@@ -197,6 +204,7 @@ impl ParticlePatch {
                 right = Vec3::X;
             }
             let up = normal.cross(right).normalize_or_zero();
+            let (sin, cos) = angle.sin_cos();
             for ((x, y, u, v), vertex) in [
                 (-1.0, -1.0, 0.0, 1.0),
                 (1.0, -1.0, 1.0, 1.0),
@@ -207,7 +215,9 @@ impl ParticlePatch {
             .zip(quad)
             {
                 *vertex = ModelVertex {
-                    position: (center + (right * x + up * y) * radius).to_array(),
+                    position: (center
+                        + (right * (x * cos - y * sin) + up * (x * sin + y * cos)) * radius)
+                        .to_array(),
                     normal: normal.to_array(),
                     uv: [uv[0] + (uv[2] - uv[0]) * u, uv[1] + (uv[3] - uv[1]) * v],
                     color,

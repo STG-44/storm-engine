@@ -1,9 +1,10 @@
 //! Fixed-frame replay adapter around the retained native birth accumulator.
-use super::ParticleStyle;
+use super::{ParticleStyle, particle_style::MotionProfile};
 use anyhow::{Result, ensure};
 use std::collections::BTreeMap;
 use storm_formats::particles::Graph;
 use storm_sim::particle_emitter::{Birth, BirthPort, Emitter, Kind, ParticleType};
+use storm_sim::particle_motion::{Billboard, Curve, MotionPort, Transform};
 
 pub const FRAME_SECONDS: f64 = 1.0 / 60.0;
 #[derive(Clone, Debug)]
@@ -13,6 +14,9 @@ struct Config {
     count: usize,
     rate: Graph,
     particle_lifetime: Graph,
+    motion: MotionProfile,
+    track: [Graph; 3],
+    position: [f32; 3],
 }
 impl Config {
     fn matches(&self, style: &ParticleStyle) -> bool {
@@ -21,14 +25,21 @@ impl Config {
             && self.count == style.count
             && self.rate == style.rate
             && self.particle_lifetime == style.lifetime
+            && self.motion == style.motion
+            && self.track == style.track
+            && self.position
+                == [
+                    style.emitter_position.x,
+                    style.emitter_position.y,
+                    -style.emitter_position.z,
+                ]
     }
 }
 #[derive(Clone, Debug)]
 pub(super) struct LiveParticle {
     pub serial: u64,
-    pub age: f32,
-    pub lifetime: f32,
-    pub random: [f32; 7],
+    pub body: Billboard,
+    pub random: [f32; 12],
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BirthStats {
@@ -36,6 +47,53 @@ pub struct BirthStats {
     pub living: usize,
     pub clock_bits: u32,
     pub remainder_bits: u32,
+}
+#[derive(Clone, Debug, PartialEq)]
+pub struct MotionStats {
+    pub living: usize,
+    pub moving: usize,
+    pub spinning: usize,
+    pub position_bounds: Option<[[f32; 3]; 2]>,
+    pub angle_bounds: Option<[f32; 2]>,
+    pub maximum_speed: f64,
+}
+impl MotionStats {
+    pub(super) fn of(particles: &[LiveParticle]) -> Self {
+        let mut result = Self {
+            living: particles.len(),
+            moving: 0,
+            spinning: 0,
+            position_bounds: None,
+            angle_bounds: None,
+            maximum_speed: 0.0,
+        };
+        for p in particles {
+            let b = &p.body;
+            result.moving += usize::from(b.velocity.iter().any(|v| *v != 0.0));
+            result.spinning += usize::from(b.render_angle != 0.0);
+            result.maximum_speed = result.maximum_speed.max(
+                b.velocity
+                    .into_iter()
+                    .map(|v| f64::from(v).powi(2))
+                    .sum::<f64>()
+                    .sqrt(),
+            );
+            let position = [
+                b.render_position[0],
+                b.render_position[1],
+                -b.render_position[2],
+            ];
+            let bounds = result.position_bounds.get_or_insert([position; 2]);
+            for (i, v) in position.into_iter().enumerate() {
+                bounds[0][i] = bounds[0][i].min(v);
+                bounds[1][i] = bounds[1][i].max(v);
+            }
+            let angles = result.angle_bounds.get_or_insert([b.render_angle; 2]);
+            angles[0] = angles[0].min(b.render_angle);
+            angles[1] = angles[1].max(b.render_angle);
+        }
+        result
+    }
 }
 #[derive(Clone, Debug)]
 struct Run {
@@ -61,6 +119,13 @@ impl Run {
                 count: style.count,
                 rate: style.rate.clone(),
                 particle_lifetime: style.lifetime.clone(),
+                motion: style.motion.clone(),
+                track: style.track.clone(),
+                position: [
+                    style.emitter_position.x,
+                    style.emitter_position.y,
+                    -style.emitter_position.z,
+                ],
             },
             start: start.to_bits(),
             stop: stop.map(f32::to_bits),
@@ -87,8 +152,15 @@ impl Run {
         }
         let mut index = 0;
         while index < self.particles.len() {
-            self.particles[index].age += delta;
-            if self.particles[index].age > self.particles[index].lifetime {
+            let particle = &mut self.particles[index];
+            let alive = particle.body.process(
+                delta,
+                &mut Motion {
+                    config: &self.config,
+                    random: &particle.random,
+                },
+            )?;
+            if !alive {
                 self.particles.swap_remove(index);
                 self.emitter.release(0)?;
             } else {
@@ -139,40 +211,91 @@ impl BirthPort for Port<'_> {
         self.config.rate.sample_range(time, life, raw)
     }
     fn birth(&mut self, birth: Birth) -> bool {
-        // Consume direction(3), initial track(3), lifetime/mass/spin/velocity(4),
-        // then 12 FRAND factors in the retained billboard initialization order.
-        for _ in 0..6 {
-            self.next();
-        }
+        // Keep the preceding stream order: direction(3), initial track(3),
+        // lifetime/mass/spin/velocity(4), then 12 persistent FRAND factors.
+        let direction = std::array::from_fn::<_, 3, _>(|i| {
+            let raw = self.next();
+            self.config.motion.direction[i].sample_range(
+                birth.emitter_time,
+                birth.emitter_lifetime,
+                raw,
+            ) * (std::f32::consts::PI / 180.0)
+        });
+        let offset = std::array::from_fn::<_, 3, _>(|i| {
+            let raw = self.next();
+            self.config.track[i].sample_range(0.0, 100.0, raw)
+        });
         let raw = self.next();
         let lifetime = self.config.particle_lifetime.sample_range(
             birth.emitter_time,
             birth.emitter_lifetime,
             raw,
         );
-        for _ in 0..3 {
-            self.next();
-        }
+        let raw = self.next();
+        let mass =
+            self.config
+                .motion
+                .mass
+                .sample_range(birth.emitter_time, birth.emitter_lifetime, raw);
+        let raw = self.next();
+        let spin =
+            self.config
+                .motion
+                .spin
+                .sample_range(birth.emitter_time, birth.emitter_lifetime, raw)
+                * (std::f32::consts::PI / 180.0);
+        let raw = self.next();
+        let power = self.config.motion.velocity.sample_range(
+            birth.emitter_time,
+            birth.emitter_lifetime,
+            raw,
+        );
         let factors: [f32; 12] = std::array::from_fn(|_| self.next() as f32 / i32::MAX as f32);
-        if !lifetime.is_finite() {
+        // Native Matrix::Build rotation order rz * rx * ry, taking its Y axis.
+        let (sx, cx) = direction[0].sin_cos();
+        let (sy, cy) = direction[1].sin_cos();
+        let (sz, cz) = direction[2].sin_cos();
+        let velocity = [
+            (-sz * cy + cz * sx * sy) * power,
+            (cz * cx) * power,
+            (-sz * -sy + cz * sx * cy) * power,
+        ];
+        let mut transform = Transform::default();
+        transform.0[3] = self.config.position;
+        let position = transform.point(offset);
+        if ![lifetime, mass, spin]
+            .into_iter()
+            .chain(position)
+            .chain(velocity)
+            .all(f32::is_finite)
+        {
             return false;
         }
         *self.created += 1;
         self.particles.push(LiveParticle {
             serial: *self.created,
-            age: 0.0,
-            lifetime,
-            random: [
-                factors[2],
-                factors[3],
-                factors[4],
-                factors[5],
-                factors[9],
-                factors[10],
-                factors[11],
-            ],
+            body: Billboard::new(position, velocity, lifetime, mass, spin, transform),
+            random: factors,
         });
         true
+    }
+}
+struct Motion<'a> {
+    config: &'a Config,
+    random: &'a [f32; 12],
+}
+impl MotionPort for Motion<'_> {
+    fn sample(&mut self, curve: Curve, age: f32, life: f32) -> f32 {
+        let (graph, index) = match curve {
+            Curve::Drag => (&self.config.motion.drag, 0),
+            Curve::Gravity => (&self.config.motion.gravity, 6),
+            Curve::SpinDrag => (&self.config.motion.spin_drag, 1),
+            Curve::TrackX => (&self.config.track[0], 9),
+            Curve::TrackY => (&self.config.track[1], 10),
+            Curve::TrackZ => (&self.config.track[2], 11),
+            Curve::Blend => (&self.config.motion.blend, 8),
+        };
+        graph.sample(age, life, self.random[index])
     }
 }
 #[derive(Debug, Default)]

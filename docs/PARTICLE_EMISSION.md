@@ -4,6 +4,11 @@
 ParticleSystem. Graph sampling and processor allocation use an explicit
 `BirthPort`; billboard and model destinations remain distinguishable.
 
+The following birth milestone is retained as its validation record. Billboard
+motion is now integrated in the subsequent [motion increment](PARTICLE_MOTION.md),
+which supersedes the movement/forces/spin exclusions below. Historical world
+transforms and full global service behavior remain pending.
+
 For each enabled, unattached, running emitter, BornParticles performs 32
 substeps. Each substep temporarily advances float32 emitter time and samples
 each visible particle type's rate. `remainder += rate * (delta / 32)` preserves

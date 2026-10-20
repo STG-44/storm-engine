@@ -534,3 +534,10 @@ living). All 40 native-fire script reports match the preceding phase. Local
 Metal verifies repeated-draw stability and renders ArabellaShip1 with 973/264
 created/living particles. Full movement/forces and global service behavior
 remain pending; see [scope and evidence](PARTICLE_EMISSION.md#four-platform-evidence-2026-10-21).
+
+Billboard motion now uses retained native gravity, signed/zero mass, displacement
+friction, spin friction and track/physics blending. XPS profiles drive live
+position/velocity/angle state through the existing fixed-frame replay. The C++
+reference matches 96 sequences / 672 complete motion/pool/graph-call snapshots.
+World-space birth history, speed-oriented/attached/model particles and full
+global service behavior remain pending; see [motion scope](PARTICLE_MOTION.md).

@@ -53,6 +53,7 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
         report["xps_particle_styles"] = json!(profiles);
     }
     let mut births = vec![];
+    let mut motions = vec![];
     for (mesh_index, mesh) in asset.meshes.iter().enumerate() {
         let Some(storm_render::model::DynamicMesh::Particles(patch)) = &mesh.dynamic else {
             continue;
@@ -78,10 +79,15 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
                 Ok(s)=>json!({"mesh":mesh_index,"locator":locator,"source":style.source,"created":s.created,"living":s.living,"emitter_clock_bits":s.clock_bits,"remainder_bits":s.remainder_bits}),
                 Err(error)=>json!({"mesh":mesh_index,"locator":locator,"error":error.to_string()}),
             });
+            motions.push(match style.motion_stats(seconds,start,stop,locator) {
+                Ok(s)=>json!({"mesh":mesh_index,"locator":locator,"source":style.source,"living":s.living,"moving":s.moving,"spinning":s.spinning,"position_bounds":s.position_bounds,"angle_bounds":s.angle_bounds,"maximum_speed":s.maximum_speed}),
+                Err(error)=>json!({"mesh":mesh_index,"locator":locator,"error":error.to_string()}),
+            });
         }
     }
     if !births.is_empty() {
         report["particle_births"] = json!(births);
+        report["particle_motion"] = json!(motions);
     }
 
     report

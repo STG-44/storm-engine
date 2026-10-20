@@ -25,6 +25,9 @@ pub fn fixture() -> ParticleStyle {
         field("Life time", Value::Float(1.0)),
         field("Position", Value::Position([1.0, 2.0, 3.0])),
         field("Looping", Value::Bool(true)),
+        field("Physics Dir X", Value::Graph(constant(0.0))),
+        field("Physics Dir Y", Value::Graph(constant(0.0))),
+        field("Physics Dir Z", Value::Graph(constant(0.0))),
     ]);
     let mut particles = Fields(vec![
         field("Max Particles count", Value::Float(8.0)),
@@ -54,6 +57,13 @@ pub fn fixture() -> ParticleStyle {
         ("Track X", 0.5),
         ("Track Y", 1.0),
         ("Track Z", 2.0),
+        ("Mass", 1.0),
+        ("Spin", 0.0),
+        ("Velocity", 0.0),
+        ("Friction", 0.0),
+        ("Spin Friction", 0.0),
+        ("ForceField_gravity", 0.0),
+        ("Physic blend", 0.0),
     ] {
         particles.0.push(field(name, Value::Graph(constant(value))));
     }
@@ -195,7 +205,10 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
             rgba,
         }],
     });
-    let style = Arc::new(fixture());
+    let mut moving_style = fixture();
+    moving_style.motion.velocity = constant(0.75);
+    moving_style.motion.spin = constant(45.0);
+    let style = Arc::new(moving_style);
     let patch = ParticlePatch {
         points: Arc::new(asset.ship.fires.clone()),
         smoke: false,
@@ -270,7 +283,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     );
 }
 
-fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u32; 3])> {
+fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u32; 3], u32)> {
     samples
         .into_iter()
         .flatten()
@@ -279,9 +292,120 @@ fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u
                 s.serial,
                 s.color.map(f32::to_bits),
                 s.offset.to_array().map(f32::to_bits),
+                s.angle.to_bits(),
             )
         })
         .collect()
+}
+
+#[test]
+fn profile_motion_survives_emission_pause_and_replays_after_configuration_changes() {
+    let mut style = fixture();
+    style.motion.velocity = constant(2.0);
+    style.motion.mass = constant(-1.0);
+    style.motion.gravity = constant(100.0);
+    style.motion.spin = constant(90.0);
+    let before = style.birth_stats(1.0, 0.0, Some(1.0), 0).unwrap();
+    let initial = style.samples(1.0, 0.0, Some(1.0), 0).unwrap();
+    let later = style.samples(1.25, 0.0, Some(1.0), 0).unwrap();
+    assert_eq!(
+        before.created,
+        style.birth_stats(1.25, 0.0, Some(1.0), 0).unwrap().created
+    );
+    let a = initial[0].as_ref().unwrap();
+    let b = later[0].as_ref().unwrap();
+    assert_eq!(a.serial, b.serial);
+    assert!(b.offset.y > a.offset.y && b.angle > a.angle);
+    let stats = style.motion_stats(1.25, 0.0, Some(1.0), 0).unwrap();
+    assert_eq!(stats.living, stats.moving);
+    assert_eq!(stats.living, stats.spinning);
+    assert!(stats.maximum_speed > 2.0);
+    assert_eq!(
+        sample_signature(later),
+        sample_signature(style.clone().samples(1.25, 0.0, Some(1.0), 0).unwrap())
+    );
+    style.motion.velocity = constant(0.0);
+    style.motion.gravity = constant(0.0);
+    style.motion.spin = constant(0.0);
+    assert_eq!(
+        style.motion_stats(1.25, 0.0, Some(1.0), 0).unwrap().moving,
+        0
+    );
+    assert_eq!(
+        sample_signature(style.samples(1.25, 0.0, Some(1.0), 0).unwrap()),
+        sample_signature(fixture().samples(1.25, 0.0, Some(1.0), 0).unwrap())
+    );
+    style.motion.drag = constant(f32::NAN);
+    assert!(style.samples(1.0, 0.0, None, 0).is_err());
+}
+
+#[test]
+fn billboard_spin_rotates_the_quad_without_changing_atlas_coordinates() {
+    use crate::model::*;
+    use bytemuck::Zeroable;
+    use std::sync::Arc;
+    let mut style = fixture();
+    style.motion.spin = constant(90.0);
+    style.rate = constant(4.0);
+    let asset = ModelAsset::ship_demo().unwrap();
+    let sample = style.samples(1.0, 0.0, None, 0).unwrap()[0]
+        .clone()
+        .unwrap();
+    let dynamic = DynamicMesh::Particles(ParticlePatch {
+        points: Arc::new(asset.ship.fires.clone()),
+        smoke: false,
+        per_point: style.count,
+        lifetime: 2.0,
+        style: Some(Arc::new(style)),
+    });
+    let mut out = vec![ModelVertex::zeroed(); dynamic.vertex_count()];
+    dynamic
+        .deform(
+            &mut out,
+            1.0,
+            SailWind::default(),
+            Vec3::splat(10.0),
+            &asset.ship,
+            &ShipState {
+                fire_started: Some(0.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(sample.angle > 0.0);
+    let mut plain = fixture();
+    plain.rate = constant(4.0);
+    let dynamic_plain = DynamicMesh::Particles(ParticlePatch {
+        points: Arc::new(asset.ship.fires.clone()),
+        smoke: false,
+        per_point: plain.count,
+        lifetime: 2.0,
+        style: Some(Arc::new(plain)),
+    });
+    let mut unspun = vec![ModelVertex::zeroed(); out.len()];
+    dynamic_plain
+        .deform(
+            &mut unspun,
+            1.0,
+            SailWind::default(),
+            Vec3::splat(10.0),
+            &asset.ship,
+            &ShipState {
+                fire_started: Some(0.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        out.iter()
+            .zip(&unspun)
+            .any(|(a, b)| a.position != b.position)
+    );
+    assert!(
+        out.iter()
+            .zip(&unspun)
+            .all(|(a, b)| a.uv == b.uv && a.color == b.color)
+    );
 }
 #[test]
 fn birth_replay_is_independent_of_presentation_cadence_repeated_draws_and_rewinds() {
