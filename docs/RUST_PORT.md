@@ -541,3 +541,18 @@ position/velocity/angle state through the existing fixed-frame replay. The C++
 reference matches 96 sequences / 672 complete motion/pool/graph-call snapshots.
 World-space birth history, speed-oriented/attached/model particles and full
 global service behavior remain pending; see [motion scope](PARTICLE_MOTION.md).
+
+
+The [billboard motion PR run](https://github.com/STG-44/storm-engine/actions/runs/39501553195)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39501542794)
+pass all four native hosts for `348e5516`: 276 CPU tests, including 135
+interpreter tests, plus all 15 explicit Linux software Vulkan GPU tests and
+native windows. Four archive digests / 64 complete JSON reports match local
+outputs; all sixteen preceding reports remain unchanged. The new C++ motion
+reference matches 96 sequences / 672 complete pool/motion/graph-call snapshots.
+All 40 original ship roots reload: 274 positions / 117 style patches yield 822
+finite motion rows; all 10,347 living particles move and 2,740 have spin. All
+preceding birth counters and 40 native-fire reports match. Local Metal verifies
+moving/spinning repeated-draw stability and an inspected ArabellaShip1 frame.
+Historical world transforms, attached/model particles and full global service
+behavior remain pending; see [scope and evidence](PARTICLE_MOTION.md#four-platform-evidence-2026-10-21).

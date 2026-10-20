@@ -82,3 +82,38 @@ and safe error handling. Two renderer tests cover continuing motion after
 pause, configuration rebuilds, rotation and unchanged atlas coordinates.
 The existing GPU atlas/clear/repeated-draw test now uses moving, spinning
 particles; no additional GPU test is introduced.
+
+
+## Four-platform evidence, 2026-10-21
+
+Code `348e55168f8da3e6b202d3c38b67d30dafaf974f` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39501553195) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39501542794) on
+macOS Apple Silicon/Intel, Windows and Linux. All eight jobs pass: 276 CPU tests,
+including 135 interpreter tests, formatting, Clippy with warnings denied, native
+builds and sixteen standalone scenarios. Actual Rust host triples are verified
+from logs. Linux additionally passes all 15 explicit software Vulkan GPU tests
+and native-window fixtures. Four downloaded archive SHA-256 digests and all 64
+complete JSON reports match local results. All sixteen preceding scenario
+reports remain unchanged.
+
+The resource audit reloads all 40 original ship roots. Across the 39 models with
+fire locators it checks 274 positions, 117 XPS style patches and 822 finite
+motion-summary rows at two seconds. All 10,347 living particles have velocity;
+2,740 have accumulated spin. All preceding birth-counter rows match exactly
+(38,086 created / 10,347 living), within configured capacities. The zero-locator
+model remains empty. All 40 complete native-fire source reports match the
+preceding phase. Locator, sail source/topology and rigging metadata remain
+unchanged; previous whole-profile decode and damage-layout/event audits were
+not repeated.
+
+Local Metal passes the existing atlas/clear/repeated-draw test using moving,
+spinning particles. Original ArabellaShip1 renders at two seconds with 973
+created / 264 living particles, all moving and 70 spinning; the image was
+visually inspected. CPU-only rig reports expose the same counters and finite
+profile-space motion summaries. Commercial resources/captures/local evidence
+stay outside Git. Previous local native-window timeouts remain an unverified
+surface/window limitation; that check was not repeated. Hosted macOS/Windows
+jobs cover CPU/build behavior, with physical GPU coverage there still pending.
+The preview's profile-space anchoring, fixed-frame timing and portable RNG
+remain explicit adapter limits, alongside the unported features above.
