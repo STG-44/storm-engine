@@ -66,11 +66,7 @@ impl EffectsWorld {
         Ok(())
     }
     pub fn emissions(&self) -> Vec<FireEmission> {
-        let mut latest = BTreeMap::new();
-        for e in self.particles.values() {
-            latest.insert((e.point, e.smoke), e.clone());
-        }
-        latest.into_values().collect()
+        self.particles.values().cloned().collect()
     }
     pub fn report(&self) -> Json {
         json!({"total":self.total,"recent":self.recent,"sound_playback":false})
@@ -106,12 +102,17 @@ impl FireEffects for PreviewEffects {
         } else {
             None
         };
+        if world.particles.len() == storm_render::model::MAX_PARTICLE_INSTANCES {
+            world.record(self.entity, json!({"op":"create_particle","id":0,"smoke":kind==ParticleKind::Smoke,"profile":name,"locator":locator,"position_bits":bits(position),"delivered":false,"reason":"instance_budget"}));
+            return None;
+        }
         world.next_id += 1;
         let id = ParticleId(world.next_id);
         let now = world.now;
         world.particles.insert(
             id,
             FireEmission {
+                instance: id.0,
                 point: locator,
                 smoke: kind == ParticleKind::Smoke,
                 started: now,
@@ -248,7 +249,7 @@ impl Session {
         let states=self.controller.as_ref().map_or_else(Vec::new,|controller|controller.borrow().queries.fire_places().iter().map(|slot|
             json!({"active":slot.state.is_active(),"remaining_bits":slot.state.remaining().map(f32::to_bits),"owner":slot.state.owner(),"sound":slot.state.sound(),"profiles":slot.state.names()})).collect());
         let emissions = self.world.borrow().emissions().iter().map(|e| {
-            let mut report = json!({"locator":e.point,"smoke":e.smoke,"started_bits":e.started.to_bits(),"stopped_bits":e.stopped.map(f32::to_bits)});
+            let mut report = json!({"instance":e.instance,"locator":e.point,"smoke":e.smoke,"started_bits":e.started.to_bits(),"stopped_bits":e.stopped.map(f32::to_bits)});
             if let Some(profile) = &e.profile { report["profile"] = json!(profile); }
             report
         }).collect::<Vec<_>>();

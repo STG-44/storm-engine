@@ -22,6 +22,8 @@ impl storm_sim::fire::FireLocator for FirePoint {
 }
 #[derive(Clone, Debug)]
 pub struct FireEmission {
+    /// Stable service instance ID. Zero is reserved for a caller's legacy stream.
+    pub instance: u64,
     pub point: usize,
     pub smoke: bool,
     pub started: f32,
@@ -42,6 +44,8 @@ pub struct ShipAsset {
     pub waypoint_missing_links: usize,
     pub crew_source: Option<String>,
 }
+pub const MAX_PARTICLE_INSTANCES: usize = 4096;
+pub const MAX_PARTICLE_VERTICES: usize = 1_048_576;
 pub fn part_number(name: &str, prefix: &str) -> Option<u32> {
     let digits = name
         .strip_prefix(prefix)?
@@ -111,11 +115,13 @@ impl ShipState {
         );
         if let Some(emissions) = &self.native_fire {
             ensure!(
-                emissions.len() <= asset.fires.len() * 2,
+                emissions.len() <= MAX_PARTICLE_INSTANCES,
                 "too many native fire emissions"
             );
+            let mut instances = std::collections::BTreeSet::new();
             ensure!(
                 emissions.iter().all(|e| e.point < asset.fires.len()
+                    && (e.instance == 0 || instances.insert(e.instance))
                     && e.started.is_finite()
                     && e.stopped.is_none_or(|t| t.is_finite() && t >= e.started)
                     && e.profile.as_ref().is_none_or(|name| asset

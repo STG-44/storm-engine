@@ -57,9 +57,9 @@ pending. The default atlas, existing shader and prior checked lifetime/count/
 world-replay limits still apply. Model/attached particles and remaining
 techniques are unfinished.
 
-Presentation retains the latest emission per locator/channel: restarting can
-replace an earlier tail. The same profile in both channels shares presentation
-slots. Independent generations/instances and global manager/RNG are next.
+The subsequent [instance increment](PARTICLE_INSTANCES.md) retains overlapping
+generations and separate same-profile instances in both channels. Complete
+global manager/RNG behavior remains pending.
 Multiple diagnostic entities still share one preview ship. Sound requests have
 no playback. Full native SHIP, combat, game programs and saves remain pending.
 

@@ -9,6 +9,19 @@ use storm_sim::particle_motion::{Billboard, Curve, MotionPort, Transform};
 use storm_sim::particle_transform::EmitterTransform;
 
 pub const FRAME_SECONDS: f64 = 1.0 / 60.0;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ParticleStream {
+    pub locator: usize,
+    pub instance: u64,
+}
+impl From<usize> for ParticleStream {
+    fn from(locator: usize) -> Self {
+        Self {
+            locator,
+            instance: 0,
+        }
+    }
+}
 #[derive(Clone, Debug)]
 struct Config {
     lifetime: f32,
@@ -115,13 +128,15 @@ impl Run {
         style: &ParticleStyle,
         start: f32,
         stop: Option<f32>,
-        seed: usize,
+        stream: ParticleStream,
         world: Option<WorldEmitter>,
     ) -> Self {
         // This explicit portable stream is an embedding policy, not libc rand.
         let rng = style.source.bytes().fold(2166136261u32, |a, b| {
             (a ^ u32::from(b)).wrapping_mul(16777619)
-        }) ^ (seed as u32).wrapping_mul(0x9e3779b9);
+        }) ^ (stream.locator as u32).wrapping_mul(0x9e3779b9)
+            ^ (stream.instance as u32).wrapping_mul(0x85ebca6b)
+            ^ ((stream.instance >> 32) as u32).wrapping_mul(0xc2b2ae35);
         Self {
             config: Config {
                 lifetime: style.emitter_lifetime,
@@ -341,9 +356,12 @@ impl MotionPort for Motion<'_> {
 }
 #[derive(Debug, Default)]
 pub(super) struct Replay {
-    runs: BTreeMap<usize, Run>,
+    runs: BTreeMap<ParticleStream, Run>,
 }
 impl Replay {
+    pub fn retain_instances(&mut self, instances: &std::collections::BTreeSet<u64>) {
+        self.runs.retain(|key, _| instances.contains(&key.instance));
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn snapshot(
         &mut self,
@@ -351,7 +369,7 @@ impl Replay {
         seconds: f32,
         start: f32,
         stop: Option<f32>,
-        seed: usize,
+        stream: ParticleStream,
         world: Option<WorldEmitter>,
     ) -> Result<(Vec<LiveParticle>, BirthStats)> {
         ensure!(
@@ -366,7 +384,14 @@ impl Replay {
             stop.is_none_or(|s| s.is_finite() && s >= start),
             "invalid particle emission stop time"
         );
-        ensure!(seed < 16_384, "particle replay locator budget exceeded");
+        ensure!(
+            stream.locator < 16_384,
+            "particle replay locator budget exceeded"
+        );
+        ensure!(
+            self.runs.contains_key(&stream) || self.runs.len() < 16_384,
+            "particle replay stream budget exceeded"
+        );
         if let Some(world) = &world
             && seconds >= start
         {
@@ -383,7 +408,7 @@ impl Replay {
         let elapsed = (f64::from(seconds) - f64::from(start)).max(0.0);
         ensure!(elapsed <= 7200.0, "particle replay exceeds 7200 seconds");
         let ticks = (elapsed / FRAME_SECONDS).floor() as u32;
-        let reset = self.runs.get(&seed).is_none_or(|r| {
+        let reset = self.runs.get(&stream).is_none_or(|r| {
             r.start != start.to_bits()
                 || r.stop != stop.map(f32::to_bits)
                 || r.ticks > ticks
@@ -396,9 +421,9 @@ impl Replay {
         });
         if reset {
             self.runs
-                .insert(seed, Run::new(style, start, stop, seed, world));
+                .insert(stream, Run::new(style, start, stop, stream, world));
         }
-        let run = self.runs.get_mut(&seed).unwrap();
+        let run = self.runs.get_mut(&stream).unwrap();
         while run.ticks < ticks {
             let wall = f64::from(run.ticks) * FRAME_SECONDS;
             if run.particles.is_empty()

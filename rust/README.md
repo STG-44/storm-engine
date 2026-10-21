@@ -458,5 +458,13 @@ Named ship particle messages now select explicitly cached original XPS profiles,
 including case/extension aliases and null results for missing profiles.
 Additional profiles can be preloaded with --particle-profile and wait for
 activation; generated diagnostics retain their prior service. Independent
-particle generations and complete project/service behavior remain pending.
+particle generations are now covered by the [instance extension](../docs/PARTICLE_INSTANCES.md).
+Complete project/service behavior remains pending.
 See the [lookup contract and limits](../docs/PARTICLE_DISPATCH.md).
+
+
+Ship particle creation now retains independent instance IDs and overlapping
+smoke tails across stop/restart, including the same XPS in both channels.
+Replay and dynamically sized draw geometry preserve old generations until
+expiry; complete global manager/RNG/project behavior remains pending.
+See [instance identity, limits and verification](../docs/PARTICLE_INSTANCES.md).

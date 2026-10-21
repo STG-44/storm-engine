@@ -983,7 +983,7 @@ fn main() -> Result<()> {
                 sailing
                     .as_ref()
                     .map_or(options.time, |s| s.simulation.time() as f32),
-            ))?,
+            )?)?,
         )?;
         return Ok(());
     }
@@ -1069,7 +1069,7 @@ fn main() -> Result<()> {
         if let Some(sailing) = &sailing {
             let mut report = sailing.report();
             if let Some(asset) = &asset {
-                report["ship"] = rig_report::ship_frame(asset, sailing.simulation.time() as f32);
+                report["ship"] = rig_report::ship_frame(asset, sailing.simulation.time() as f32)?;
             }
             eprintln!("Sailing state: {}", serde_json::to_string(&report)?);
             if let Some(state_path) = &options.state_json {

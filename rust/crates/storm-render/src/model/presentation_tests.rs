@@ -205,6 +205,7 @@ fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() 
     let mut state = ShipState {
         fire_started: Some(0.0),
         native_fire: Some(vec![FireEmission {
+            instance: 0,
             point: 1,
             smoke: true,
             started: 0.0,
@@ -213,6 +214,10 @@ fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() 
         }]),
         ..Default::default()
     };
+    vertices.resize(
+        dynamic.frame_vertex_count(&state, 2.5).unwrap(),
+        bytemuck::Zeroable::zeroed(),
+    );
     dynamic
         .deform(
             &mut vertices,
@@ -229,6 +234,10 @@ fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() 
             .iter()
             .filter(|v| v.color[3] > 0.0)
             .all(|v| v.position[0] > 50.0)
+    );
+    vertices.resize(
+        dynamic.frame_vertex_count(&state, 9.5).unwrap(),
+        bytemuck::Zeroable::zeroed(),
     );
     dynamic
         .deform(
@@ -283,6 +292,7 @@ fn native_fire_emission_renders_and_cleanup_restores_the_unlit_frame() {
     let active = capture(ShipState {
         native_fire: Some(vec![
             FireEmission {
+                instance: 0,
                 point: 0,
                 smoke: true,
                 started: 0.0,
@@ -290,6 +300,7 @@ fn native_fire_emission_renders_and_cleanup_restores_the_unlit_frame() {
                 profile: None,
             },
             FireEmission {
+                instance: 0,
                 point: 0,
                 smoke: false,
                 started: 0.0,

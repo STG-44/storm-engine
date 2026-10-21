@@ -6,7 +6,7 @@ mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
 mod particle_style;
-pub use particle_replay::{BirthStats, MotionStats};
+pub use particle_replay::{BirthStats, MotionStats, ParticleStream};
 pub use particle_style::{MAX_PARTICLE_LIFETIME, MotionProfile, ParticleStyle};
 pub use storm_formats::particles::profile_key as particle_profile_key;
 mod rigging;
@@ -18,7 +18,8 @@ pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
 pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
 pub use ship::{
-    FireEmission, FirePoint, ShipAsset, ShipNode, ShipState, mast_falls_with, part_number,
+    FireEmission, FirePoint, MAX_PARTICLE_INSTANCES, MAX_PARTICLE_VERTICES, ShipAsset, ShipNode,
+    ShipState, mast_falls_with, part_number,
 };
 #[cfg(test)]
 mod presentation_tests;
@@ -819,8 +820,44 @@ impl ModelScene {
             }
             self.particle_history.clone()
         };
+        let mut particle_vertices = 0usize;
+        for mesh in &self.meshes {
+            if let Some((dynamic, _)) = &mesh.dynamic
+                && dynamic.particle()
+            {
+                let needed = dynamic.frame_vertex_count(&self.ship_state, seconds)?;
+                particle_vertices = particle_vertices
+                    .checked_add(needed)
+                    .ok_or_else(|| anyhow::anyhow!("particle frame overflow"))?;
+                ensure!(
+                    particle_vertices <= MAX_PARTICLE_VERTICES,
+                    "particle scene exceeds vertex budget"
+                );
+                ensure!(
+                    (needed * std::mem::size_of::<ModelVertex>()) as u64
+                        <= gpu.device.limits().max_buffer_size
+                        && (needed / 4 * 6 * 4) as u64 <= gpu.device.limits().max_buffer_size,
+                    "particle frame exceeds GPU buffer limit"
+                );
+            }
+        }
         for mesh in &mut self.meshes {
             if let Some((dynamic, vertices)) = &mut mesh.dynamic {
+                if dynamic.particle() {
+                    let needed = dynamic.frame_vertex_count(&self.ship_state, seconds)?;
+                    vertices.resize(needed, bytemuck::Zeroable::zeroed());
+                    mesh.count = (needed / 4 * 6) as u32;
+                    if u64::from(mesh.count) * 4 > mesh.indices.size() {
+                        let indices = ParticlePatch::quad_indices(needed / 4);
+                        mesh.indices =
+                            gpu.device
+                                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                    label: Some("Particle instance triangles"),
+                                    contents: bytemuck::cast_slice(&indices),
+                                    usage: wgpu::BufferUsages::INDEX,
+                                });
+                    }
+                }
                 if let DynamicMesh::Particles(patch) = dynamic
                     && patch.style.is_some()
                 {
@@ -847,8 +884,18 @@ impl ModelScene {
                         &self.ship_state,
                     )?;
                 }
-                gpu.queue
-                    .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
+                let bytes = bytemuck::cast_slice(vertices);
+                if bytes.len() as u64 > mesh.vertices.size() {
+                    mesh.vertices =
+                        gpu.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Particle instance vertices"),
+                                contents: bytes,
+                                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                            });
+                } else if !bytes.is_empty() {
+                    gpu.queue.write_buffer(&mesh.vertices, 0, bytes);
+                }
             }
         }
         for (index, mesh) in self.meshes.iter_mut().enumerate() {

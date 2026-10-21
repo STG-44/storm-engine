@@ -371,6 +371,39 @@ mod tests {
     use super::*;
     use storm_sim::{ShipConfig, Wind};
     #[test]
+    fn repeated_fire_source_preserves_every_old_and_new_same_profile_instance() {
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let runtime =
+            Runtime::compile(include_str!("../fixtures/ship_particle_instances.c")).unwrap();
+        let (simulation, report, fire) = execute_with_ship(
+            simulation(),
+            runtime,
+            asset.ship.fires.clone(),
+            19,
+            15.0,
+            Some(std::collections::BTreeSet::from(["ship_fire.xps".into()])),
+        )
+        .unwrap();
+        assert_eq!(report["result"], json!({"type":"int","value":1}));
+        assert_eq!(simulation.time(), 2.125);
+        let snapshot = fire.unwrap().report();
+        let emissions = snapshot["emissions"].as_array().unwrap();
+        assert_eq!(
+            emissions
+                .iter()
+                .map(|e| e["instance"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4]
+        );
+        assert!(emissions.iter().all(|e| e["profile"] == "ship_fire.xps"));
+        assert!(
+            emissions[..2]
+                .iter()
+                .all(|e| e["stopped_bits"] == 1.125f32.to_bits())
+        );
+        assert!(emissions[2..].iter().all(|e| e["stopped_bits"].is_null()));
+    }
+    #[test]
     fn script_names_select_cached_profiles_and_missing_names_keep_native_fire_active() {
         let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
         let runtime = Runtime::compile(
@@ -439,6 +472,16 @@ mod tests {
         assert_eq!(snapshot["places"][0]["active"], true);
         assert_eq!(snapshot["places"][0]["remaining_bits"], 1.0f32.to_bits());
         assert_eq!(snapshot["places"][0]["owner"], 23);
+        let emissions = snapshot["emissions"].as_array().unwrap();
+        assert_eq!(
+            emissions
+                .iter()
+                .map(|e| e["instance"].as_u64().unwrap())
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5, 6]
+        );
+        assert!(emissions[..4].iter().all(|e| !e["stopped_bits"].is_null()));
+        assert!(emissions[4..].iter().all(|e| e["stopped_bits"].is_null()));
         let events = snapshot["effects"]["recent"].as_array().unwrap();
         assert_eq!(
             events

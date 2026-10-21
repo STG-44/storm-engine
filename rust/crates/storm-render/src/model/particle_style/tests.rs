@@ -92,6 +92,7 @@ fn named_profile_selects_its_own_geometry_across_fire_channels_and_stops_its_tai
         "an additional cached profile waits for a native message"
     );
     state.native_fire = Some(vec![FireEmission {
+        instance: 0,
         point: 0,
         smoke: true,
         started: 0.0,
@@ -99,7 +100,7 @@ fn named_profile_selects_its_own_geometry_across_fire_channels_and_stops_its_tai
         profile: Some("generated.xps".into()),
     }]);
     assert!(dynamic.visible(&state, 1.0));
-    assert!(patch.emission(&state, 0).is_some());
+    assert!(patch.emissions(&state, 0).next().is_some());
     let mut vertices = vec![bytemuck::Zeroable::zeroed(); dynamic.vertex_count()];
     dynamic
         .deform(
@@ -115,6 +116,10 @@ fn named_profile_selects_its_own_geometry_across_fire_channels_and_stops_its_tai
     assert!(!dynamic.visible(&state, 3.0));
     state.native_fire.as_mut().unwrap()[0].profile = Some("other.xps".into());
     assert!(!dynamic.visible(&state, 1.0));
+    vertices.resize(
+        dynamic.frame_vertex_count(&state, 1.0).unwrap(),
+        bytemuck::Zeroable::zeroed(),
+    );
     dynamic
         .deform(
             &mut vertices,
@@ -174,6 +179,7 @@ fn xps_vertices_stay_inside_atlas_frames_and_native_stop_does_not_restart_emissi
     let mut out = vec![ModelVertex::zeroed(); dynamic.vertex_count()];
     let mut state = ShipState {
         native_fire: Some(vec![FireEmission {
+            instance: 0,
             point: 0,
             smoke: false,
             started: 0.0,
@@ -182,6 +188,10 @@ fn xps_vertices_stay_inside_atlas_frames_and_native_stop_does_not_restart_emissi
         }]),
         ..Default::default()
     };
+    out.resize(
+        dynamic.frame_vertex_count(&state, 1.25).unwrap(),
+        bytemuck::Zeroable::zeroed(),
+    );
     dynamic
         .deform(
             &mut out,
@@ -198,6 +208,10 @@ fn xps_vertices_stay_inside_atlas_frames_and_native_stop_does_not_restart_emissi
             .filter(|v| v.color[3] > 0.0)
             .all(|v| (0.25..=0.5).contains(&v.uv[0]) && (0.5..=0.75).contains(&v.uv[1]))
     );
+    out.resize(
+        dynamic.frame_vertex_count(&state, 3.25).unwrap(),
+        bytemuck::Zeroable::zeroed(),
+    );
     dynamic
         .deform(
             &mut out,
@@ -211,6 +225,10 @@ fn xps_vertices_stay_inside_atlas_frames_and_native_stop_does_not_restart_emissi
     assert!(out.iter().all(|v| v.color[3] == 0.0));
     state.native_fire = Some(vec![]);
     state.fire_started = Some(0.0);
+    out.resize(
+        dynamic.frame_vertex_count(&state, 1.0).unwrap(),
+        bytemuck::Zeroable::zeroed(),
+    );
     dynamic
         .deform(
             &mut out,
@@ -318,6 +336,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     let active = capture(
         ShipState {
             native_fire: Some(vec![FireEmission {
+                instance: 0,
                 point: 0,
                 smoke: false,
                 started: 0.0,
@@ -341,6 +360,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     let repeated = capture(
         ShipState {
             native_fire: Some(vec![FireEmission {
+                instance: 0,
                 point: 0,
                 smoke: false,
                 started: 0.0,
@@ -354,6 +374,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     assert_eq!(active.rgba, repeated.rgba);
     let named = |key: &str| ShipState {
         native_fire: Some(vec![FireEmission {
+            instance: 0,
             point: 0,
             smoke: true,
             started: 0.0,
@@ -370,9 +391,33 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
         unlit.rgba,
         capture(named("other.xps"), ModelPose::default()).rgba
     );
+    let mut paired = named("generated.xps");
+    let first = &mut paired.native_fire.as_mut().unwrap()[0];
+    first.instance = 11;
+    first.stopped = Some(1.0);
+    let mut second = first.clone();
+    second.instance = 12;
+    second.stopped = None;
+    paired.native_fire.as_mut().unwrap().push(second);
+    let overlapping = capture(paired.clone(), ModelPose::default());
+    assert_ne!(
+        overlapping.rgba, active.rgba,
+        "a restarted system must preserve the first system's living tail"
+    );
+    assert_eq!(
+        overlapping.rgba,
+        capture(paired.clone(), ModelPose::default()).rgba
+    );
+    paired.native_fire.as_mut().unwrap()[0].stopped = Some(0.0);
+    assert_eq!(
+        active.rgba,
+        capture(paired, ModelPose::default()).rgba,
+        "expired geometry must not leave stale triangles"
+    );
     let relocated = capture(
         ShipState {
             native_fire: Some(vec![FireEmission {
+                instance: 0,
                 point: 0,
                 smoke: false,
                 started: 0.0,
@@ -418,6 +463,135 @@ fn sample_signature(samples: Vec<Option<StyleSample>>) -> Vec<(u64, [u32; 4], [u
             )
         })
         .collect()
+}
+#[test]
+fn instance_replay_keeps_old_births_motion_and_rng_independent_of_other_instances_and_rewinds() {
+    use crate::model::ParticleStream;
+    let mut style = fixture();
+    style.motion.velocity = constant(2.0);
+    for p in &mut style.motion.velocity.min {
+        p.value = 0.5;
+    }
+    let reference = style.clone();
+    let a = ParticleStream {
+        locator: 0,
+        instance: 1,
+    };
+    let b = ParticleStream {
+        locator: 0,
+        instance: (1u64 << 32) + 1,
+    };
+    let sample = |style: &ParticleStyle, t, start, stop, key| {
+        style.instance_snapshot(t, start, stop, key, None).unwrap()
+    };
+    let (old, counts, _) = sample(&style, 1.25, 0.0, Some(0.75), a);
+    assert!(counts.created > 0 && counts.living > 0);
+    let (other, _, _) = sample(&style, 1.25, 0.0, Some(0.75), b);
+    assert_ne!(sample_signature(old.clone()), sample_signature(other));
+    let (again, after, _) = sample(&style, 1.75, 0.0, Some(0.75), a);
+    assert_eq!(counts.created, after.created);
+    assert_eq!(
+        sample_signature(again),
+        sample_signature(sample(&reference, 1.75, 0.0, Some(0.75), a).0)
+    );
+    let before = sample_signature(sample(&style, 1.25, 0.0, Some(0.75), a).0);
+    assert_eq!(before, sample_signature(old));
+    assert_eq!(sample(&style, 3.0, 0.0, Some(0.75), a).1.living, 0);
+    style
+        .retain_instances(&std::collections::BTreeSet::from([b.instance]))
+        .unwrap();
+    assert_eq!(
+        before,
+        sample_signature(sample(&style, 1.25, 0.0, Some(0.75), a).0),
+        "reclaimed streams rebuild deterministically"
+    );
+}
+#[test]
+fn simultaneous_generations_expand_geometry_and_expired_generations_release_it() {
+    use crate::model::*;
+    use std::sync::Arc;
+    let asset = ModelAsset::ship_demo().unwrap();
+    let style = Arc::new(fixture());
+    let dynamic = DynamicMesh::Particles(ParticlePatch {
+        points: Arc::new(asset.ship.fires.clone()),
+        smoke: false,
+        per_point: style.count,
+        lifetime: 2.0,
+        style: Some(style),
+    });
+    let mut state = ShipState {
+        native_fire: Some(vec![
+            FireEmission {
+                instance: 1,
+                point: 0,
+                smoke: false,
+                started: 0.0,
+                stopped: Some(0.75),
+                profile: None,
+            },
+            FireEmission {
+                instance: 2,
+                point: 0,
+                smoke: false,
+                started: 0.75,
+                stopped: None,
+                profile: None,
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(
+        dynamic.frame_vertex_count(&state, 1.25).unwrap(),
+        dynamic.vertex_count() * 2
+    );
+    let mut vertices =
+        vec![bytemuck::Zeroable::zeroed(); dynamic.frame_vertex_count(&state, 1.25).unwrap()];
+    dynamic
+        .deform(
+            &mut vertices,
+            1.25,
+            SailWind::default(),
+            glam::Vec3::splat(10.0),
+            &asset.ship,
+            &state,
+        )
+        .unwrap();
+    assert!(vertices.iter().filter(|v| v.color[3] > 0.0).count() > 4);
+    assert_eq!(
+        dynamic.frame_vertex_count(&state, 2.75).unwrap(),
+        dynamic.vertex_count()
+    );
+    state.native_fire = Some(vec![]);
+    assert_eq!(dynamic.frame_vertex_count(&state, 3.0).unwrap(), 0);
+}
+#[test]
+fn duplicate_instance_ids_and_excessive_particle_geometry_are_rejected() {
+    use crate::model::*;
+    use std::sync::Arc;
+    let asset = ModelAsset::ship_demo().unwrap();
+    let emission = FireEmission {
+        instance: 1,
+        point: 0,
+        smoke: false,
+        started: 0.0,
+        stopped: None,
+        profile: None,
+    };
+    let mut state = ShipState {
+        native_fire: Some(vec![emission.clone(), emission.clone()]),
+        ..Default::default()
+    };
+    assert!(state.validate(&asset.ship).is_err());
+    state.native_fire.as_mut().unwrap()[1].instance = 2;
+    state.validate(&asset.ship).unwrap();
+    let dynamic = DynamicMesh::Particles(ParticlePatch {
+        points: Arc::new(asset.ship.fires.clone()),
+        smoke: false,
+        per_point: MAX_PARTICLE_VERTICES / 4,
+        lifetime: 2.0,
+        style: None,
+    });
+    assert!(dynamic.frame_vertex_count(&state, 1.0).is_err());
 }
 #[test]
 fn world_particles_keep_birth_positions_after_the_ship_moves_and_emission_pauses() {

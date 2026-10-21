@@ -1,6 +1,110 @@
 use super::*;
 use storm_sim::fire::FirePlace;
 #[test]
+fn retained_native_factory_and_pause_snapshots_keep_same_profile_instances_independent() {
+    let fixture: Json = serde_json::from_str(include_str!(
+        "../../reference/particle_instances/cases.json"
+    ))
+    .unwrap();
+    let world = Rc::new(RefCell::new(EffectsWorld::default()));
+    let mut effects = PreviewEffects {
+        world: world.clone(),
+        entity: EntityId::from_raw(1),
+    };
+    for (action, expected) in fixture["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(fixture["snapshots"].as_array().unwrap())
+    {
+        if action[0] == "create" {
+            effects
+                .create_particle(ParticleKind::Smoke, "same", 0, [0.0; 3])
+                .unwrap();
+        } else {
+            effects.pause_particle(ParticleId(action[1].as_u64().unwrap()));
+        }
+        let actual: Vec<_> = world
+            .borrow()
+            .emissions()
+            .iter()
+            .map(|e| json!({"instance":e.instance,"paused":e.stopped.is_some()}))
+            .collect();
+        assert_eq!(json!(actual), *expected);
+    }
+}
+#[test]
+fn restart_preserves_same_time_instances_in_both_channels_until_their_tails_expire() {
+    let world = Rc::new(RefCell::new(EffectsWorld::default()));
+    let mut effects = PreviewEffects {
+        world: world.clone(),
+        entity: EntityId::from_raw(1),
+    };
+    let mut fire = FirePlace::new();
+    fire.run("same", "same", 7, "sound", 1.0, 0, [0.0; 3], &mut effects);
+    fire.stop(&mut effects);
+    fire.run("same", "same", 9, "sound", 1.0, 0, [0.0; 3], &mut effects);
+    let emissions = world.borrow().emissions();
+    assert_eq!(
+        emissions.iter().map(|e| e.instance).collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    assert!(emissions[..2].iter().all(|e| e.stopped == Some(0.0)));
+    assert!(emissions[2..].iter().all(|e| e.stopped.is_none()));
+    world.borrow_mut().set_clock(7.0).unwrap();
+    assert_eq!(
+        world
+            .borrow()
+            .emissions()
+            .iter()
+            .map(|e| e.instance)
+            .collect::<Vec<_>>(),
+        [3, 4]
+    );
+    fire.stop(&mut effects);
+    world.borrow_mut().set_clock(14.0).unwrap();
+    assert!(world.borrow().emissions().is_empty());
+}
+#[test]
+fn instance_budget_returns_null_without_consuming_an_id_and_recovers_after_cleanup() {
+    let mut service = EffectsWorld::default();
+    let limit = storm_render::model::MAX_PARTICLE_INSTANCES as u64;
+    for id in 1..=limit {
+        service.particles.insert(
+            ParticleId(id),
+            FireEmission {
+                instance: id,
+                point: 0,
+                smoke: true,
+                started: 0.0,
+                stopped: Some(0.0),
+                profile: None,
+            },
+        );
+    }
+    service.next_id = limit;
+    let world = Rc::new(RefCell::new(service));
+    let mut effects = PreviewEffects {
+        world: world.clone(),
+        entity: EntityId::from_raw(1),
+    };
+    assert!(
+        effects
+            .create_particle(ParticleKind::Smoke, "s", 0, [0.0; 3])
+            .is_none()
+    );
+    assert_eq!(world.borrow().next_id, limit);
+    assert_eq!(
+        world.borrow().report()["recent"][0]["reason"],
+        "instance_budget"
+    );
+    world.borrow_mut().set_clock(7.0).unwrap();
+    assert_eq!(
+        effects.create_particle(ParticleKind::Smoke, "s", 0, [0.0; 3]),
+        Some(ParticleId(limit + 1))
+    );
+}
+#[test]
 fn cached_profiles_preserve_partial_creation_failure_and_native_active_run_rules() {
     let world = Rc::new(RefCell::new(EffectsWorld::default()));
     world.borrow_mut().set_profiles(Some(BTreeSet::from([
@@ -222,6 +326,7 @@ fn loaded_profile_lifetimes_keep_native_tails_beyond_the_legacy_seven_seconds() 
     world.particles.insert(
         ParticleId(1),
         FireEmission {
+            instance: 0,
             point: 0,
             smoke: true,
             started: 0.0,
