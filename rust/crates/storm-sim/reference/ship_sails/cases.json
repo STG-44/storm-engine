@@ -1,0 +1,236 @@
+{
+  "scope": "Run the two unedited SHIP sail cases, setters and DATA float setter under UBSan.\n\nMESSAGE transport and DATA allocation/error handling are adapters. Constructor\ninitialization is extracted from SHIP; Mount, InitSailState, other messages,\nthe compiler and sailing/cloth physics are outside this reference.\n",
+  "constants": {
+    "MSG_SHIP_SET_SAIL_STATE": 50305,
+    "MSG_SHIP_GET_SAIL_STATE": 50325
+  },
+  "retained_sha256": {
+    "void SHIP::SetSailState(": "9c1aedd629f917225eed8c90152bb82a38b6905f8cc81831d7065756fa684d21",
+    "float SHIP::GetSailState()": "e6b01be5b5717355dfb5046a2956189dbdfdbe475a05ccd54f4a672e5889817e",
+    "DATA::Set(float)": "81c729f1045e6bea9a6ae15344cd9d55a7b955c507275d078096e586814a9437",
+    "sail_cases": "6cb977c424b153eb96eddb0db727eb0bc8efb4c9e2d264f9164c8df1cc7ca6aa",
+    "constructor_field": "4e74d40e27979d242bd045f51397de0a4fb051ddb5010826c765113d24d24ab3"
+  },
+  "cases": [
+    {
+      "set": false,
+      "bits": 0,
+      "expected": {
+        "state_bits": 2143289344,
+        "output_bits": 2143289344,
+        "get_error": true,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 0,
+      "expected": {
+        "state_bits": 0,
+        "output_bits": 0,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 2147483648,
+      "expected": {
+        "state_bits": 2147483648,
+        "output_bits": 2147483648,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1,
+      "expected": {
+        "state_bits": 1,
+        "output_bits": 1,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 2147483649,
+      "expected": {
+        "state_bits": 2147483649,
+        "output_bits": 2147483649,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1050253721,
+      "expected": {
+        "state_bits": 1050253721,
+        "output_bits": 1050253721,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1050253722,
+      "expected": {
+        "state_bits": 1050253722,
+        "output_bits": 1050253722,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1050253723,
+      "expected": {
+        "state_bits": 1050253723,
+        "output_bits": 1050253723,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1056964608,
+      "expected": {
+        "state_bits": 1056964608,
+        "output_bits": 1056964608,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1060320050,
+      "expected": {
+        "state_bits": 1060320050,
+        "output_bits": 1060320050,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1060320051,
+      "expected": {
+        "state_bits": 1060320051,
+        "output_bits": 1060320051,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1060320052,
+      "expected": {
+        "state_bits": 1060320052,
+        "output_bits": 1060320052,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1065353216,
+      "expected": {
+        "state_bits": 1065353216,
+        "output_bits": 1065353216,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 3212836864,
+      "expected": {
+        "state_bits": 3212836864,
+        "output_bits": 3212836864,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 1069547520,
+      "expected": {
+        "state_bits": 1069547520,
+        "output_bits": 1069547520,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 2139095039,
+      "expected": {
+        "state_bits": 2139095039,
+        "output_bits": 2139095039,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 2139095040,
+      "expected": {
+        "state_bits": 2139095040,
+        "output_bits": 2139095040,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 4286578688,
+      "expected": {
+        "state_bits": 4286578688,
+        "output_bits": 4286578688,
+        "get_error": false,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 2143363909,
+      "expected": {
+        "state_bits": 2143363909,
+        "output_bits": 2143363909,
+        "get_error": true,
+        "set_result": 0,
+        "get_result": 0
+      }
+    },
+    {
+      "set": true,
+      "bits": 4291117857,
+      "expected": {
+        "state_bits": 4291117857,
+        "output_bits": 4291117857,
+        "get_error": true,
+        "set_result": 0,
+        "get_result": 0
+      }
+    }
+  ]
+}
