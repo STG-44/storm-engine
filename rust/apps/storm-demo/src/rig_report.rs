@@ -48,7 +48,7 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
         "crew_positions":asset.meshes.iter().filter_map(|m|match &m.dynamic {
             Some(storm_render::model::DynamicMesh::Crew(c))=>{let(p,_)=c.route.sample(seconds+c.phase);Some([p.x,p.y,-p.z])},_=>None
         }).collect::<Vec<_>>()});
-    let profiles=asset.meshes.iter().filter_map(|m| match &m.dynamic {Some(storm_render::model::DynamicMesh::Particles(p))=>p.style.as_ref().map(|s|json!({"source":s.source,"kind":if p.smoke {"smoke"}else{"fire"},"slots_per_locator":p.per_point,"maximum_lifetime":p.lifetime,"uv_frames":s.frames.len()})),_=>None}).collect::<Vec<_>>();
+    let profiles=asset.meshes.iter().filter_map(|m| match &m.dynamic {Some(storm_render::model::DynamicMesh::Particles(p))=>p.style.as_ref().map(|s|json!({"source":s.source,"kind":if !s.preview {"message"}else if p.smoke {"smoke"}else{"fire"},"slots_per_locator":p.per_point,"maximum_lifetime":p.lifetime,"uv_frames":s.frames.len()})),_=>None}).collect::<Vec<_>>();
     if !profiles.is_empty() {
         report["xps_particle_styles"] = json!(profiles);
     }
@@ -63,15 +63,14 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Value {
             continue;
         };
         for locator in 0..patch.points.len() {
-            let emission = state.native_fire.as_ref().and_then(|v| {
-                v.iter()
-                    .filter(|e| e.point == locator && e.smoke == patch.smoke)
-                    .max_by(|a, b| a.started.total_cmp(&b.started))
-            });
+            let emission = patch.emission(state, locator);
             let activation = if state.native_fire.is_some() {
                 emission.map(|e| (e.started, e.stopped))
             } else {
-                state.fire_started.map(|s| (s, None))
+                state
+                    .fire_started
+                    .filter(|_| patch.manual_preview())
+                    .map(|s| (s, None))
             };
             let Some((start, stop)) = activation else {
                 continue;

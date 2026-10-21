@@ -580,3 +580,11 @@ all prior birth counters and native-fire reports match. Local Metal verifies
 world-particle independence from the current ship pose and an inspected moving
 ArabellaShip1 smoke trail. Full native ship/service behavior, arbitrary emitter
 dispatch and generic teleport history remain pending; see [scope and evidence](PARTICLE_WORLD.md#four-platform-evidence-2026-10-21).
+
+
+Named ship particle messages now select explicitly cached original XPS profiles,
+including case/extension aliases and null results for missing profiles.
+Additional profiles can be preloaded with --particle-profile and wait for
+activation; generated diagnostics retain their prior service. Independent
+particle generations and complete project/service behavior remain pending.
+See the [lookup contract and limits](PARTICLE_DISPATCH.md).

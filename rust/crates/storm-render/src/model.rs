@@ -8,6 +8,7 @@ pub use particle_world::WorldEmitter;
 mod particle_style;
 pub use particle_replay::{BirthStats, MotionStats};
 pub use particle_style::{MAX_PARTICLE_LIFETIME, MotionProfile, ParticleStyle};
+pub use storm_formats::particles::profile_key as particle_profile_key;
 mod rigging;
 mod sail_damage;
 mod sails;

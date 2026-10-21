@@ -70,6 +70,64 @@ pub fn fixture() -> ParticleStyle {
     ParticleStyle::read("generated.xps".into(), &emitter, &particles).unwrap()
 }
 #[test]
+fn named_profile_selects_its_own_geometry_across_fire_channels_and_stops_its_tail() {
+    use super::super::*;
+    let asset = ModelAsset::ship_demo().unwrap();
+    let mut style = fixture();
+    style.preview = false;
+    let patch = ParticlePatch {
+        points: std::sync::Arc::new(asset.ship.fires.clone()),
+        smoke: false,
+        per_point: style.count,
+        lifetime: 2.0,
+        style: Some(std::sync::Arc::new(style)),
+    };
+    let dynamic = DynamicMesh::Particles(patch.clone());
+    let mut state = ShipState {
+        fire_started: Some(0.0),
+        ..Default::default()
+    };
+    assert!(
+        !dynamic.visible(&state, 1.0),
+        "an additional cached profile waits for a native message"
+    );
+    state.native_fire = Some(vec![FireEmission {
+        point: 0,
+        smoke: true,
+        started: 0.0,
+        stopped: Some(1.0),
+        profile: Some("generated.xps".into()),
+    }]);
+    assert!(dynamic.visible(&state, 1.0));
+    assert!(patch.emission(&state, 0).is_some());
+    let mut vertices = vec![bytemuck::Zeroable::zeroed(); dynamic.vertex_count()];
+    dynamic
+        .deform(
+            &mut vertices,
+            1.0,
+            SailWind::default(),
+            glam::Vec3::splat(10.0),
+            &asset.ship,
+            &state,
+        )
+        .unwrap();
+    assert!(vertices.iter().any(|v| v.color[3] > 0.0));
+    assert!(!dynamic.visible(&state, 3.0));
+    state.native_fire.as_mut().unwrap()[0].profile = Some("other.xps".into());
+    assert!(!dynamic.visible(&state, 1.0));
+    dynamic
+        .deform(
+            &mut vertices,
+            1.0,
+            SailWind::default(),
+            glam::Vec3::splat(10.0),
+            &asset.ship,
+            &state,
+        )
+        .unwrap();
+    assert!(vertices.iter().all(|v| v.color[3] == 0.0));
+}
+#[test]
 fn xps_appearance_uses_curve_size_inverse_transparency_color_uv_and_reflected_track() {
     let style = fixture();
     let sample = style.sample(1.0, 0.0, 0).unwrap();
@@ -120,6 +178,7 @@ fn xps_vertices_stay_inside_atlas_frames_and_native_stop_does_not_restart_emissi
             smoke: false,
             started: 0.0,
             stopped: Some(1.0),
+            profile: None,
         }]),
         ..Default::default()
     };
@@ -221,6 +280,10 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
     mesh.indices = patch.indices();
     mesh.dynamic = Some(DynamicMesh::Particles(patch));
     mesh.texture = texture;
+    asset.ship.particle_profiles = Some(std::collections::BTreeSet::from([
+        "generated.xps".into(),
+        "other.xps".into(),
+    ]));
     let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
     let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
     let mut camera = OrbitCamera::new(&asset);
@@ -259,6 +322,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
                 smoke: false,
                 started: 0.0,
                 stopped: None,
+                profile: None,
             }]),
             ..Default::default()
         },
@@ -281,12 +345,31 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
                 smoke: false,
                 started: 0.0,
                 stopped: None,
+                profile: None,
             }]),
             ..Default::default()
         },
         ModelPose::default(),
     );
     assert_eq!(active.rgba, repeated.rgba);
+    let named = |key: &str| ShipState {
+        native_fire: Some(vec![FireEmission {
+            point: 0,
+            smoke: true,
+            started: 0.0,
+            stopped: None,
+            profile: Some(key.into()),
+        }]),
+        ..Default::default()
+    };
+    assert_eq!(
+        active.rgba,
+        capture(named("generated.xps"), ModelPose::default()).rgba
+    );
+    assert_eq!(
+        unlit.rgba,
+        capture(named("other.xps"), ModelPose::default()).rgba
+    );
     let relocated = capture(
         ShipState {
             native_fire: Some(vec![FireEmission {
@@ -294,6 +377,7 @@ fn xps_curve_billboards_sample_the_selected_atlas_cell_and_clear_on_the_gpu() {
                 smoke: false,
                 started: 0.0,
                 stopped: None,
+                profile: None,
             }]),
             ..Default::default()
         },

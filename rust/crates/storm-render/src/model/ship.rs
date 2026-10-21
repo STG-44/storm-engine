@@ -26,6 +26,8 @@ pub struct FireEmission {
     pub smoke: bool,
     pub started: f32,
     pub stopped: Option<f32>,
+    /// Canonical XPS cache key; None is the generated/legacy diagnostic service.
+    pub profile: Option<String>,
 }
 #[derive(Clone, Debug, Default)]
 pub struct ShipAsset {
@@ -33,6 +35,8 @@ pub struct ShipAsset {
     pub nodes: Vec<ShipNode>,
     pub fires: Vec<FirePoint>,
     pub fire_tail_seconds: f32,
+    /// None uses generated/legacy particles; Some requires an exact cached XPS profile.
+    pub particle_profiles: Option<std::collections::BTreeSet<String>>,
     pub crew_count: usize,
     pub waypoint_counts: Option<[usize; 2]>,
     pub waypoint_missing_links: usize,
@@ -113,7 +117,11 @@ impl ShipState {
             ensure!(
                 emissions.iter().all(|e| e.point < asset.fires.len()
                     && e.started.is_finite()
-                    && e.stopped.is_none_or(|t| t.is_finite() && t >= e.started)),
+                    && e.stopped.is_none_or(|t| t.is_finite() && t >= e.started)
+                    && e.profile.as_ref().is_none_or(|name| asset
+                        .particle_profiles
+                        .as_ref()
+                        .is_some_and(|cache| cache.contains(name)))),
                 "invalid native fire emission"
             );
         }

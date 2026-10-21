@@ -70,8 +70,9 @@ mean-rate slot reconstruction with retained 32-substep birth accumulation,
 living particle records and a fixed-frame replay adapter. XPS appearance still
 uses current UV frames and the default atlas; full movement/forces/drag, spin,
 attached/model rendering, camera LOD, frame blending and original techniques
-remain pending. .prj project selection and arbitrary native message profile
-selection remain pending; the two fixed ship presentation profiles are used.
+remain pending. The subsequent [named profile increment](PARTICLE_DISPATCH.md)
+adds explicit cache selection and native message profile dispatch; .prj project
+selection remains pending.
 Audio playback is unbound.
 
 ## Native reference and tests

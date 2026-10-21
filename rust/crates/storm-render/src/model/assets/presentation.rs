@@ -246,7 +246,7 @@ impl ModelAsset {
         }
         builder.asset.ship.crew_count = 3;
         builder.asset.ship.waypoint_counts = Some([4, 4]);
-        builder.add_fire_effects()?;
+        builder.add_fire_effects(&[])?;
         Ok(builder.asset)
     }
 }
@@ -280,7 +280,7 @@ impl Builder {
                 "original crew requires --game-dir"
             );
         }
-        self.add_fire_effects()?;
+        self.add_fire_effects(&options.particle_profiles)?;
         Ok(())
     }
     fn add_crew(
@@ -404,7 +404,7 @@ impl Builder {
         });
         Ok(())
     }
-    fn add_xps_fire_effects(&mut self) -> Result<bool> {
+    fn add_xps_fire_effects(&mut self, additional: &[String]) -> Result<bool> {
         let Some(files) = &self.files else {
             return Ok(false);
         };
@@ -418,13 +418,35 @@ impl Builder {
                     .eq_ignore_ascii_case("Particles")
             });
         if !has_particles {
+            ensure!(
+                additional.is_empty(),
+                "requested XPS profiles require RESOURCE/Particles"
+            );
             return Ok(false);
         }
         let directory = find_child(resource, "Particles")?;
         let points = Arc::new(self.asset.ship.fires.clone());
         let texture = self.texture("particles_list.tga")?;
-        for (name, smoke) in [("Ship_Fire.xps", false), ("Ship_Smoke.xps", true)] {
-            let path = find_child(&directory, name)?;
+        ensure!(
+            additional.len() <= 30,
+            "particle cache exceeds 32 selected profiles"
+        );
+        let mut selected = BTreeSet::new();
+        for (name, smoke, preview) in [
+            ("Ship_Fire.xps", false, true),
+            ("Ship_Smoke.xps", true, true),
+        ]
+        .into_iter()
+        .chain(additional.iter().map(|name| (name.as_str(), false, false)))
+        {
+            let key = storm_formats::particles::profile_key(name)?;
+            if !selected.insert(key.clone()) {
+                continue;
+            }
+            let mut path = directory.clone();
+            for part in key.split('/') {
+                path = find_child(&path, part)?;
+            }
             let profile = storm_formats::particles::Profile::read(&read_asset_bytes(&path)?)?;
             for emitter in &profile.emitters {
                 for particle in &emitter.particles {
@@ -432,11 +454,13 @@ impl Builder {
                         particle.kind == 1,
                         "XPS ship preview does not support model particles"
                     );
-                    let style = Arc::new(crate::model::ParticleStyle::read(
-                        name.into(),
+                    let mut style = crate::model::ParticleStyle::read(
+                        if preview { name.into() } else { key.clone() },
                         &emitter.fields,
                         &particle.fields,
-                    )?);
+                    )?;
+                    style.preview = preview;
+                    let style = Arc::new(style);
                     let lifetime = style.lifetime.maximum();
                     self.asset.ship.fire_tail_seconds =
                         self.asset.ship.fire_tail_seconds.max(lifetime);
@@ -452,13 +476,22 @@ impl Builder {
                 }
             }
         }
+        self.asset.ship.particle_profiles = Some(selected);
         Ok(true)
     }
-    fn add_fire_effects(&mut self) -> Result<()> {
+    fn add_fire_effects(&mut self, additional: &[String]) -> Result<()> {
+        ensure!(
+            self.files.is_some() || additional.is_empty(),
+            "requested XPS profiles require original resources"
+        );
         if self.asset.ship.fires.is_empty() {
+            ensure!(
+                additional.is_empty(),
+                "requested particle profiles require fireplace locators"
+            );
             return Ok(());
         }
-        if self.add_xps_fire_effects()? {
+        if self.add_xps_fire_effects(additional)? {
             return Ok(());
         }
         let mut fire = "fire3.tga".to_owned();

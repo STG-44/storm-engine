@@ -33,8 +33,9 @@ passes `(0,1,0)` into PARTICLE_SYSTEM::SetEmitter; that wrapper constructs an
 Euler matrix in **radians**. The preview therefore uses the native fixed yaw of
 one radian, rather than interpreting that triple as an upward direction or
 copying the hull rotation into the emitter. Renderer Z reflection is applied at
-the native/world coordinate boundary. The original service transport/profile
-dispatch remains an adapter; this increment does not register full PARTICLES.
+the native/world coordinate boundary. The original service transport remains an
+adapter; the subsequent [named profile increment](PARTICLE_DISPATCH.md) connects
+message names to explicitly cached XPS data. Full PARTICLES remains pending.
 
 ## Pose history and replay
 

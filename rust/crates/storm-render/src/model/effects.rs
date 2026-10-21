@@ -35,10 +35,10 @@ impl DynamicMesh {
         match self {
             Self::Crew(_) => state.crew_visible,
             Self::Particles(patch) => state.native_fire.as_ref().map_or_else(
-                || state.fire_started.is_some_and(|t| seconds >= t),
+                || patch.manual_preview() && state.fire_started.is_some_and(|t| seconds >= t),
                 |emissions| {
                     emissions.iter().any(|e| {
-                        e.smoke == patch.smoke
+                        patch.matches(e)
                             && seconds >= e.started
                             && e.stopped.is_none_or(|stop| seconds < stop + patch.lifetime)
                     })
@@ -78,6 +78,29 @@ impl DynamicMesh {
     }
 }
 impl ParticlePatch {
+    pub fn manual_preview(&self) -> bool {
+        self.style.as_ref().is_none_or(|style| style.preview)
+    }
+    pub fn matches(&self, emission: &super::FireEmission) -> bool {
+        match &emission.profile {
+            Some(key) => self.style.as_ref().is_some_and(|s| {
+                storm_formats::particles::profile_key(&s.source).is_ok_and(|source| source == *key)
+            }),
+            None => emission.smoke == self.smoke,
+        }
+    }
+    pub fn emission<'a>(
+        &self,
+        state: &'a ShipState,
+        locator: usize,
+    ) -> Option<&'a super::FireEmission> {
+        state
+            .native_fire
+            .as_ref()?
+            .iter()
+            .filter(|e| e.point == locator && self.matches(e))
+            .max_by(|a, b| a.started.total_cmp(&b.started))
+    }
     pub fn indices(&self) -> Vec<u32> {
         (0..self.points.len() * self.per_point)
             .flat_map(|i| {
@@ -100,12 +123,7 @@ impl ParticlePatch {
         let air = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos()) * wind.speed;
         let mut particles = Vec::with_capacity(self.points.len() * self.per_point);
         for (emitter, point) in self.points.iter().enumerate() {
-            let emission = state.native_fire.as_ref().and_then(|emissions| {
-                emissions
-                    .iter()
-                    .filter(|e| e.point == emitter && e.smoke == self.smoke)
-                    .max_by(|a, b| a.started.total_cmp(&b.started))
-            });
+            let emission = self.emission(state, emitter);
             let start =
                 emission.map_or_else(|| state.fire_started.unwrap_or(seconds), |e| e.started);
             let elapsed = (seconds - start).max(0.0);
@@ -115,7 +133,9 @@ impl ParticlePatch {
             let source = transform.transform_point3(point.position);
             let samples = if let Some(style) = &self.style {
                 if emission.is_some()
-                    || (state.native_fire.is_none() && state.fire_started.is_some())
+                    || (state.native_fire.is_none()
+                        && self.manual_preview()
+                        && state.fire_started.is_some())
                 {
                     Some(if let Some(history) = history {
                         style

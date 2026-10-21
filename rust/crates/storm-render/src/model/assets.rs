@@ -57,6 +57,8 @@ pub struct ModelAsset {
 
 #[derive(Default)]
 pub struct LoadOptions {
+    /// Additional profiles cached for native fire messages, relative to RESOURCE/Particles.
+    pub particle_profiles: Vec<String>,
     /// None uses the original preview default (five) when a ship graph exists.
     pub crew: Option<usize>,
     pub game_dir: Option<PathBuf>,
@@ -428,6 +430,11 @@ impl ModelAsset {
     }
 
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
+        ensure!(
+            options.particle_profiles.is_empty()
+                || (!options.single_mesh && !options.untextured && options.game_dir.is_some()),
+            "particle profiles require a textured ship hierarchy and game directory"
+        );
         let path = path
             .canonicalize()
             .with_context(|| format!("model {}", path.display()))?;

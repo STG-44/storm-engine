@@ -452,3 +452,11 @@ source execution; existing smoke no longer inherits the current ship pose.
 `--sail --fire --time 20 --rig-report world-state.json` inspects world bounds
 without a GPU when original resources are selected. See [history/coordinate
 contracts and limits](../docs/PARTICLE_WORLD.md).
+
+
+Named ship particle messages now select explicitly cached original XPS profiles,
+including case/extension aliases and null results for missing profiles.
+Additional profiles can be preloaded with --particle-profile and wait for
+activation; generated diagnostics retain their prior service. Independent
+particle generations and complete project/service behavior remain pending.
+See the [lookup contract and limits](../docs/PARTICLE_DISPATCH.md).

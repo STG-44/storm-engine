@@ -21,6 +21,8 @@ pub struct MotionProfile {
 pub struct ParticleStyle {
     replay: Mutex<Replay>,
     pub source: String,
+    /// Include this profile in the manual fire preview, without native messages.
+    pub preview: bool,
     pub emitter_position: Vec3,
     pub emitter_lifetime: f32,
     pub looping: bool,
@@ -119,6 +121,7 @@ impl ParticleStyle {
                 blend: graph("Physic blend")?,
             },
             source,
+            preview: true,
         };
         Ok(style)
     }
@@ -247,6 +250,7 @@ impl Clone for ParticleStyle {
         Self {
             replay: Mutex::new(Replay::default()),
             source: self.source.clone(),
+            preview: self.preview,
             emitter_position: self.emitter_position,
             emitter_lifetime: self.emitter_lifetime,
             looping: self.looping,

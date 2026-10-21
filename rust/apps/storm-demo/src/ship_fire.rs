@@ -3,7 +3,7 @@ use anyhow::{Result, ensure};
 use serde_json::{Value as Json, json};
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     rc::{Rc, Weak},
 };
 use storm_core::{Entity, EntityId, Message, Value};
@@ -17,6 +17,7 @@ pub struct EffectsWorld {
     retention: f32,
     next_id: u64,
     particles: BTreeMap<ParticleId, FireEmission>,
+    profiles: Option<BTreeSet<String>>,
     total: u64,
     recent: VecDeque<Json>,
 }
@@ -27,12 +28,16 @@ impl Default for EffectsWorld {
             retention: 7.0,
             next_id: 0,
             particles: Default::default(),
+            profiles: None,
             total: 0,
             recent: Default::default(),
         }
     }
 }
 impl EffectsWorld {
+    pub fn set_profiles(&mut self, profiles: Option<BTreeSet<String>>) {
+        self.profiles = profiles;
+    }
     pub fn set_retention(&mut self, seconds: f32) -> Result<()> {
         ensure!(
             seconds.is_finite()
@@ -90,6 +95,17 @@ impl FireEffects for PreviewEffects {
         position: [f32; 3],
     ) -> Option<ParticleId> {
         let mut world = self.world.borrow_mut();
+        let profile = if let Some(cache) = &world.profiles {
+            match storm_render::model::particle_profile_key(name) {
+                Ok(key) if cache.contains(&key) => Some(key),
+                _ => {
+                    world.record(self.entity, json!({"op":"create_particle","id":0,"smoke":kind==ParticleKind::Smoke,"profile":name,"locator":locator,"position_bits":bits(position),"delivered":false,"reason":"profile_not_cached"}));
+                    return None;
+                }
+            }
+        } else {
+            None
+        };
         world.next_id += 1;
         let id = ParticleId(world.next_id);
         let now = world.now;
@@ -100,6 +116,7 @@ impl FireEffects for PreviewEffects {
                 smoke: kind == ParticleKind::Smoke,
                 started: now,
                 stopped: None,
+                profile,
             },
         );
         world.record(self.entity,json!({"op":"create_particle","id":id.0,"smoke":kind==ParticleKind::Smoke,"profile":name,"locator":locator,"position_bits":bits(position)}));
@@ -185,8 +202,22 @@ impl Session {
                     vec![
                         Value::Long(storm_sim::fire::MSG_SHIP_ACTIVATE_FIRE_PLACE),
                         Value::Long(index as i32),
-                        Value::String(profile(0, "preview-smoke")),
-                        Value::String(profile(1, "preview-fire")),
+                        Value::String(profile(
+                            0,
+                            if self.world.borrow().profiles.is_some() {
+                                "Ship_Smoke"
+                            } else {
+                                "preview-smoke"
+                            },
+                        )),
+                        Value::String(profile(
+                            1,
+                            if self.world.borrow().profiles.is_some() {
+                                "Ship_Fire"
+                            } else {
+                                "preview-fire"
+                            },
+                        )),
                         Value::String(profile(2, "preview-sound")),
                         Value::Float(60.0),
                         Value::Long(-1),
@@ -216,7 +247,12 @@ impl Session {
     pub fn report(&self) -> Json {
         let states=self.controller.as_ref().map_or_else(Vec::new,|controller|controller.borrow().queries.fire_places().iter().map(|slot|
             json!({"active":slot.state.is_active(),"remaining_bits":slot.state.remaining().map(f32::to_bits),"owner":slot.state.owner(),"sound":slot.state.sound(),"profiles":slot.state.names()})).collect());
-        json!({"places":states,"effects":self.world.borrow().report(),"emissions":self.world.borrow().emissions().iter().map(|e|json!({"locator":e.point,"smoke":e.smoke,"started_bits":e.started.to_bits(),"stopped_bits":e.stopped.map(f32::to_bits)})).collect::<Vec<_>>()})
+        let emissions = self.world.borrow().emissions().iter().map(|e| {
+            let mut report = json!({"locator":e.point,"smoke":e.smoke,"started_bits":e.started.to_bits(),"stopped_bits":e.stopped.map(f32::to_bits)});
+            if let Some(profile) = &e.profile { report["profile"] = json!(profile); }
+            report
+        }).collect::<Vec<_>>();
+        json!({"places":states,"effects":self.world.borrow().report(),"emissions":emissions})
     }
 }
 

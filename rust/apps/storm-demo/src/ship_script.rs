@@ -95,6 +95,7 @@ impl SailHost {
         fire_places: Vec<FirePoint>,
         initial_index: i32,
         tail_seconds: f32,
+        profiles: Option<std::collections::BTreeSet<String>>,
     ) -> Result<Self> {
         let world = World::default();
         let simulation = Rc::new(RefCell::new(simulation));
@@ -102,6 +103,7 @@ impl SailHost {
         let controllers = Controllers::default();
         let effects = Rc::new(RefCell::new(EffectsWorld::default()));
         effects.borrow_mut().set_retention(tail_seconds)?;
+        effects.borrow_mut().set_profiles(profiles);
         effects
             .borrow_mut()
             .set_clock(simulation.borrow().time() as f32)?;
@@ -293,8 +295,15 @@ fn execute_with_ship(
     fire_places: Vec<FirePoint>,
     initial_index: i32,
     tail_seconds: f32,
+    profiles: Option<std::collections::BTreeSet<String>>,
 ) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
-    let mut host = SailHost::new(simulation, fire_places, initial_index, tail_seconds)?;
+    let mut host = SailHost::new(
+        simulation,
+        fire_places,
+        initial_index,
+        tail_seconds,
+        profiles,
+    )?;
     let result = runtime.call("main", &[], &mut host, Limits::default())?;
     let result = match result {
         Value::Int(value) => json!({"type":"int", "value":value}),
@@ -338,6 +347,7 @@ pub fn run(
     fire_places: Vec<FirePoint>,
     initial_index: i32,
     tail_seconds: f32,
+    profiles: Option<std::collections::BTreeSet<String>>,
 ) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
     let entry = path
         .file_name()
@@ -352,6 +362,7 @@ pub fn run(
         fire_places,
         initial_index,
         tail_seconds,
+        profiles,
     )
 }
 
@@ -360,11 +371,55 @@ mod tests {
     use super::*;
     use storm_sim::{ShipConfig, Wind};
     #[test]
+    fn script_names_select_cached_profiles_and_missing_names_keep_native_fire_active() {
+        let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
+        let runtime = Runtime::compile(
+            r#"
+            native ref PreviewShip(); native float PreviewAdvanceSailing(float seconds);
+            native int PreviewActiveFires();
+            int main() {ref ship;ship=PreviewShip();CreateEntity(&ship,"preview_ship_sails");
+                SendMessage(ship,"llsssfl",50304,0,"SHIP_FIRE.XPS","missing","silent",1.0,7);
+                if(PreviewActiveFires()!=1){return -1;}
+                PreviewAdvanceSailing(1.0);
+                return PreviewActiveFires();}
+        "#,
+        )
+        .unwrap();
+        let (_, report, fire) = execute_with_ship(
+            simulation(),
+            runtime,
+            asset.ship.fires.clone(),
+            19,
+            7.0,
+            Some(std::collections::BTreeSet::from(["ship_fire.xps".into()])),
+        )
+        .unwrap();
+        assert_eq!(report["result"], json!({"type":"int","value":1}));
+        let snapshot = fire.unwrap().report();
+        assert_eq!(snapshot["emissions"].as_array().unwrap().len(), 1);
+        assert_eq!(snapshot["emissions"][0]["profile"], "ship_fire.xps");
+        assert_eq!(snapshot["emissions"][0]["smoke"], true);
+        assert!(
+            snapshot["effects"]["recent"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["reason"] == "profile_not_cached" && e["id"] == 0)
+        );
+    }
+    #[test]
     fn original_fire_source_retains_a_live_controller_after_cleanup_and_recreation() {
         let asset = storm_render::model::ModelAsset::ship_demo().unwrap();
         let runtime = Runtime::compile(include_str!("../fixtures/ship_fires.c")).unwrap();
-        let (simulation, report, fire) =
-            execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 19, 7.0).unwrap();
+        let (simulation, report, fire) = execute_with_ship(
+            simulation(),
+            runtime,
+            asset.ship.fires.clone(),
+            19,
+            7.0,
+            None,
+        )
+        .unwrap();
         assert_eq!(
             report["result"],
             json!({"type":"int","value":asset.ship.fires.len()})
@@ -413,8 +468,15 @@ mod tests {
         "#,
         )
         .unwrap();
-        let (_, _, fire) =
-            execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 19, 7.0).unwrap();
+        let (_, _, fire) = execute_with_ship(
+            simulation(),
+            runtime,
+            asset.ship.fires.clone(),
+            19,
+            7.0,
+            None,
+        )
+        .unwrap();
         let fire = fire.unwrap();
         assert!(fire.controller.is_none());
         let snapshot = fire.report();
@@ -438,7 +500,8 @@ mod tests {
         );
     }
     fn execute(simulation: Sailing, runtime: Runtime) -> Result<(Sailing, Json)> {
-        let (simulation, report, _) = execute_with_ship(simulation, runtime, Vec::new(), 19, 7.0)?;
+        let (simulation, report, _) =
+            execute_with_ship(simulation, runtime, Vec::new(), 19, 7.0, None)?;
         Ok((simulation, report))
     }
     #[test]
@@ -447,8 +510,15 @@ mod tests {
         let count = asset.ship.fires.len();
         assert!(count > 0);
         let runtime = Runtime::compile(include_str!("../fixtures/ship_queries.c")).unwrap();
-        let (_, report, _) =
-            execute_with_ship(simulation(), runtime, asset.ship.fires.clone(), 37, 7.0).unwrap();
+        let (_, report, _) = execute_with_ship(
+            simulation(),
+            runtime,
+            asset.ship.fires.clone(),
+            37,
+            7.0,
+            None,
+        )
+        .unwrap();
         assert_eq!(report["result"], json!({"type":"int","value":count}));
         let attributes = report["ship_query_attributes"]["children"]
             .as_array()
@@ -498,7 +568,8 @@ mod tests {
         "#,
         )
         .unwrap();
-        let (_, report, _) = execute_with_ship(simulation(), runtime, Vec::new(), 37, 7.0).unwrap();
+        let (_, report, _) =
+            execute_with_ship(simulation(), runtime, Vec::new(), 37, 7.0, None).unwrap();
         assert_eq!(report["result"], json!({"type":"int","value":48}));
     }
     #[test]

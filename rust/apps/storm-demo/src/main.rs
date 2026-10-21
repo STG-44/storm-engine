@@ -84,6 +84,9 @@ struct Options {
     /// Texture search directory relative to RESOURCE/Textures; default ship skin is Hull1.
     #[arg(long, requires = "game_dir")]
     texture_dir: Option<PathBuf>,
+    /// Cache an additional XPS profile for native fire messages (repeatable).
+    #[arg(long, requires = "game_dir", conflicts_with = "single_mesh")]
+    particle_profile: Vec<String>,
     /// Render geometry with a white material, without loading commercial textures.
     #[arg(long, requires = "model", conflicts_with = "game_dir")]
     untextured: bool,
@@ -881,6 +884,7 @@ fn main() -> Result<()> {
                     &LoadOptions {
                         game_dir: options.game_dir.clone(),
                         texture_dir: options.texture_dir.clone(),
+                        particle_profiles: options.particle_profile.clone(),
                         untextured: options.untextured,
                         single_mesh: options.single_mesh,
                         crew: options.crew.map(|n| n as usize),

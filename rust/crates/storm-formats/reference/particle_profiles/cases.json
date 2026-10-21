@@ -1,0 +1,123 @@
+{
+  "scope": "Retained CreateSystem/cache lookup bodies; manager, resources and allocation are adapters.\n\nOnly safe relative ASCII names are compared. Windows separators are tested\nseparately in Rust. No commercial files are used.\n",
+  "retained_sha256": {
+    "PARTICLE_SYSTEM *PARTICLES::CreateSystem(": "2abf8b2dfdc28e05aa192ef70c9d974d89212e58225eaf920cec57dca3fec4d3",
+    "DataSource *DataCache::GetParticleSystemDataSource(": "1e52d98733bff3d473f8f8188fdd2ab33aed59379a5dfe070e28a49077c9ce00"
+  },
+  "cached": [
+    [
+      "ship_fire.xps",
+      1
+    ],
+    [
+      "ship_smoke.xps",
+      2
+    ],
+    [
+      "smoke.ini.xps",
+      3
+    ],
+    [
+      "smoke..xps",
+      4
+    ],
+    [
+      ".xps.xps",
+      5
+    ],
+    [
+      "effects/ship.fire.xps",
+      6
+    ],
+    [
+      "effects/ship_fire.xps",
+      7
+    ]
+  ],
+  "cases": [
+    {
+      "name": "Ship_Fire",
+      "id": 1,
+      "systems": 1,
+      "captured": 1
+    },
+    {
+      "name": "SHIP_FIRE.XPS",
+      "id": 1,
+      "systems": 2,
+      "captured": 2
+    },
+    {
+      "name": "ship_fire.xps",
+      "id": 1,
+      "systems": 3,
+      "captured": 3
+    },
+    {
+      "name": "Ship_Smoke",
+      "id": 2,
+      "systems": 4,
+      "captured": 4
+    },
+    {
+      "name": "SHIP_SMOKE.XpS",
+      "id": 2,
+      "systems": 5,
+      "captured": 5
+    },
+    {
+      "name": "smoke.ini",
+      "id": 3,
+      "systems": 6,
+      "captured": 6
+    },
+    {
+      "name": "smoke.ini.XPS",
+      "id": 3,
+      "systems": 7,
+      "captured": 7
+    },
+    {
+      "name": "smoke.",
+      "id": 4,
+      "systems": 8,
+      "captured": 8
+    },
+    {
+      "name": ".xps",
+      "id": 5,
+      "systems": 9,
+      "captured": 9
+    },
+    {
+      "name": "effects/Ship.Fire",
+      "id": 6,
+      "systems": 10,
+      "captured": 10
+    },
+    {
+      "name": "effects/SHIP_FIRE.XPS",
+      "id": 7,
+      "systems": 11,
+      "captured": 11
+    },
+    {
+      "name": "missing",
+      "id": 0,
+      "systems": 11,
+      "captured": 11
+    },
+    {
+      "name": "ShipFire",
+      "id": 0,
+      "systems": 11,
+      "captured": 11
+    },
+    {
+      "name": "ship_fire.xps.xps",
+      "id": 0,
+      "systems": 11,
+      "captured": 11
+    }
+  ]
+}

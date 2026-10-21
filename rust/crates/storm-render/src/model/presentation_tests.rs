@@ -209,6 +209,7 @@ fn native_emissions_select_one_locator_and_fade_after_stop_without_restarting() 
             smoke: true,
             started: 0.0,
             stopped: Some(2.0),
+            profile: None,
         }]),
         ..Default::default()
     };
@@ -286,12 +287,14 @@ fn native_fire_emission_renders_and_cleanup_restores_the_unlit_frame() {
                 smoke: true,
                 started: 0.0,
                 stopped: None,
+                profile: None,
             },
             FireEmission {
                 point: 0,
                 smoke: false,
                 started: 0.0,
                 stopped: None,
+                profile: None,
             },
         ]),
         ..Default::default()

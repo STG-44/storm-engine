@@ -1,4 +1,51 @@
 use super::*;
+#[test]
+fn profile_creation_and_cache_lookup_match_retained_native_bodies() {
+    let fixture: Json =
+        serde_json::from_str(include_str!("../../reference/particle_profiles/cases.json")).unwrap();
+    let mut systems = 0;
+    for case in fixture["cases"].as_array().unwrap() {
+        let key = profile_key(case["name"].as_str().unwrap()).unwrap();
+        let id = fixture["cached"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry[0] == key)
+            .map_or(0, |entry| entry[1].as_u64().unwrap());
+        systems += u64::from(id != 0);
+        assert_eq!(case["id"], id, "{}", case["name"]);
+        assert_eq!(case["systems"], systems);
+        assert_eq!(case["captured"], systems);
+    }
+}
+#[test]
+fn cache_names_keep_native_extension_and_case_rules_with_portable_separators() {
+    for (name, key) in [
+        ("Ship_Fire", "ship_fire.xps"),
+        ("SHIP_SMOKE.XpS", "ship_smoke.xps"),
+        ("smoke.ini", "smoke.ini.xps"),
+        ("smoke.", "smoke..xps"),
+        (".xps", ".xps.xps"),
+        ("effects/Ship.Fire", "effects/ship.fire.xps"),
+        ("effects\\Ship_Fire.XPS", "effects/ship_fire.xps"),
+    ] {
+        assert_eq!(profile_key(name).unwrap(), key);
+    }
+    for name in [
+        "",
+        "../smoke",
+        "/smoke",
+        "C:\\smoke",
+        "a//smoke",
+        "a/./smoke",
+        "a\\..\\smoke",
+        "smoke\0xps",
+        "дым",
+    ] {
+        assert!(profile_key(name).is_err(), "{name:?}");
+    }
+    assert!(profile_key(&"a".repeat(513)).is_err());
+}
 const PROFILE: &[u8] = include_bytes!("../../reference/particles/synthetic.xps");
 fn reference() -> Json {
     serde_json::from_str(include_str!("../../reference/particles/cases.json")).unwrap()
