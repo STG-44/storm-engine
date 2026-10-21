@@ -588,3 +588,15 @@ Additional profiles can be preloaded with --particle-profile and wait for
 activation; generated diagnostics retain their prior service. Independent
 particle generations and complete project/service behavior remain pending.
 See the [lookup contract and limits](PARTICLE_DISPATCH.md).
+
+
+The [named particle PR run](https://github.com/STG-44/storm-engine/actions/runs/39651914838)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39651901113)
+pass all four native hosts for `f7d1e737`: 289 CPU tests / 135 interpreter
+tests, 15 explicit Linux software Vulkan GPU tests and native windows. Four
+archive digests / 64 full JSON reports match local results. Fourteen retained
+C++ profile/cache queries match; all 40 original ships reload and 39 nonempty
+models execute named-profile scenarios. Manual birth/world counters remain
+unchanged, including an identical original-resource Metal capture with an extra
+cached profile. See [current lookup scope and evidence](PARTICLE_DISPATCH.md).
+Independent particle generations and full project/global service remain next.

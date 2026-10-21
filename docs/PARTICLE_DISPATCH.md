@@ -62,3 +62,38 @@ replace an earlier tail. The same profile in both channels shares presentation
 slots. Independent generations/instances and global manager/RNG are next.
 Multiple diagnostic entities still share one preview ship. Sound requests have
 no playback. Full native SHIP, combat, game programs and saves remain pending.
+
+
+## Four-platform evidence, 2026-10-21
+
+Code `f7d1e737362c0cb5569b8c3d7b9307d6c5e95da7` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39651914838) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39651901113) on
+macOS Apple Silicon/Intel, Windows and Linux. All eight native jobs pass
+formatting, Clippy with warnings denied, builds, 289 CPU tests including 135
+interpreter tests, and sixteen standalone scenarios. Actual host triples and
+test totals are checked from logs. Linux additionally passes all 15 explicit
+software Vulkan GPU tests and native-window fixtures. Four archive SHA-256
+digests and all 64 complete JSON reports match local results; all sixteen
+preceding generated reports remain unchanged.
+
+The final resource audit reloads all 40 original ship roots: 274 locators and
+117 default patches retain 822 birth/world rows and prior manual counters
+(38,086 created / 10,347 living). All 39 nonempty models also run named-profile
+selection with additional smoke.xps, crossed default names, null creation of
+an uncached profile and finite world summaries (empty pools have null bounds).
+Additional cached profiles leave manual birth counters unchanged. All 40
+preceding complete native-fire reports match after applying only the expected
+missing-profile creation failures to diagnostic names absent from the real
+cache. Locator, sail source/topology and rigging metadata remain unchanged.
+
+Local Metal passes the extended named-profile/cross-channel/clear/pose test.
+ArabellaShip1 renders an explicitly selected additional profile at 5.25 seconds
+with 39 created/living particles; the image was inspected. A manual twenty-second
+Metal capture with that extra cached profile is byte-identical to the preceding
+world-phase image. Alias deduplication and rejected missing/traversal/incompatible
+options also pass against original resources. Commercial files, captures and
+local reports remain outside Git. Whole-profile decoding and damage audits were
+not repeated. Prior local native-window timeouts remain unverified; hosted
+macOS/Windows jobs establish CPU/build behavior, with physical GPU/window
+verification there still pending. Remaining service/instance limits above apply.
