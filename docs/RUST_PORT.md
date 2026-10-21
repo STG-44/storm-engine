@@ -608,3 +608,15 @@ smoke tails across stop/restart, including the same XPS in both channels.
 Replay and dynamically sized draw geometry preserve old generations until
 expiry; complete global manager/RNG/project behavior remains pending.
 See [instance identity, limits and verification](PARTICLE_INSTANCES.md).
+
+
+The [particle instance PR run](https://github.com/STG-44/storm-engine/actions/runs/39663253978)
+and [push run](https://github.com/STG-44/storm-engine/actions/runs/39663244166)
+pass all four native hosts for `7c7fbf60`: 297 CPU tests / 135 interpreter
+tests, 15 explicit Linux software Vulkan GPU tests and native windows. Four
+archive digests / 64 full JSON reports match local results. Three unedited
+native factory/pause bodies match eight complete identity/pause snapshots.
+All 40 original ships reload; 39 nonempty roots retain 1,096 distinct instances
+and 2,192 world rows across both generations. Manual counters and a Metal
+capture remain unchanged. Global project/atlas/processor/RNG/deletion and
+multi-ship service behavior remain pending; see [instance scope](PARTICLE_INSTANCES.md).

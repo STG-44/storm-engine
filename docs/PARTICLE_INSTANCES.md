@@ -75,3 +75,39 @@ Explicit XPS cache selection, .prj/atlas loading, complete PARTICLES registratio
 automatic global deletion, model/attached particle rendering, audio and native
 gameplay retain their preceding unfinished scope. Multiple diagnostic entities
 still share one sailing simulation and one preview ship.
+
+
+## Four-platform evidence, 2026-10-21
+
+Code `7c7fbf60171c145bddbbe1f7bb94cd4f4a7117fc` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/39663253978) and
+[push run](https://github.com/STG-44/storm-engine/actions/runs/39663244166) on
+macOS Apple Silicon/Intel, Windows and Linux. All eight native jobs pass
+formatting, Clippy with warnings denied, builds, 297 CPU tests (135 interpreter
+tests) and sixteen standalone scenarios. Actual host triples/test counts are
+checked from logs. Linux additionally passes 15 explicit software Vulkan GPU
+tests and native windows. Four archive SHA-256 digests / 64 complete JSON reports
+match local results. Fifteen preceding reports remain unchanged. The fire report
+retains six IDs; projecting only the former latest-per-channel view reproduces
+the entire preceding report, including all service/message/state fields.
+
+The final-build resource audit reloads all 40 original ship roots. Default
+manual output retains 274 locators / 117 patches, 822 birth/world rows and
+38,086 created / 10,347 living particles. All 39 nonempty models exercise
+same-profile restart in both channels at every locator: 1,096 distinct retained
+instances / 2,192 finite world-summary rows include old and new generations.
+Named-profile scenarios and extra-profile manual suppression also pass. Forty
+prior native-fire reports with uncached diagnostic names retain the preceding
+expected null-creation results. Locator/sail topology/source/rig data stay
+unchanged. Empty pools retain null bounds and the zero-locator model stays empty.
+
+Local Metal passes the extended overlapping-instance pixel/repeated-draw/shrink/
+clear/world-pose test. An inspected ArabellaShip1 restart frame at 4.125 seconds
+has 28 instances / 56 rows and 3,942 created / 617 living particles: 56 old and
+561 new. The final-build PNG matches that inspected image. A twenty-second
+manual Metal capture with an extra cached profile remains byte-identical to the
+preceding world-phase frame. Commercial resources, captures and local evidence
+stay outside Git. Whole-profile decoding/damage audits were not repeated.
+Prior local native-window timeouts remain unverified; hosted macOS/Windows
+jobs establish CPU/build behavior, with physical GPU/window coverage pending.
+The preview/global-manager limits above still apply.
