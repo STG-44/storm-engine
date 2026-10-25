@@ -82,6 +82,9 @@ struct Options {
     /// Two ships share the particle service; deterministic fire/restart/release fixture.
     #[arg(long, conflicts_with_all = ["sail_demo", "rigging_demo", "ship_demo", "sail", "frames", "gpu_info"])]
     particle_fleet_demo: bool,
+    /// Use retained SHIP inertia/movement and impulse dispatch for the fleet fixture.
+    #[arg(long, requires = "particle_fleet_demo")]
+    native_ship_motion: bool,
     /// Export the shared-service fleet scenario without requiring a GPU.
     #[arg(long, requires = "particle_fleet_demo")]
     particle_fleet_report: Option<PathBuf>,

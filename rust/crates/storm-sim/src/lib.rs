@@ -9,6 +9,7 @@ pub mod particle_motion;
 pub mod particle_transform;
 pub mod pose_history;
 mod rig;
+pub mod ship_motion;
 pub mod ship_queries;
 pub mod ship_sails;
 pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};

@@ -146,3 +146,9 @@ audit reports stay outside Git. Whole-profile decoding, damage and local native
 window audits were not repeated. Physical macOS/Windows window/GPU coverage,
 full native manager/processors/RNG, SHIP gameplay, land/deck locomotion and
 boarding remain pending.
+
+
+The subsequent [SHIP movement increment](SHIP_MOTION.md) adds optional
+`--native-ship-motion` bodies to this diagnostic, retaining the original
+prescribed-motion mode and report. Its explicit speed/flat-sea providers do
+not yet implement mounted naval gameplay or weather.

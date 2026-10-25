@@ -41,6 +41,12 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Complete the current ship/sailing prototype audit and record its gameplay gaps.
 - [ ] Display an original ship, sea, and movable camera. Verify the same scene on all three operating systems.
 - [ ] Port animation, input, audio, and platform file handling.
+- [ ] Port [weather and the day/night cycle](WEATHER_ROADMAP.md).
+  - [ ] Restore weather state, scripted presets and transitions over game time.
+  - [ ] Port sky/clouds, sun/moon/stars, lighting, fog and visibility.
+  - [ ] Port rain, storms, lightning and thunder with original effects/audio.
+  - [ ] Connect wind/weather to sails, ship motion and the original sea.
+  - [ ] Integrate weather with locations, gameplay scripts and save/load.
 - [ ] Port the script runtime, entity messages, and game-facing API.
   - [x] Add the [native entity/message foundation and sail event observer](RUNTIME_FOUNDATION.md).
   - [x] Port the [native attribute tree and entity bindings](ATTRIBUTES.md); roundtrip sail masks through original character attribute paths.
@@ -670,3 +676,13 @@ demand. Original two-ship captures retain 42 systems after restart and fourteen
 second-owner systems / 315 living particles after first-owner release. See
 [shared-service scope](PARTICLE_MANAGER.md) for the diagnostic motion, native
 adapters, resource limits and remaining game systems.
+
+
+[Retained SHIP movement](SHIP_MOTION.md) now ports strength application,
+acceleration/braking, millisecond movement, collision prediction and native
+impulse message 50308. An opt-in fleet mode uses independent native bodies
+instead of prescribed poses; its speed/rocking providers remain explicit
+fixtures. Full Mount/Execute, original sea/sail/weather providers and gameplay
+are pending. The [weather roadmap](WEATHER_ROADMAP.md) now separately tracks
+weather state, day/night, sky/fog, rain/storms/lightning/audio, wind integration
+and location/save transitions.

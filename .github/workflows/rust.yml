@@ -91,6 +91,7 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 3 --headless particle-survivor-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
@@ -140,6 +141,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --time 3 --particle-fleet-report particle-fleet-state.json
           python -c "import json; s=json.load(open('particle-fleet-state.json')); assert s['fixture']=='two_ship_particle_service' and s['original_gameplay'] is False; m=s['service']['manager']; assert m['cached']==3 and m['prepared']==3 and m['systems']==2 and m['owners']==[2]; a=s['snapshots'][2]['ships']; assert len(a[0]['emissions'])==4 and len(a[1]['emissions'])==2; assert [v['visible'] for v in s['ships']]==[False,True]; assert all(not e['paused'] for e in s['snapshots'][-1]['ships'][1]['emissions'])"
+      - name: Exercise retained ship movement and impulse dispatch
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --time 3 --particle-fleet-report ship-motion-state.json
+          python -c "import json,struct; s=json.load(open('ship-motion-state.json')); m=s['native_motion']; assert m['elapsed_ms']==3000 and m['speed_units']=='knots' and len(m['bodies'])==2; f=lambda bits: struct.unpack('<f',struct.pack('<I',bits))[0]; assert all(f(b['speed_bits'][2])>0 for b in m['bodies']); p=next(p for p in s['snapshots'] if p['phase']=='first_impulse_queued')['native_motion']['bodies']; assert p[0]['strengths'][1]['used'] and not p[1]['strengths'][1]['used']; assert not m['bodies'][0]['strengths'][1]['used']; assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -171,6 +176,7 @@ jobs:
             particle-profile-state.json
             particle-project-state.json
             particle-fleet-state.json
+            ship-motion-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
@@ -274,4 +280,12 @@ jobs:
           path: |
             particle-fleet-vulkan.png
             particle-survivor-vulkan.png
+          if-no-files-found: error
+
+      - name: Upload retained ship movement preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-ship-motion-vulkan
+          path: native-ship-motion-vulkan.png
           if-no-files-found: error

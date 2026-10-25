@@ -482,3 +482,10 @@ see [particle manager](../docs/PARTICLE_MANAGER.md). `--particle-fleet-demo`
 accepts `--particle-fleet-report fleet.json` without a GPU, or `--headless fleet.png`
 with `--time 1` (two ships) / `--time 3` (first ship released). Add `--model` and
 `--game-dir` to use an original model; commercial files remain external.
+
+
+Add `--native-ship-motion` to `--particle-fleet-demo` to exercise retained SHIP
+inertia/movement and impulse dispatch with independent bodies. Use `--time 3`
+with `--particle-fleet-report native-motion.json` for the CPU-only scenario,
+or `--time 1.5 --headless native-motion.png` for both ships before first-owner
+removal. See [movement scope](../docs/SHIP_MOTION.md) and [weather roadmap](../docs/WEATHER_ROADMAP.md).
