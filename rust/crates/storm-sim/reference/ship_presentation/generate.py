@@ -89,7 +89,8 @@ source=source.replace('__FRAME__',retained['living_and_speed']+retained['positio
 source=source.replace('__BODIES__','\n'.join(retained[k] for k in [*sigs,'rotate','float_writer']))
 cases=[]
 for i in range(48):
- cases.append(dict(id=i,yaw=[-3.0,0.0,0.35,1.5707963705062866][i%4],turn=[-0.6,-0.25,-0.0,0.0,0.25,0.6][i%6],mainz=[0.75,-0.5][i%2],fixed=bool(i&1),perk=bool(i&2),angle=[-1.0,0.0,1.0][i%3]))
+ cases.append(dict(id=i,yaw=[-3.0,0.0,0.35,1.5707963705062866][i%4],turn=[-0.6,-0.25,-0.0,0.0,0.25,0.6][i%6],mainz=[0.75,-0.5][i%2]+0.125*(i//12),fixed=bool(i&1),perk=bool(i&2),angle=[-1.0,0.0,1.0][i%3]))
+assert len({json.dumps({k:v for k,v in c.items() if k!='id'},sort_keys=True) for c in cases})==48
 source=source.replace('__CASES__',','.join('{'+','.join([str(c[k])+'f' for k in ['yaw','turn','mainz']]+[str(c[k]).lower() for k in ['fixed','perk']]+[str(c['angle'])+'f'])+'}' for c in cases))
 with tempfile.TemporaryDirectory(prefix='storm-ship-presentation-') as folder:
  p=Path(folder);(p/'main.cpp').write_text(source)
