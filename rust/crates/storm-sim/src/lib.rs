@@ -11,6 +11,7 @@ pub mod pose_history;
 mod rig;
 pub mod ship_motion;
 pub mod ship_queries;
+pub mod ship_rocking;
 pub mod ship_sails;
 pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 mod waves;

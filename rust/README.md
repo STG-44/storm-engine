@@ -489,3 +489,8 @@ inertia/movement and impulse dispatch with independent bodies. Use `--time 3`
 with `--particle-fleet-report native-motion.json` for the CPU-only scenario,
 or `--time 1.5 --headless native-motion.png` for both ships before first-owner
 removal. See [movement scope](../docs/SHIP_MOTION.md) and [weather roadmap](../docs/WEATHER_ROADMAP.md).
+
+Add `--native-ship-rocking` to that native-motion fleet command for original
+36-point ShipRocking over the diagnostic sea. Root GM dimensions drive the grid;
+pitch, roll and heave propagate to geometry and particle pose histories. Original
+SEA and full mounted gameplay remain pending. See [rocking scope](../docs/SHIP_ROCKING.md).

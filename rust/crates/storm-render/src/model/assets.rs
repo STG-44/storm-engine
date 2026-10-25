@@ -44,6 +44,8 @@ impl Mesh {
 }
 
 pub struct ModelAsset {
+    /// Original root GM bounds, before attaching masts, sails and other nodes.
+    pub root_box_size: Option<[f32; 3]>,
     pub sail_damage: Option<super::sail_damage::SailDamageMaterial>,
     pub ship: super::ShipAsset,
     pub ship_state: super::ShipState,
@@ -350,6 +352,7 @@ impl ModelAsset {
             .collect();
         Ok(Self {
             sail_damage: Some(super::sail_damage::SailDamageMaterial::fixture()),
+            root_box_size: None,
             ship: Default::default(),
             ship_state: Default::default(),
             meshes: vec![Mesh::sail(quad, 0)?, Mesh::sail(triangle, 0)?],
@@ -471,6 +474,7 @@ impl ModelAsset {
         let mut builder = Builder {
             asset: Self {
                 sail_damage: None,
+                root_box_size: None,
                 ship: Default::default(),
                 ship_state: Default::default(),
                 meshes: Vec::new(),
@@ -675,6 +679,9 @@ impl Builder {
         );
         let center = Vec3::from_array(model.header.bounds_center);
         let size = Vec3::from_array(model.header.bounds_size);
+        if depth == 0 {
+            self.asset.root_box_size = Some(model.header.bounds_size);
+        }
         let mut pivot = center - Vec3::Y * (size.y * 0.5);
         if super::part_number(node, "mast") == Some(1) {
             pivot.z -= size.z * 0.5;
@@ -788,5 +795,24 @@ mod tests {
         }
         let native = Path::new("Ships").join("Barkentine1").join("Hull1");
         assert_eq!(logical(&native).unwrap(), "ships/barkentine1/hull1");
+    }
+    #[test]
+    fn native_root_dimensions_are_retained_from_geometry_header() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tools/modding-tool/Meshes/cannon_x.gm");
+        let header = Geometry::read(&read_asset_bytes(&path).unwrap())
+            .unwrap()
+            .header;
+        let asset = ModelAsset::load(
+            &path,
+            &LoadOptions {
+                untextured: true,
+                single_mesh: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(asset.root_box_size, Some(header.bounds_size));
+        assert_eq!(ModelAsset::ship_demo().unwrap().root_box_size, None);
     }
 }

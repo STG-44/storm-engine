@@ -91,6 +91,7 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 1.5 --headless native-ship-rocking-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 3 --headless particle-survivor-vulkan.png --width 641 --height 361
@@ -145,6 +146,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --time 3 --particle-fleet-report ship-motion-state.json
           python -c "import json,struct; s=json.load(open('ship-motion-state.json')); m=s['native_motion']; assert m['elapsed_ms']==3000 and m['speed_units']=='knots' and len(m['bodies'])==2; f=lambda bits: struct.unpack('<f',struct.pack('<I',bits))[0]; assert all(f(b['speed_bits'][2])>0 for b in m['bodies']); p=next(p for p in s['snapshots'] if p['phase']=='first_impulse_queued')['native_motion']['bodies']; assert p[0]['strengths'][1]['used'] and not p[1]['strengths'][1]['used']; assert not m['bodies'][0]['strengths'][1]['used']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise retained ship rocking over the diagnostic sea
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 3 --particle-fleet-report ship-rocking-state.json
+          python -c "import json,struct; s=json.load(open('ship-rocking-state.json')); m=s['native_motion']; r=m['rocking']; assert r['original_sea'] is False and r['native_to_surface_z']==-1; assert len(r['bodies'])==2; f=lambda bits: struct.unpack('<f',struct.pack('<I',bits))[0]; assert all(f(b['position_bits'][1])!=0 and f(b['angles_bits'][0])!=0 and f(b['angles_bits'][2])!=0 for b in m['bodies']); p=next(p for p in s['snapshots'] if p['phase']=='first_released')['native_motion']; assert p['rocking']['bodies'][0]==r['bodies'][0] and p['rocking']['bodies'][1]!=r['bodies'][1]; assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -177,6 +182,7 @@ jobs:
             particle-project-state.json
             particle-fleet-state.json
             ship-motion-state.json
+            ship-rocking-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
@@ -287,5 +293,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: native-ship-motion-vulkan
-          path: native-ship-motion-vulkan.png
+          path: |
+            native-ship-motion-vulkan.png
+            native-ship-rocking-vulkan.png
           if-no-files-found: error

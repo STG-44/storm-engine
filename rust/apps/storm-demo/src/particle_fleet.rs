@@ -14,11 +14,59 @@ use storm_render::{
     },
     render_fleet_offscreen,
 };
+use storm_sim::{
+    ship_motion::{FlatMovement, MovementPort},
+    ship_rocking::{DiagnosticSea, RockingInput, SeaSurface, ShipRocking},
+};
 
 struct NativeMotion {
     bodies: Vec<storm_sim::ship_motion::ShipMotion>,
     inputs: Vec<storm_sim::ship_motion::FlatMovement>,
     elapsed_ms: u32,
+    rocking: Option<NativeRocking>,
+}
+struct NativeRocking {
+    bodies: Vec<ShipRocking>,
+    waves: storm_sim::Waves,
+    sea: DiagnosticSea,
+}
+struct RockingMovement<'a> {
+    limits: &'a FlatMovement,
+    rocking: &'a mut ShipRocking,
+    sea: &'a mut DiagnosticSea,
+}
+struct ReflectedSea<'a>(&'a mut DiagnosticSea);
+impl SeaSurface for ReflectedSea<'_> {
+    fn wave_xz(&mut self, x: f32, z: f32) -> Result<f32> {
+        self.0.wave_xz(x, -z)
+    }
+}
+impl MovementPort for RockingMovement<'_> {
+    fn max_speed_z(&mut self) -> f32 {
+        self.limits.max_speed_z
+    }
+    fn max_speed_y(&mut self) -> f32 {
+        self.limits.max_speed_y
+    }
+    fn rocking(
+        &mut self,
+        position: [f32; 3],
+        angles: [f32; 3],
+        delta: f32,
+    ) -> Result<(f32, [f32; 3])> {
+        // Living SHIP::Execute captures vAng = State.vAng immediately before Move.
+        let mut sea = ReflectedSea(self.sea);
+        let result = self.rocking.advance(
+            RockingInput {
+                position,
+                angles,
+                previous_angles: angles,
+            },
+            delta,
+            Some(&mut sea),
+        )?;
+        Ok((result.height, result.angles))
+    }
 }
 pub struct Fleet {
     native_motion: Option<NativeMotion>,
@@ -98,11 +146,49 @@ impl Fleet {
             bodies,
             inputs,
             elapsed_ms: 0,
+            rocking: None,
         });
     }
+    fn enable_native_rocking(&mut self) -> Result<()> {
+        let mut bodies = Vec::new();
+        for asset in &self.assets {
+            // A generated hull uses explicit fixture dimensions; real ships use
+            // precisely the root GM bounds that native Mount assigns to vBoxSize.
+            let size = asset.root_box_size.unwrap_or([6.0, 4.0, 16.0]);
+            ensure!(
+                [size[0], size[2]]
+                    .into_iter()
+                    .all(|v| v.is_finite() && v > 0.0),
+                "invalid root hull dimensions"
+            );
+            bodies.push(ShipRocking::new([size[0], size[2]]));
+        }
+        let waves = storm_sim::Waves {
+            height_m: 1.5,
+            direction: 1.2,
+        };
+        let sea = DiagnosticSea::new(waves)?;
+        self.native_motion
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("rocking requires native ship movement"))?
+            .rocking = Some(NativeRocking { bodies, waves, sea });
+        Ok(())
+    }
     fn motion_report(&self) -> Option<Json> {
-        self.native_motion.as_ref().map(|m|json!({"speed_units":"knots","native_frame_units":"milliseconds","elapsed_ms":m.elapsed_ms,
-            "bodies":m.bodies.iter().map(|b|json!({"position_bits":b.state.position.map(f32::to_bits),"angles_bits":b.state.angles.map(f32::to_bits),"speed_bits":b.state.speed.map(f32::to_bits),"rotation_bits":b.state.rotation.map(f32::to_bits),"speed_accel_bits":b.speed_accel.map(f32::to_bits),"strengths":b.strengths.iter().map(|s|json!({"used":s.used,"inertia":s.inertia,"speed_bits":s.speed.map(f32::to_bits),"rotation_bits":s.rotation.map(f32::to_bits)})).collect::<Vec<_>>()})).collect::<Vec<_>>() }))
+        self.native_motion.as_ref().map(|m| {
+            let mut report = json!({"speed_units":"knots","native_frame_units":"milliseconds","elapsed_ms":m.elapsed_ms,
+                "bodies":m.bodies.iter().map(|b|json!({"position_bits":b.state.position.map(f32::to_bits),"angles_bits":b.state.angles.map(f32::to_bits),"speed_bits":b.state.speed.map(f32::to_bits),"rotation_bits":b.state.rotation.map(f32::to_bits),"speed_accel_bits":b.speed_accel.map(f32::to_bits),"strengths":b.strengths.iter().map(|s|json!({"used":s.used,"inertia":s.inertia,"speed_bits":s.speed.map(f32::to_bits),"rotation_bits":s.rotation.map(f32::to_bits)})).collect::<Vec<_>>()})).collect::<Vec<_>>() });
+            if let Some(rocking) = &m.rocking {
+                report["rocking"] = json!({"surface":"diagnostic_two_sine_waves","original_sea":false,"native_to_surface_z":-1,
+                    "coefficient_bits":rocking.sea.coefficients.map(|r|r.map(f32::to_bits)),
+                    "bodies":rocking.bodies.iter().enumerate().map(|(i,r)|json!({
+                        "dimensions_source":if self.assets[i].root_box_size.is_some() {"root_gm"} else {"generated_fixture"},
+                        "size_bits":r.parameters.size.map(f32::to_bits),"offset_bits":r.parameters.offsets.map(f32::to_bits),
+                        "height_factor_bits":r.parameters.height_factor.to_bits(),"angle_factor_bits":r.parameters.angle_factor.to_bits(),
+                        "height_bits":r.heights.map(|row|row.map(f32::to_bits))})).collect::<Vec<_>>()});
+            }
+            report
+        })
     }
     fn pose(&self, index: usize, seconds: f32) -> ModelPose {
         if let Some(motion) = &self.native_motion {
@@ -110,8 +196,16 @@ impl Fleet {
             return ModelPose {
                 translation: [state.position[0], state.position[1], -state.position[2]],
                 yaw: -state.angles[1],
-                pitch: 0.0,
-                roll: 0.0,
+                pitch: if motion.rocking.is_some() {
+                    -state.angles[0]
+                } else {
+                    0.0
+                },
+                roll: if motion.rocking.is_some() {
+                    state.angles[2]
+                } else {
+                    0.0
+                },
             };
         }
 
@@ -195,7 +289,22 @@ impl Fleet {
                 let delta = elapsed - motion.elapsed_ms;
                 for index in 0..2 {
                     if self.visible[index] {
-                        motion.bodies[index].advance(delta, false, &mut motion.inputs[index])?;
+                        if let Some(rocking) = &mut motion.rocking {
+                            rocking.sea.seconds = self.seconds;
+                            rocking.bodies[index].parameters.offsets = motion.bodies[index].offsets;
+                            let mut port = RockingMovement {
+                                limits: &motion.inputs[index],
+                                rocking: &mut rocking.bodies[index],
+                                sea: &mut rocking.sea,
+                            };
+                            motion.bodies[index].advance(delta, false, &mut port)?;
+                        } else {
+                            motion.bodies[index].advance(
+                                delta,
+                                false,
+                                &mut motion.inputs[index],
+                            )?;
+                        }
                     }
                 }
                 motion.elapsed_ms = elapsed;
@@ -326,6 +435,10 @@ impl Fleet {
             .map(|(i, a)| {
                 let mut scene = ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, a)?;
                 scene.set_pose(self.poses[i])?;
+                if let Some(rocking) = self.native_motion.as_ref().and_then(|m| m.rocking.as_ref())
+                {
+                    scene.set_waves(rocking.waves)?;
+                }
                 Ok(scene)
             })
             .collect::<Result<Vec<_>>>()?;
@@ -389,6 +502,9 @@ pub fn run(options: &Options) -> Result<()> {
     };
     if options.native_ship_motion {
         fleet.enable_native_motion();
+    }
+    if options.native_ship_rocking {
+        fleet.enable_native_rocking()?;
     }
     let fleet = fleet.advance(options.time)?;
     if let Some(path) = &options.particle_fleet_report {
@@ -520,5 +636,81 @@ mod tests {
         let empty = empty.advance(3.0).unwrap();
         assert_eq!(empty.report().unwrap()["service"]["manager"]["systems"], 0);
         assert!(empty.native_motion.as_ref().unwrap().bodies[1].state.speed[2] > 0.0);
+    }
+    #[test]
+    fn native_rocking_moves_independent_hulls_and_keeps_released_grid_frozen() {
+        let mut fleet = generated().unwrap();
+        fleet.assets[0].root_box_size = Some([9.0, 8.0, 40.0]);
+        fleet.enable_native_motion();
+        fleet.enable_native_rocking().unwrap();
+        let fleet = fleet.advance(3.0).unwrap();
+        let motion = fleet.native_motion.as_ref().unwrap();
+        let rocking = motion.rocking.as_ref().unwrap();
+        assert_eq!(rocking.bodies[0].parameters.size, [9.0, 40.0]);
+        assert_eq!(rocking.bodies[1].parameters.size, [6.0, 16.0]);
+        assert_ne!(rocking.bodies[0].heights, rocking.bodies[1].heights);
+        for i in 0..2 {
+            let state = motion.bodies[i].state;
+            assert!(state.position[1] != 0.0 && state.angles[0] != 0.0 && state.angles[2] != 0.0);
+            assert_eq!(fleet.poses[i].pitch, -state.angles[0]);
+            assert_eq!(fleet.poses[i].roll, state.angles[2]);
+            let history = fleet.assets[i]
+                .ship_state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap();
+            assert_eq!(history.last().unwrap().pitch, fleet.poses[i].pitch);
+            assert_eq!(history.last().unwrap().roll, fleet.poses[i].roll);
+        }
+        let report = fleet.report().unwrap();
+        let released = report["snapshots"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["phase"] == "first_released")
+            .unwrap();
+        assert_eq!(
+            released["native_motion"]["bodies"][0],
+            report["native_motion"]["bodies"][0]
+        );
+        assert_eq!(
+            released["native_motion"]["rocking"]["bodies"][0],
+            report["native_motion"]["rocking"]["bodies"][0]
+        );
+        assert_ne!(
+            released["native_motion"]["rocking"]["bodies"][1],
+            report["native_motion"]["rocking"]["bodies"][1]
+        );
+    }
+    #[test]
+    fn sea_reflection_matches_render_coordinates_and_fractional_draw_does_not_advance_rocking() {
+        let waves = storm_sim::Waves {
+            height_m: 1.5,
+            direction: 1.2,
+        };
+        let mut a = DiagnosticSea::new(waves).unwrap();
+        let mut b = a.clone();
+        a.seconds = 1.25;
+        b.seconds = 1.25;
+        assert_eq!(
+            ReflectedSea(&mut a).wave_xz(3.0, 7.0).unwrap(),
+            b.wave_xz(3.0, -7.0).unwrap()
+        );
+        let run = |seconds| {
+            let mut fleet = generated().unwrap();
+            fleet.enable_native_motion();
+            fleet.enable_native_rocking().unwrap();
+            fleet.advance(seconds).unwrap()
+        };
+        let whole = run(1.0);
+        let fractional = run(1.005);
+        assert_eq!(whole.motion_report(), fractional.motion_report());
+        let mut invalid = generated().unwrap();
+        invalid.enable_native_motion();
+        invalid.assets[0].root_box_size = Some([0.0, 1.0, 2.0]);
+        assert!(invalid.enable_native_rocking().is_err());
+        assert!(invalid.native_motion.unwrap().rocking.is_none());
     }
 }

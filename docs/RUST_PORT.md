@@ -707,3 +707,9 @@ empty-fireplace Boat. Three-second owner routing retains 548 systems / 822 world
 rows / 12,243 living particles, with original model metadata preserved. Four local
 Metal captures and all seventeen render tests pass. See [movement scope](SHIP_MOTION.md)
 and the newly explicit [weather roadmap](WEATHER_ROADMAP.md).
+
+[Retained ship rocking](SHIP_ROCKING.md) adds the original 36-point hull grid,
+vertical smoothing and pitch/roll calculation. An additional fleet option uses
+root GM dimensions and the rendered diagnostic wave surface, with reflected
+coordinates and independent grids/particle pose histories. Original SEA,
+immersion/waterline, wake, sinking and full Mount/Execute remain pending.

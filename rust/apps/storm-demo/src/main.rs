@@ -85,6 +85,9 @@ struct Options {
     /// Use retained SHIP inertia/movement and impulse dispatch for the fleet fixture.
     #[arg(long, requires = "particle_fleet_demo")]
     native_ship_motion: bool,
+    /// Add retained 36-point ShipRocking over the diagnostic wave surface.
+    #[arg(long, requires = "native_ship_motion")]
+    native_ship_rocking: bool,
     /// Export the shared-service fleet scenario without requiring a GPU.
     #[arg(long, requires = "particle_fleet_demo")]
     particle_fleet_report: Option<PathBuf>,

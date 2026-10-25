@@ -67,7 +67,11 @@ Models without fireplace locators move with an empty effect set.
 Renderer Z and yaw are reflected for the already reflected GM resources. The
 flat diagnostic keeps pitch and roll zero.
 
-Full Mount/Execute, original ShipRocking/sea, sail/wind speed providers, contact
+An additional opt-in [native rocking component](SHIP_ROCKING.md) now replaces
+the flat callback when `--native-ship-rocking` is selected. It samples the
+diagnostic water surface through the retained 36-point algorithm.
+
+Full Mount/Execute, original sea, sail/wind speed providers, contact
 resolution, islands, naval AI and gameplay remain pending. Weather is tracked
 separately in the [weather roadmap](WEATHER_ROADMAP.md), including wind, fog,
 rain/storms, lightning/thunder and day/night. Land/deck locomotion, boarding,
