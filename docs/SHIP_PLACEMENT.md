@@ -51,11 +51,15 @@ while particles already released remain in world space.
 do not derive each commercial ship's real values from missing PROGRAM sources.
 The viewer uses the existing explicit speed/inertia controls and diagnostic
 two-wave sea. It is an inspection tool, not complete mounted gameplay. Full
-Mount/Execute (including native presentation lag and turn-induced roll), cargo
+Mount/Execute, cargo
 calculation, sinking, original SEA/wakes, sail/wind speed providers and gameplay
 remain pending. Dead-angle additions are covered as placement inputs; no sinking
 simulation is claimed. The bracket control bounds only its user adjustment to
 -5..10 metres; the CPU component retains raw finite values.
+
+The additional [living frame component](SHIP_FRAME.md) supplies pre-Move
+vPos/vAng, turn-induced model roll and post-Move script state. The viewer
+uses that component and accepts held A/D steering for the first ship.
 
 The oracle compiles unedited CalculateImmersion, the retained WaterLine assignment
 and the exact root expression under UBSan with FP contraction disabled. Native

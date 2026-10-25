@@ -8,6 +8,7 @@ use serde_json::{Value as Json, json};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use storm_core::{AttributeId, AttributeStore, Entity, EntityId, Message, Value};
 use storm_sim::ship_placement::ShipPlacement;
+use storm_sim::{ship_placement::RootPose, ship_presentation};
 mod window;
 use storm_render::{
     Gpu,
@@ -27,6 +28,20 @@ struct NativeMotion {
     elapsed_ms: u32,
     rocking: Option<NativeRocking>,
     placement: Option<NativePlacement>,
+    presentation: Option<Vec<RootPose>>,
+}
+fn step_body(
+    body: &mut storm_sim::ship_motion::ShipMotion,
+    presented: Option<&mut RootPose>,
+    delta: u32,
+    port: &mut impl MovementPort,
+) -> Result<()> {
+    if let Some(pose) = presented {
+        *pose = ship_presentation::advance_living(body, delta, port)?;
+    } else {
+        body.advance(delta, false, port)?;
+    }
+    Ok(())
 }
 struct NativePlacement {
     attributes: AttributeStore,
@@ -160,6 +175,7 @@ impl Fleet {
             elapsed_ms: 0,
             rocking: None,
             placement: None,
+            presentation: None,
         });
     }
     fn enable_native_placement(&mut self, immersion: f32, waterline: f32) -> Result<()> {
@@ -205,9 +221,16 @@ impl Fleet {
             && let Some(binding) = &motion.placement
         {
             let body = &motion.bodies[index];
+            let presented = motion.presentation.as_ref().map_or(
+                RootPose {
+                    position: body.state.position,
+                    angles: body.state.angles,
+                },
+                |p| p[index],
+            );
             let root = binding.states[index].root(
-                body.state.position,
-                body.state.angles,
+                presented.position,
+                presented.angles,
                 body.offsets,
                 [0.0; 2],
             )?;
@@ -219,6 +242,31 @@ impl Fleet {
             });
         }
         Ok(self.pose(index, seconds))
+    }
+    fn enable_native_presentation(&mut self) -> Result<()> {
+        let motion = self
+            .native_motion
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("presentation requires native motion"))?;
+        ensure!(
+            motion.placement.is_some() && motion.rocking.is_some(),
+            "presentation requires placement and rocking"
+        );
+        ensure!(
+            motion.bodies.iter().all(|b| !b.dead),
+            "presentation only supports living ships"
+        );
+        motion.presentation = Some(
+            motion
+                .bodies
+                .iter()
+                .map(|b| RootPose {
+                    position: b.state.position,
+                    angles: b.state.angles,
+                })
+                .collect(),
+        );
+        Ok(())
     }
     fn enable_native_rocking(&mut self) -> Result<()> {
         let mut bodies = Vec::new();
@@ -260,6 +308,16 @@ impl Fleet {
             }
             if let Some(binding)=&m.placement {
                 report["placement"]=json!({"original_ship_parameters":false,"bodies":binding.states.iter().map(|s|json!({"immersion_bits":s.immersion.to_bits(),"waterline_bits":s.waterline.to_bits()})).collect::<Vec<_>>()});
+            }
+            if let Some(poses)=&m.presentation {
+                let binding=m.placement.as_ref().unwrap();
+                report["presentation"]=json!({"living_only":true,"bodies":poses.iter().enumerate().map(|(i,p)| {
+                    let fields=["ship.speed","ship.pos","ship.ang"].map(|path| {
+                        let node=binding.attributes.lookup_path(binding.characters[i],path).unwrap();
+                        ["x","y","z"].map(|key|node.and_then(|n|binding.attributes.value(n,Some(key))))
+                    });
+                    json!({"position_bits":p.position.map(f32::to_bits),"angles_bits":p.angles.map(f32::to_bits),"script":{"speed":fields[0],"pos":fields[1],"ang":fields[2]}})
+                }).collect::<Vec<_>>()});
             }
             report
         })
@@ -373,6 +431,7 @@ impl Fleet {
                 let delta = elapsed - motion.elapsed_ms;
                 for index in 0..2 {
                     if self.visible[index] {
+                        let presented = motion.presentation.as_mut().map(|p| &mut p[index]);
                         if let Some(rocking) = &mut motion.rocking {
                             rocking.sea.seconds = self.seconds;
                             rocking.bodies[index].parameters.offsets = motion.bodies[index].offsets;
@@ -381,12 +440,21 @@ impl Fleet {
                                 rocking: &mut rocking.bodies[index],
                                 sea: &mut rocking.sea,
                             };
-                            motion.bodies[index].advance(delta, false, &mut port)?;
+                            step_body(&mut motion.bodies[index], presented, delta, &mut port)?;
                         } else {
-                            motion.bodies[index].advance(
+                            step_body(
+                                &mut motion.bodies[index],
+                                presented,
                                 delta,
-                                false,
                                 &mut motion.inputs[index],
+                            )?;
+                        }
+                        if motion.presentation.is_some() {
+                            let binding = motion.placement.as_mut().unwrap();
+                            ship_presentation::publish_character(
+                                &mut binding.attributes,
+                                binding.characters[index],
+                                &motion.bodies[index],
                             )?;
                         }
                     }
@@ -603,6 +671,9 @@ fn load(options: &Options) -> Result<Fleet> {
     if options.native_ship_placement {
         fleet.enable_native_placement(options.ship_immersion, options.ship_waterline)?;
     }
+    if options.native_ship_presentation {
+        fleet.enable_native_presentation()?;
+    }
     Ok(fleet)
 }
 pub fn run(options: &Options) -> Result<()> {
@@ -633,6 +704,91 @@ pub fn run(options: &Options) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_presentation_uses_pre_move_pose_and_publishes_post_move_state() {
+        let mut f = generated().unwrap();
+        f.preview = true;
+        f.enable_native_motion();
+        f.enable_native_rocking().unwrap();
+        f.enable_native_placement(0.75, 0.5).unwrap();
+        f.enable_native_presentation().unwrap();
+        f.native_motion.as_mut().unwrap().bodies[0].state.rotation[1] = 0.6;
+        f.advance_frames(1.5).unwrap();
+        f.present_at(1.5, false).unwrap();
+        let previous = f
+            .native_motion
+            .as_ref()
+            .unwrap()
+            .bodies
+            .iter()
+            .map(|b| b.state)
+            .collect::<Vec<_>>();
+        f.advance_frames(1.52).unwrap();
+        f.present_at(1.52, false).unwrap();
+        let m = f.native_motion.as_ref().unwrap();
+        let poses = m.presentation.as_ref().unwrap();
+        let report = f.motion_report().unwrap();
+        for i in 0..2 {
+            let current = m.bodies[i].state;
+            assert_eq!(poses[i].position, previous[i].position);
+            assert_eq!(poses[i].angles[1], previous[i].angles[1]);
+            assert_eq!(
+                poses[i].angles[2],
+                previous[i].angles[2] + current.rotation[1].clamp(-0.25, 0.25)
+            );
+            assert_eq!(
+                f.poses[i].translation[1].to_bits(),
+                (previous[i].position[1] - 0.75 - 0.5).to_bits()
+            );
+            assert_ne!(current.position, previous[i].position);
+            assert_eq!(
+                report["presentation"]["bodies"][i]["script"]["pos"][1],
+                storm_core::format_float(current.position[1])
+            );
+            assert_eq!(
+                report["presentation"]["bodies"][i]["script"]["ang"][2],
+                storm_core::format_float(current.angles[2])
+            );
+            let history = f.assets[i]
+                .ship_state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap();
+            assert_eq!(history.last().unwrap().roll, f.poses[i].roll);
+        }
+    }
+    #[test]
+    fn presentation_and_script_outputs_freeze_only_for_the_released_owner() {
+        let run = |time| {
+            let mut f = generated().unwrap();
+            f.enable_native_motion();
+            f.enable_native_rocking().unwrap();
+            f.enable_native_placement(0.75, 0.5).unwrap();
+            f.enable_native_presentation().unwrap();
+            f.advance(time).unwrap()
+        };
+        let at_release = run(2.0);
+        let after = run(3.0);
+        let a = at_release.motion_report().unwrap();
+        let b = after.motion_report().unwrap();
+        assert_eq!(
+            a["presentation"]["bodies"][0],
+            b["presentation"]["bodies"][0]
+        );
+        assert_ne!(
+            a["presentation"]["bodies"][1],
+            b["presentation"]["bodies"][1]
+        );
+        let whole = run(1.0);
+        let fractional = run(1.005);
+        assert_eq!(whole.motion_report(), fractional.motion_report());
+        assert_eq!(
+            whole.poses[0].matrix().unwrap(),
+            fractional.poses[0].matrix().unwrap()
+        );
+    }
     #[test]
     fn immersion_and_waterline_shift_presentation_without_changing_native_motion() {
         let run = |placement| {

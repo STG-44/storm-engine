@@ -747,3 +747,9 @@ body state, and four generated/original Metal captures pass. The interactive
 viewer keeps both ships and supports orbit, pause, immersion changes and fire.
 Full mounted gameplay and original SEA remain pending; see
 [placement/viewer scope](SHIP_PLACEMENT.md).
+
+[Living ship frames](SHIP_FRAME.md) retain Execute's pre-Move model pose,
+bounded additive turn heel and post-Move script outputs. The viewer uses this
+boundary and supports held A/D steering. Body state, model root and script
+fields remain separate; complete mounted gameplay and original sea/force
+providers remain pending.

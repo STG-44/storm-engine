@@ -91,7 +91,7 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
-          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --fleet-window --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --fleet-window --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 1.5 --headless native-ship-rocking-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
@@ -155,6 +155,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-placement-state.json
           python -c "import json; s=json.load(open('ship-placement-state.json')); r=s['native_motion']['placement']; assert r['original_ship_parameters'] is False; assert r['bodies']==[{'immersion_bits':1061158912,'waterline_bits':1056964608}]*2; a=json.load(open('ship-rocking-state.json')); assert s['native_motion']['bodies']==a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise living ship presentation and script state outputs
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-presentation-state.json
+          python -c "import json; s=json.load(open('ship-presentation-state.json')); m=s['native_motion']; r=m['presentation']; assert r['living_only'] is True; a=json.load(open('ship-placement-state.json')); assert m['bodies']==a['native_motion']['bodies']; p=next(v for v in s['snapshots'] if v['phase']=='first_released')['native_motion']['presentation']['bodies']; assert p[0]==r['bodies'][0] and p[1]!=r['bodies'][1]; assert all(isinstance(v,str) for b in r['bodies'] for row in b['script'].values() for v in row)"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -189,6 +193,7 @@ jobs:
             ship-motion-state.json
             ship-rocking-state.json
             ship-placement-state.json
+            ship-presentation-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

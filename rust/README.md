@@ -501,3 +501,9 @@ Space pauses, bracket keys adjust immersion, B toggles fire, R restarts and Esc
 closes. Both ships stay visible; the 30-second preview pauses at its end.
 Use `--model /path/to/ship.gm --game-dir /path/to/game` for original resources.
 See [viewer and placement scope](../docs/SHIP_PLACEMENT.md).
+
+The viewer now uses original living-frame presentation: the model keeps the
+pre-Move pose and adds bounded turn heel, while script outputs describe the
+post-Move state. Hold physical A/D to steer the first ship; release to centre.
+For CPU/batch use add `--native-ship-presentation` alongside placement/rocking.
+See [living frame scope](../docs/SHIP_FRAME.md).

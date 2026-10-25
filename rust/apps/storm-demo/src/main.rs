@@ -91,6 +91,9 @@ struct Options {
     /// Apply native character immersion and mounted waterline to the model root.
     #[arg(long, requires = "native_ship_motion")]
     native_ship_placement: bool,
+    /// Use living Execute's delayed model pose, turn heel and script state outputs.
+    #[arg(long, requires_all = ["native_ship_placement", "native_ship_rocking"])]
+    native_ship_presentation: bool,
     /// Diagnostic character Ship.Immersion in metres (original scripts are not loaded).
     #[arg(long, requires = "native_ship_placement", default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
     ship_immersion: f32,

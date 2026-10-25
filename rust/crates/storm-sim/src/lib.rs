@@ -11,6 +11,7 @@ pub mod pose_history;
 mod rig;
 pub mod ship_motion;
 pub mod ship_placement;
+pub mod ship_presentation;
 pub mod ship_queries;
 pub mod ship_rocking;
 pub mod ship_sails;

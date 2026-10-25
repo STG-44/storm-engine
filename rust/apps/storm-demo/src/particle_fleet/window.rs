@@ -24,6 +24,8 @@ fn prepare(
     if fleet.native_motion.as_ref().unwrap().placement.is_none() {
         fleet.enable_native_placement(0.0, 0.0)?;
     }
+    fleet.enable_native_presentation()?;
+    fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] = 0.0;
     fleet.advance_frames(seconds)?;
     fleet.present_at(seconds, false)?;
     let mut camera = OrbitCamera::new(&fleet.assets[0]);
@@ -53,6 +55,8 @@ struct State {
     dragging: bool,
     cursor: Option<(f64, f64)>,
     frames: u64,
+    left: bool,
+    right: bool,
 }
 impl State {
     async fn new(
@@ -97,11 +101,13 @@ impl State {
             dragging: false,
             cursor: None,
             frames: 0,
+            left: false,
+            right: false,
         };
         state.resize(size);
         state.window.focus_window();
         eprintln!(
-            "Viewer: drag/arrows orbit; scroll zoom; Space pause; [/] immersion; B toggle fire; R restart the 30-second preview; Esc close. Both ships stay visible."
+            "Viewer: drag/arrows orbit; scroll zoom; Space pause; hold A/D steer first ship; [/] immersion; B toggle fire; R restart the 30-second preview; Esc close. Both ships stay visible."
         );
         Ok(state)
     }
@@ -132,6 +138,10 @@ impl State {
             binding.states[i].calculate_immersion(&binding.attributes, binding.characters[i])?;
         }
         Ok(())
+    }
+    fn steer(&mut self) {
+        self.fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] =
+            f32::from(u8::from(self.right)) - f32::from(u8::from(self.left));
     }
     fn toggle_fire(&mut self) -> Result<()> {
         let active = self.fleet.sessions.iter().any(|s| {
@@ -212,7 +222,7 @@ impl State {
             .unwrap()
             .states[0]
             .immersion;
-        self.window.set_title(&format!("Storm — корабли • осадка {immersion:.2} м • {seconds:.1}/30 с{} • Пробел: пауза • R: сначала",
+        self.window.set_title(&format!("Storm — корабли • A/D: руль • осадка {immersion:.2} м • {seconds:.1}/30 с{} • Пробел: пауза • R: сначала",
             if self.clock.paused {" • пауза"} else {""}));
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
@@ -259,6 +269,9 @@ impl Application<'_> {
             WindowEvent::Focused(false) => {
                 s.dragging = false;
                 s.cursor = None;
+                s.left = false;
+                s.right = false;
+                s.steer();
             }
             WindowEvent::MouseInput {
                 state,
@@ -283,6 +296,20 @@ impl Application<'_> {
                 s.camera.distance = (s.camera.distance * 0.9_f32.powf(lines))
                     .clamp(s.camera.radius * 0.1, s.camera.radius * 20.0);
             }
+            WindowEvent::KeyboardInput { event, .. }
+                if matches!(
+                    event.physical_key,
+                    PhysicalKey::Code(KeyCode::KeyA | KeyCode::KeyD)
+                ) =>
+            {
+                let pressed = event.state == ElementState::Pressed;
+                if event.physical_key == PhysicalKey::Code(KeyCode::KeyA) {
+                    s.left = pressed;
+                } else {
+                    s.right = pressed;
+                }
+                s.steer();
+            }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => event_loop.exit(),
@@ -297,6 +324,8 @@ impl Application<'_> {
                         s.scenes = scenes;
                         s.camera = camera;
                         s.clock = Timeline::new(0.0, self.options.paused);
+                        s.left = false;
+                        s.right = false;
                     }
                     PhysicalKey::Code(KeyCode::ArrowLeft) => s.camera.yaw -= 0.08,
                     PhysicalKey::Code(KeyCode::ArrowRight) => s.camera.yaw += 0.08,
