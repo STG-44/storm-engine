@@ -79,8 +79,14 @@ The oracle compiles eight unedited SHIP methods, the impulse switch case,
 RotateAroundY, native movement/strength/touch structs and retained math constants
 with the complete CVECTOR header under UBSan and disabled FP contraction.
 Sixty-four sequences compare all 704 complete state/strength/provider-call/touch
-snapshots as float bits. Character lookup/float values, MESSAGE, construction and
-ShipRocking are adapters; the oracle does not execute native Mount or Execute.
+snapshots as float bits when arithmetic receives the recorded native sinf/cosf
+values. The oracle observes those actual C-library calls; the Rust test also
+checks their argument bits and call sequence. Production movement uses the
+pinned scalar software `libm` 0.2.16 sine/cosine kernels, keeping platform C-library
+rounding differences out of the body simulation. Every observed software result
+must stay within one ULP of native output, with exact signs/signed zeros. This
+separates equation parity from the explicitly chosen portable trig backend.
+Character lookup/float values, MESSAGE, construction and ShipRocking are adapters; the oracle does not execute native Mount or Execute.
 
 Cases cover impulse/inertial slots, capacity/reuse, reserved deletion, zero and
 positive millisecond frames, raw negative coefficients, SMALL_DELTA boundaries,

@@ -1,5 +1,7 @@
 """Retained native movement/strength/message bodies and vector math under UBSan.
 Character tree/float lookup, MESSAGE, construction and ShipRocking are adapters.
+Native sinf/cosf calls are observed; Rust arithmetic replays those values, while
+production uses pinned software trig checked separately against each observation.
 This does not execute native Mount, sail/wind speed providers, sea, collisions,
 AI or complete SHIP::Execute. TouchMove is a prediction call, not contact resolution.
 """
@@ -45,6 +47,12 @@ using BOOL=int32_t;
 constexpr float PId2=3.14159265358979323846f/2.0f;
 __STRUCTS__
 std::vector<std::string> calls;
+std::vector<std::array<uint32_t,3>> trig;
+float observed_sin(float x){float value=::sinf(x);trig.push_back({0,std::bit_cast<uint32_t>(x),std::bit_cast<uint32_t>(value)});return value;}
+float observed_cos(float x){float value=::cosf(x);trig.push_back({1,std::bit_cast<uint32_t>(x),std::bit_cast<uint32_t>(value)});return value;}
+#define sinf observed_sin
+#define cosf observed_cos
+
 struct ATTRIBUTES {float z=12.0f,y=0.08f,value=0;ATTRIBUTES*FindAClass(ATTRIBUTES*,const char* p){std::string s(p);calls.push_back(s=="Ship.MaxSpeedZ"?"z":"y");value=s=="Ship.MaxSpeedZ"?z:y;return this;}float GetAttributeAsFloat(){return value;}};
 struct MESSAGE {bool inertia;std::array<float,6> values;size_t cursor=0;int32_t Long(){return inertia?-7:0;}float Float(){return values.at(cursor++);}};
 struct SHIP {SHIP_STATE State{};std::array<STRENGTH,MAX_STRENGTH> Strength{};CVECTOR vSpeedAccel=0.0f;float fXOffset=1000,fZOffset=-2000,fFixedSpeed=9,fInitialPerkAngle=0;bool bSetFixed=false,bPerkTurnActive=false,dead=false;ATTRIBUTES character;ATTRIBUTES*GetACharacter(){return &character;}bool isDead(){return dead;}
@@ -55,7 +63,7 @@ struct SHIP {SHIP_STATE State{};std::array<STRENGTH,MAX_STRENGTH> Strength{};CVE
 __BODIES__
 uint32_t bits(float f){return std::bit_cast<uint32_t>(f);}void vec(CVECTOR v){std::cout<<"["<<bits(v.x)<<","<<bits(v.y)<<","<<bits(v.z)<<"]";}
 void touch(TOUCH_PARAMS*p){if(!p){std::cout<<"null";return;}std::cout<<"[";vec(p->vSpeed);std::cout<<",";vec(p->vRotate);std::cout<<",";vec(p->vPos);std::cout<<",";vec(p->vAng);std::cout<<"]";}
-void snapshot(SHIP&s,int result,TOUCH_PARAMS*old=nullptr,TOUCH_PARAMS*next=nullptr){std::cout<<"{\"state\":[";vec(s.State.vPos);std::cout<<",";vec(s.State.vAng);std::cout<<",";vec(s.State.vSpeed);std::cout<<",";vec(s.State.vRotate);std::cout<<",";vec(s.State.vInertiaAccel);std::cout<<",";vec(s.State.vInertiaBrake);std::cout<<","<<bits(s.State.fMassInertia)<<"],\"strengths\":[";bool first=true;for(auto&t:s.Strength){if(!first)std::cout<<",";first=false;std::cout<<"["<<(t.bUse?"true":"false")<<","<<(t.bInertia?"true":"false")<<",";vec(t.vSpeed);std::cout<<",";vec(t.vRotate);std::cout<<"]";}std::cout<<"],\"accel\":";vec(s.vSpeedAccel);std::cout<<",\"calls\":[";first=true;for(auto&c:calls){if(!first)std::cout<<",";first=false;std::cout<<"\""<<c<<"\"";}calls.clear();std::cout<<"],\"result\":"<<result<<",\"old\":";touch(old);std::cout<<",\"new\":";touch(next);std::cout<<"}\n";}
+void snapshot(SHIP&s,int result,TOUCH_PARAMS*old=nullptr,TOUCH_PARAMS*next=nullptr){std::cout<<"{\"state\":[";vec(s.State.vPos);std::cout<<",";vec(s.State.vAng);std::cout<<",";vec(s.State.vSpeed);std::cout<<",";vec(s.State.vRotate);std::cout<<",";vec(s.State.vInertiaAccel);std::cout<<",";vec(s.State.vInertiaBrake);std::cout<<","<<bits(s.State.fMassInertia)<<"],\"strengths\":[";bool first=true;for(auto&t:s.Strength){if(!first)std::cout<<",";first=false;std::cout<<"["<<(t.bUse?"true":"false")<<","<<(t.bInertia?"true":"false")<<",";vec(t.vSpeed);std::cout<<",";vec(t.vRotate);std::cout<<"]";}std::cout<<"],\"accel\":";vec(s.vSpeedAccel);std::cout<<",\"calls\":[";first=true;for(auto&c:calls){if(!first)std::cout<<",";first=false;std::cout<<"\""<<c<<"\"";}std::cout<<"],\"trig\":[";first=true;for(auto&t:trig){if(!first)std::cout<<",";first=false;std::cout<<"["<<t[0]<<","<<t[1]<<","<<t[2]<<"]";}calls.clear();trig.clear();std::cout<<"],\"result\":"<<result<<",\"old\":";touch(old);std::cout<<",\"new\":";touch(next);std::cout<<"}\n";}
 struct Case{float yaw;uint32_t delta;bool collision,dead,fixed,perk;float angle,mass,mainz,mainx;};
 int main(){std::vector<Case> cases={__CASES__};for(auto&c:cases){SHIP s;s.State.vPos=CVECTOR(3,7,-5);s.State.vAng=CVECTOR(0.1f,c.yaw,-0.2f);s.State.vSpeed=CVECTOR(2,0.5f,8);s.State.vRotate=CVECTOR(0.1f,0.02f,-0.1f);s.State.vInertiaAccel=CVECTOR(0.5f,0.8f,0.25f);s.State.vInertiaBrake=CVECTOR(0.2f,0.7f,0.45f);s.State.fMassInertia=c.mass;s.Strength[0].bInertia=true;s.Strength[0].vSpeed=CVECTOR(c.mainx,0,c.mainz);s.Strength[0].vRotate=CVECTOR(0,0.3f,0);s.bSetFixed=c.fixed;s.bPerkTurnActive=c.perk;s.fInitialPerkAngle=c.angle;s.dead=c.dead;snapshot(s,0);
  STRENGTH t{};t.bInertia=false;t.vSpeed=CVECTOR(0.375f,-1,2);t.vRotate=CVECTOR(1,0.05f,-0.2f);int result=s.AddStrength(&t);t.bInertia=true;t.vSpeed=CVECTOR(5,4,3);t.vRotate=CVECTOR(0.5f,0.25f,0.75f);result=s.AddStrength(&t);snapshot(s,result);

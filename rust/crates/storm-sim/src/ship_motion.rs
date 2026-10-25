@@ -37,6 +37,13 @@ pub struct TouchPreview {
 }
 /// Mount/sail/weather supply target limits; the sea provider supplies ShipRocking.
 pub trait MovementPort {
+    // Pin the scalar software implementation: platform sinf/cosf differ in low bits.
+    fn sin(&mut self, angle: f32) -> f32 {
+        libm::sinf(angle)
+    }
+    fn cos(&mut self, angle: f32) -> f32 {
+        libm::cosf(angle)
+    }
     fn max_speed_z(&mut self) -> f32;
     fn max_speed_y(&mut self) -> f32;
     fn rocking(
@@ -240,12 +247,12 @@ impl ShipMotion {
         }
         let knots_to_meters = |v: f32| v * 1853.0f32 / 3600.0f32;
         let mut k = knots_to_meters(next.fixed_speed.unwrap_or(next.state.speed[2])) * delta;
-        next.state.position[2] += k * next.state.angles[1].cos();
-        next.state.position[0] += k * next.state.angles[1].sin();
+        next.state.position[2] += k * port.cos(next.state.angles[1]);
+        next.state.position[0] += k * port.sin(next.state.angles[1]);
         k = knots_to_meters(next.state.speed[0]) * delta;
         let sideways = next.state.angles[1] + std::f32::consts::FRAC_PI_2;
-        next.state.position[2] += k * sideways.cos();
-        next.state.position[0] += k * sideways.sin();
+        next.state.position[2] += k * port.cos(sideways);
+        next.state.position[0] += k * port.sin(sideways);
         next.state.angles[1] += next.state.rotation[1] * delta;
         next.validate()?;
         *self = next;
@@ -297,15 +304,21 @@ impl ShipMotion {
         }))
     }
 }
-impl Entity for ShipMotion {
-    fn process_message(&mut self, message: &mut Message) -> Result<u64> {
+impl ShipMotion {
+    pub fn process_message_with_port(
+        &mut self,
+        message: &mut Message,
+        port: &mut impl MovementPort,
+    ) -> Result<u64> {
         match message.long()? {
             MSG_SHIP_ADD_MOVE_IMPULSE => {
                 let inertia = message.long()? != 0;
                 let mut speed = [message.float()?, message.float()?, message.float()?];
                 let yaw = -self.state.angles[1];
-                let x = speed[0] * yaw.cos() + speed[2] * yaw.sin();
-                let z = speed[2] * yaw.cos() - speed[0] * yaw.sin();
+                let cos = port.cos(yaw);
+                let sin = port.sin(yaw);
+                let x = speed[0] * cos + speed[2] * sin;
+                let z = speed[2] * cos - speed[0] * sin;
                 speed[0] = x;
                 speed[2] = z;
                 let rotation = [message.float()?, message.float()?, message.float()?];
@@ -319,6 +332,11 @@ impl Entity for ShipMotion {
             code => bail!("SHIP motion message {code} is not implemented"),
         }
         Ok(0)
+    }
+}
+impl Entity for ShipMotion {
+    fn process_message(&mut self, message: &mut Message) -> Result<u64> {
+        self.process_message_with_port(message, &mut FlatMovement::default())
     }
 }
 #[cfg(test)]

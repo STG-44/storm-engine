@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+libm.workspace = true
 glam = { workspace = true, features = ["f64"] }
 storm-core = { path = "../storm-core" }
 

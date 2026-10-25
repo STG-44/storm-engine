@@ -686,3 +686,10 @@ fixtures. Full Mount/Execute, original sea/sail/weather providers and gameplay
 are pending. The [weather roadmap](WEATHER_ROADMAP.md) now separately tracks
 weather state, day/night, sky/fog, rain/storms/lightning/audio, wind integration
 and location/save transitions.
+
+
+SHIP movement uses pinned scalar software sine/cosine to avoid platform-library
+rounding differences. The native oracle records C-library trig observations;
+movement arithmetic replays them bit-exactly and the production trig kernels
+are checked within one ULP, including exact signs/signed zeros. Existing sailing
+and rendering math remain unchanged; see [movement numeric scope](SHIP_MOTION.md).
