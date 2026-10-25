@@ -51,17 +51,18 @@ default names and source-to-service dispatch. The extended GPU atlas test
 requires identical pixels when the named profile uses the opposite channel,
 and an unlit image when a different cached name is selected.
 
-Cache selection remains explicit. The subsequent [project increment](PARTICLE_PROJECTS.md)
-adds startup PRJ/atlas selection. Global PARTICLES
-registration, other creation messages and dynamic GPU resource loading are
-pending. The default atlas, existing shader and prior checked lifetime/count/
+The no-project path retains explicit cache selection. [Project selection](PARTICLE_PROJECTS.md)
+and the [shared service](PARTICLE_MANAGER.md) now support on-demand billboard
+creation and GPU meshes for any supported profile in the selected project.
+Global PARTICLES registration and the remaining creation messages are pending. The default atlas, existing shader and prior checked lifetime/count/
 world-replay limits still apply. Model/attached particles and remaining
 techniques are unfinished.
 
 The subsequent [instance increment](PARTICLE_INSTANCES.md) retains overlapping
 generations and separate same-profile instances in both channels. Complete
 global manager/RNG behavior remains pending.
-Multiple diagnostic entities still share one preview ship. Sound requests have
+The existing sailing-script adapter still shares one preview ship. The separate
+two-ship service diagnostic now supplies independent poses and owner routing. Sound requests have
 no playback. Full native SHIP, combat, game programs and saves remain pending.
 
 

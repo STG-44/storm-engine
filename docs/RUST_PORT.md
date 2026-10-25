@@ -55,6 +55,10 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Add [nested calls and the original frame-driven event queue](SCHEDULED_EVENTS.md).
   - [ ] Port remaining attribute encodings/conversions, cached script programs, complete script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
+  - [ ] Load land locations and implement player movement/collision.
+  - [ ] Support player movement on ship decks and boarding transitions.
+  - [ ] Port character combat, enemies and encounter logic.
+  - [ ] Complete naval SHIP logic, combat, interface and saves.
 - [ ] Verify representative gameplay and publish platform builds.
 
 A rough functional coverage estimate is recorded in [port status](PORT_STATUS.md):
@@ -641,3 +645,14 @@ rust-port PR updates use one matrix, with develop pushes/manual dispatch retaine
 Full global cache/GeomCache registration, arbitrary lazy creation, live project
 switching, native normal/blend techniques and manager RNG remain pending; see
 [project scope](PARTICLE_PROJECTS.md).
+
+
+The [shared particle service](PARTICLE_MANAGER.md) caches selected project XPS
+descriptions and prepares billboard definitions by native message request.
+Independent owners retain separate systems; explicit release/clear and native
+IsAlive-based completion replace the new mode's former timeout approximation.
+GPU scenes add requested profile meshes dynamically and draw multiple ships
+through shared depth. A deterministic two-ship diagnostic exercises pause,
+restart and first-owner removal while the second keeps emitting. This advances
+project/service presentation; complete native processors, global RNG, SHIP
+physics, naval combat, land/deck locomotion and boarding remain pending.

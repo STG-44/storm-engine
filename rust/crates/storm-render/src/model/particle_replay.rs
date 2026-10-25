@@ -359,6 +359,20 @@ pub(super) struct Replay {
     runs: BTreeMap<ParticleStream, Run>,
 }
 impl Replay {
+    pub fn alive(
+        &mut self,
+        style: &ParticleStyle,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        stream: ParticleStream,
+    ) -> Result<bool> {
+        let (_, stats) = self.snapshot(style, seconds, start, stop, stream, None)?;
+        Ok(storm_sim::particle_emitter::System::is_alive([(
+            self.runs.get(&stream).is_none_or(|run| run.emitter.stopped),
+            stats.living as u32,
+        )]))
+    }
     pub fn retain_instances(&mut self, instances: &std::collections::BTreeSet<u64>) {
         self.runs.retain(|key, _| instances.contains(&key.instance));
     }

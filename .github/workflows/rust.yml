@@ -91,6 +91,8 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 3 --headless particle-survivor-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --headless model-preview.png --width 641 --height 361
@@ -134,6 +136,10 @@ jobs:
         run: |
           cargo run -p storm-formats --bin storm-assets --locked -- decode rust/crates/storm-formats/reference/particle_project/project.prj > particle-project-state.json
           python -c "import json; p=json.load(open('particle-project-state.json'))['decoded']; assert p['kind']=='particle_project' and p['texture']=='fixture.tga'; assert p['systems']==['fire','smoke']; assert p['system_bytes']==[[102,105,114,101],[115,109,111,107,101]]"
+      - name: Exercise shared particle service with two ships
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --time 3 --particle-fleet-report particle-fleet-state.json
+          python -c "import json; s=json.load(open('particle-fleet-state.json')); assert s['fixture']=='two_ship_particle_service' and s['original_gameplay'] is False; m=s['service']['manager']; assert m['cached']==3 and m['prepared']==3 and m['systems']==2 and m['owners']==[2]; a=s['snapshots'][2]['ships']; assert len(a[0]['emissions'])==4 and len(a[1]['emissions'])==2; assert [v['visible'] for v in s['ships']]==[False,True]; assert all(not e['paused'] for e in s['snapshots'][-1]['ships'][1]['emissions'])"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -164,6 +170,7 @@ jobs:
             ship-fire-script-state.json
             particle-profile-state.json
             particle-project-state.json
+            particle-fleet-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
@@ -257,4 +264,14 @@ jobs:
             intact-sailing.json
             holed-sailing.png
             holed-sailing.json
+          if-no-files-found: error
+
+      - name: Upload shared-service fleet previews
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: particle-fleet-vulkan
+          path: |
+            particle-fleet-vulkan.png
+            particle-survivor-vulkan.png
           if-no-files-found: error

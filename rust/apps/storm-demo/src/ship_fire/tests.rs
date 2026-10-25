@@ -210,6 +210,7 @@ fn configured_manual_toggle_uses_original_cached_names() {
         },
     )));
     let mut session = Session {
+        owner: EntityId::from_raw(1),
         controller: Some(controller),
         world,
     };
@@ -293,6 +294,7 @@ fn native_preview_controls_stop_restart_and_reset_without_repopulating_safe_dele
         },
     )));
     let mut session = Session {
+        owner: EntityId::from_raw(1),
         controller: Some(controller.clone()),
         world,
     };

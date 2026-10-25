@@ -78,6 +78,7 @@ impl Session {
                 options.ship_character,
                 ship.map_or(7.0, |ship| ship.fire_tail_seconds.max(7.0)),
                 ship.and_then(|ship| ship.particle_profiles.clone()),
+                ship.and_then(|ship| ship.particle_library.clone()),
             )?;
             simulation = scripted;
             native_fire = fire;

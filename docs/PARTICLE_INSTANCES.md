@@ -112,3 +112,10 @@ stay outside Git. Whole-profile decoding/damage audits were not repeated.
 Prior local native-window timeouts remain unverified; hosted macOS/Windows
 jobs establish CPU/build behavior, with physical GPU/window coverage pending.
 The preview/global-manager limits above still apply.
+
+
+The [shared project service](PARTICLE_MANAGER.md) now adds on-demand billboard
+creation, explicit owner routing/release and multi-scene presentation. Native
+IsAlive preserves paused looping systems until explicit release; the older
+no-project preview retains its documented seven-second minimum tail policy.
+Complete global native processor/RNG behavior remains pending.

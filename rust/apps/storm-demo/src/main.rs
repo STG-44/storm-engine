@@ -3,6 +3,7 @@ use clap::{ArgGroup, Parser, ValueEnum};
 use std::{path::PathBuf, sync::Arc};
 mod damage_events;
 mod flags;
+mod particle_fleet;
 mod rig_report;
 mod sailing;
 mod ship_controls;
@@ -78,6 +79,12 @@ struct Options {
     /// Resource-free crew, fire, masts and hull damage fixture.
     #[arg(long)]
     ship_demo: bool,
+    /// Two ships share the particle service; deterministic fire/restart/release fixture.
+    #[arg(long, conflicts_with_all = ["sail_demo", "rigging_demo", "ship_demo", "sail", "frames", "gpu_info"])]
+    particle_fleet_demo: bool,
+    /// Export the shared-service fleet scenario without requiring a GPU.
+    #[arg(long, requires = "particle_fleet_demo")]
+    particle_fleet_report: Option<PathBuf>,
     /// Game installation or its RESOURCE directory (original files stay outside Git).
     #[arg(long, requires = "model")]
     game_dir: Option<PathBuf>,
@@ -855,6 +862,9 @@ impl ApplicationHandler for Application {
 
 fn main() -> Result<()> {
     let options = Options::parse();
+    if options.particle_fleet_demo {
+        return particle_fleet::run(&options);
+    }
     if options.gpu_info {
         let instance = create_instance(options.backend.flags())?;
         let adapters = pollster::block_on(instance.enumerate_adapters(options.backend.flags()));
@@ -980,6 +990,7 @@ fn main() -> Result<()> {
         if let Some(sailing) = &sailing {
             sailing.apply_fire(&mut asset.ship_state);
         }
+        asset.sync_particle_profiles()?;
         std::fs::write(
             path,
             serde_json::to_vec_pretty(&rig_report::report(
@@ -1018,6 +1029,11 @@ fn main() -> Result<()> {
                     .expect("unique headless asset")
                     .ship_state,
             );
+        }
+        if let Some(asset) = &mut asset {
+            Arc::get_mut(asset)
+                .expect("unique headless asset")
+                .sync_particle_profiles()?;
         }
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let info = gpu.adapter.get_info();

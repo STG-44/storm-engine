@@ -161,6 +161,18 @@ pub struct System {
     pub emitters: Vec<Emitter>,
 }
 impl System {
+    /// Native ParticleSystem::IsAlive: a running emitter or any retained particle.
+    pub fn is_alive(emitters: impl IntoIterator<Item = (bool, u32)>) -> bool {
+        let mut count = 0u32;
+        for (stopped, active) in emitters {
+            count = count.wrapping_add(active);
+            if !stopped {
+                return true;
+            }
+        }
+        count > 0
+    }
+
     pub fn execute(&mut self, delta: f32, port: &mut impl BirthPort) -> Result<usize> {
         if !self.paused {
             for emitter in &mut self.emitters {

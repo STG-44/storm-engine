@@ -13,6 +13,7 @@ use storm_sim::fire::{FireEffects, ParticleId, ParticleKind, ShipFire};
 pub type Controller = ShipFire<FirePoint, PreviewEffects>;
 pub type Controllers = Rc<RefCell<BTreeMap<u64, Weak<RefCell<Controller>>>>>;
 pub struct EffectsWorld {
+    manager: Option<storm_render::model::ParticleManager>,
     now: f32,
     retention: f32,
     next_id: u64,
@@ -24,6 +25,7 @@ pub struct EffectsWorld {
 impl Default for EffectsWorld {
     fn default() -> Self {
         Self {
+            manager: None,
             now: 0.0,
             retention: 7.0,
             next_id: 0,
@@ -35,6 +37,31 @@ impl Default for EffectsWorld {
     }
 }
 impl EffectsWorld {
+    pub fn set_library(
+        &mut self,
+        library: Option<std::sync::Arc<storm_render::model::ParticleLibrary>>,
+    ) -> Result<()> {
+        ensure!(
+            self.particles.is_empty() && self.manager.is_none(),
+            "particle manager already initialized"
+        );
+        if let Some(library) = library {
+            let mut manager = storm_render::model::ParticleManager::new(library);
+            manager.advance(self.now)?;
+            self.manager = Some(manager);
+        }
+        Ok(())
+    }
+    pub fn release_owner(&mut self, owner: EntityId) {
+        if let Some(manager) = &mut self.manager {
+            manager.release_owner(owner.raw());
+        }
+    }
+    pub fn emissions_for(&self, owner: EntityId) -> Vec<FireEmission> {
+        self.manager
+            .as_ref()
+            .map_or_else(|| self.emissions(), |m| m.emissions(owner.raw()))
+    }
     pub fn set_profiles(&mut self, profiles: Option<BTreeSet<String>>) {
         self.profiles = profiles;
     }
@@ -60,16 +87,26 @@ impl EffectsWorld {
             now.is_finite() && now >= self.now,
             "invalid fire service clock"
         );
+        if let Some(manager) = &mut self.manager {
+            manager.advance(now)?;
+        }
         self.now = now;
         self.particles
             .retain(|_, e| e.stopped.is_none_or(|t| now < t + self.retention));
         Ok(())
     }
     pub fn emissions(&self) -> Vec<FireEmission> {
-        self.particles.values().cloned().collect()
+        self.manager.as_ref().map_or_else(
+            || self.particles.values().cloned().collect(),
+            |m| m.all_emissions(),
+        )
     }
     pub fn report(&self) -> Json {
-        json!({"total":self.total,"recent":self.recent,"sound_playback":false})
+        let mut report = json!({"total":self.total,"recent":self.recent,"sound_playback":false});
+        if let Some(manager) = &self.manager {
+            report["manager"] = json!({"cached":manager.library.names().count(),"prepared":manager.library.prepared_count().ok(),"systems":manager.len(),"owners":manager.owners(),"ids":manager.ids()});
+        }
+        report
     }
 }
 pub struct PreviewEffects {
@@ -91,6 +128,26 @@ impl FireEffects for PreviewEffects {
         position: [f32; 3],
     ) -> Option<ParticleId> {
         let mut world = self.world.borrow_mut();
+        if let Some(manager) = &mut world.manager {
+            let result = manager.create(
+                self.entity.raw(),
+                name,
+                locator,
+                kind == ParticleKind::Smoke,
+            );
+            let (id, error) = match result {
+                Ok(Some(id)) => (id, None),
+                Ok(None) => (0, Some("profile_missing_or_instance_budget".to_owned())),
+                Err(error) => (0, Some(error.to_string())),
+            };
+            let mut event = json!({"op":"create_particle","id":id,"smoke":kind==ParticleKind::Smoke,"profile":name,"locator":locator,"position_bits":bits(position)});
+            if let Some(error) = error {
+                event["delivered"] = json!(false);
+                event["reason"] = json!(error);
+            }
+            world.record(self.entity, event);
+            return (id != 0).then_some(ParticleId(id));
+        }
         let profile = if let Some(cache) = &world.profiles {
             match storm_render::model::particle_profile_key(name) {
                 Ok(key) if cache.contains(&key) => Some(key),
@@ -125,7 +182,10 @@ impl FireEffects for PreviewEffects {
     }
     fn validate_particle(&mut self, id: ParticleId) -> bool {
         let mut world = self.world.borrow_mut();
-        let valid = world.particles.contains_key(&id);
+        let valid = world
+            .manager
+            .as_ref()
+            .map_or_else(|| world.particles.contains_key(&id), |m| m.validate(id.0));
         world.record(
             self.entity,
             json!({"op":"validate_particle","id":id.0,"valid":valid}),
@@ -135,6 +195,9 @@ impl FireEffects for PreviewEffects {
     fn pause_particle(&mut self, id: ParticleId) {
         let mut world = self.world.borrow_mut();
         let now = world.now;
+        if let Some(manager) = &mut world.manager {
+            manager.pause(id.0);
+        }
         if let Some(e) = world.particles.get_mut(&id) {
             e.stopped = Some(now);
         }
@@ -169,6 +232,7 @@ pub fn update(controller: &mut Controller, delta: f32, pose: ModelPose) -> Resul
     Ok(())
 }
 pub struct Session {
+    pub owner: EntityId,
     pub controller: Option<Rc<RefCell<Controller>>>,
     pub world: Rc<RefCell<EffectsWorld>>,
 }
@@ -233,7 +297,12 @@ impl Session {
         if let Some(controller) = &self.controller {
             controller.borrow_mut().stop_all();
         }
-        self.world.borrow_mut().particles.clear();
+        let mut world = self.world.borrow_mut();
+        if world.manager.is_some() {
+            world.release_owner(self.owner);
+        } else {
+            world.particles.clear();
+        }
     }
     pub fn advance(&mut self, now: f32, delta: f32, pose: ModelPose) -> Result<()> {
         self.world.borrow_mut().set_clock(now)?;
@@ -243,12 +312,12 @@ impl Session {
         Ok(())
     }
     pub fn apply(&self, state: &mut ShipState) {
-        state.native_fire = Some(self.world.borrow().emissions());
+        state.native_fire = Some(self.world.borrow().emissions_for(self.owner));
     }
     pub fn report(&self) -> Json {
         let states=self.controller.as_ref().map_or_else(Vec::new,|controller|controller.borrow().queries.fire_places().iter().map(|slot|
             json!({"active":slot.state.is_active(),"remaining_bits":slot.state.remaining().map(f32::to_bits),"owner":slot.state.owner(),"sound":slot.state.sound(),"profiles":slot.state.names()})).collect());
-        let emissions = self.world.borrow().emissions().iter().map(|e| {
+        let emissions = self.world.borrow().emissions_for(self.owner).iter().map(|e| {
             let mut report = json!({"instance":e.instance,"locator":e.point,"smoke":e.smoke,"started_bits":e.started.to_bits(),"stopped_bits":e.stopped.map(f32::to_bits)});
             if let Some(profile) = &e.profile { report["profile"] = json!(profile); }
             report

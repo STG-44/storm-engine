@@ -475,3 +475,10 @@ atlases at startup. The default-project option discovers root-level XPS files;
 named projects retain native INI ordering/gap/duplicate rules and texture suffix/
 stem requests. Presentation still uses the explicitly loaded billboard subset.
 See [project scope and verification](../docs/PARTICLE_PROJECTS.md).
+
+
+For project-backed native messages and the two-ship shared-service diagnostic,
+see [particle manager](../docs/PARTICLE_MANAGER.md). `--particle-fleet-demo`
+accepts `--particle-fleet-report fleet.json` without a GPU, or `--headless fleet.png`
+with `--time 1` (two ships) / `--time 3` (first ship released). Add `--model` and
+`--game-dir` to use an original model; commercial files remain external.

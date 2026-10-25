@@ -51,6 +51,8 @@ pub struct ShipAsset {
     /// None uses generated/legacy particles; Some requires an exact cached XPS profile.
     pub particle_profiles: Option<std::collections::BTreeSet<String>>,
     pub particle_project: Option<ParticleProjectInfo>,
+    pub particle_library: Option<std::sync::Arc<super::ParticleLibrary>>,
+    pub particle_texture: Option<usize>,
     pub crew_count: usize,
     pub waypoint_counts: Option<[usize; 2]>,
     pub waypoint_missing_links: usize,
@@ -136,10 +138,18 @@ impl ShipState {
                     && (e.instance == 0 || instances.insert(e.instance))
                     && e.started.is_finite()
                     && e.stopped.is_none_or(|t| t.is_finite() && t >= e.started)
-                    && e.profile.as_ref().is_none_or(|name| asset
-                        .particle_profiles
+                    && e.profile
                         .as_ref()
-                        .is_some_and(|cache| cache.contains(name)))),
+                        .is_none_or(|name| super::particle_profile_key(name)
+                            .is_ok_and(|key| key == *name)
+                            && (asset
+                                .particle_profiles
+                                .as_ref()
+                                .is_some_and(|cache| cache.contains(name))
+                                || asset
+                                    .particle_library
+                                    .as_ref()
+                                    .is_some_and(|library| library.contains(name))))),
                 "invalid native fire emission"
             );
         }

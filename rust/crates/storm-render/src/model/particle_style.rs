@@ -220,6 +220,18 @@ impl ParticleStyle {
     ) -> Result<(Vec<Option<StyleSample>>, BirthStats, MotionStats)> {
         self.instance_snapshot(seconds, start, stop, locator.into(), Some(world))
     }
+    pub fn instance_alive(
+        &self,
+        seconds: f32,
+        start: f32,
+        stop: Option<f32>,
+        stream: super::ParticleStream,
+    ) -> Result<bool> {
+        self.replay
+            .lock()
+            .map_err(|_| anyhow::anyhow!("particle replay lock poisoned"))?
+            .alive(self, seconds, start, stop, stream)
+    }
     pub fn retain_instances(&self, instances: &std::collections::BTreeSet<u64>) -> Result<()> {
         self.replay
             .lock()

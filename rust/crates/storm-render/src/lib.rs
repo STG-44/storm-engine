@@ -244,6 +244,23 @@ pub fn render_sailing_offscreen(
     })
 }
 
+/// Render independent ships through shared depth and one ocean pass.
+pub fn render_fleet_offscreen(
+    gpu: &Gpu,
+    scenes: &mut [model::ModelScene],
+    camera: &model::OrbitCamera,
+    wind: model::SailWind,
+    width: u32,
+    height: u32,
+    seconds: f32,
+) -> Result<Frame> {
+    render_offscreen_with(gpu, width, height, seconds, |encoder, target| {
+        model::ModelScene::draw_fleet(
+            scenes, gpu, encoder, target, width, height, seconds, camera, wind,
+        )
+    })
+}
+
 fn render_offscreen_with(
     gpu: &Gpu,
     width: u32,

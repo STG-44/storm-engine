@@ -63,13 +63,13 @@ fail loading rather than displaying a substituted image.
 
 ## Scope and verification
 
-The catalog describes available files. GPU resources and native fire handles
-still use the explicitly selected billboard subset (up to the preceding
-thirty-two-profile preview limit); unselected files are not claimed as loaded
-DataSources. Complete global cache/GeomCache registration, lazy arbitrary
-profile creation, live project switching, native normal/blend techniques,
-model/attached particles, raw Targa/DDS fallback, renderer TexPaths, manager RNG
-and full gameplay remain pending.
+The subsequent [shared service](PARTICLE_MANAGER.md) caches all available raw
+XPS descriptions in an explicitly selected project and prepares supported
+billboard definitions on request. The former up-front selection of extra
+profiles is still supported. Full native DataSource schema conversion,
+GeomCache registration, live project switching, normal/blend techniques,
+model/attached particles, raw Targa/DDS fallback, renderer TexPaths and manager
+RNG remain pending.
 Selection occurs before startup scripts and scene creation.
 
 The reference generator compiles unedited native KEY_NODE/SECTION storage,

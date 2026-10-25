@@ -289,21 +289,28 @@ impl Host for SailHost {
     }
 }
 
+#[cfg(test)]
 fn execute_with_ship(
     simulation: Sailing,
-    mut runtime: Runtime,
+    runtime: Runtime,
     fire_places: Vec<FirePoint>,
     initial_index: i32,
     tail_seconds: f32,
     profiles: Option<std::collections::BTreeSet<String>>,
 ) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
-    let mut host = SailHost::new(
+    let host = SailHost::new(
         simulation,
         fire_places,
         initial_index,
         tail_seconds,
         profiles,
     )?;
+    execute(host, runtime)
+}
+fn execute(
+    mut host: SailHost,
+    mut runtime: Runtime,
+) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
     let result = runtime.call("main", &[], &mut host, Limits::default())?;
     let result = match result {
         Value::Int(value) => json!({"type":"int", "value":value}),
@@ -329,9 +336,15 @@ fn execute_with_ship(
     } else {
         None
     };
+    let owner = if host.fire_used {
+        host.current_entity()?
+    } else {
+        EntityId::INVALID
+    };
     drop(runtime);
     drop(host.entities);
     let fire = host.fire_used.then(|| super::ship_fire::Session {
+        owner,
         controller,
         world: host.effects.clone(),
     });
@@ -348,6 +361,7 @@ pub fn run(
     initial_index: i32,
     tail_seconds: f32,
     profiles: Option<std::collections::BTreeSet<String>>,
+    library: Option<std::sync::Arc<storm_render::model::ParticleLibrary>>,
 ) -> Result<(Sailing, Json, Option<super::ship_fire::Session>)> {
     let entry = path
         .file_name()
@@ -356,14 +370,15 @@ pub fn run(
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty());
     let mut loader = DirectorySource::new(parent.unwrap_or(Path::new(".")))?;
     let runtime = Runtime::compile_with_loader(entry, &mut loader)?;
-    execute_with_ship(
+    let host = SailHost::new(
         simulation,
-        runtime,
         fire_places,
         initial_index,
         tail_seconds,
         profiles,
-    )
+    )?;
+    host.effects.borrow_mut().set_library(library)?;
+    execute(host, runtime)
 }
 
 #[cfg(test)]

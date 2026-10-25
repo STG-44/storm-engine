@@ -2,9 +2,12 @@
 mod assets;
 mod crew;
 mod effects;
+mod managed_particles;
 mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
+mod particle_manager;
+pub use particle_manager::{ParticleDefinition, ParticleLibrary, ParticleManager};
 mod particle_style;
 pub use particle_replay::{BirthStats, MotionStats, ParticleStream};
 pub use particle_style::{MAX_PARTICLE_LIFETIME, MotionProfile, ParticleStyle};
@@ -232,6 +235,7 @@ pub struct ModelScene {
     pose_bytes: Vec<u8>,
     pipeline: wgpu::RenderPipeline,
     ocean: wgpu::RenderPipeline,
+    camera_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
@@ -311,6 +315,37 @@ fn upload_model_texture(
         );
     }
     Ok(texture.create_view(&Default::default()))
+}
+
+fn model_camera_group(
+    device: &wgpu::Device,
+    camera_layout: &wgpu::BindGroupLayout,
+    camera_buffer: &wgpu::Buffer,
+    pose_buffer: &wgpu::Buffer,
+    wave_buffer: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Model camera"),
+        layout: camera_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: pose_buffer,
+                    offset: 0,
+                    size: std::num::NonZeroU64::new(OBJECT_BYTES as u64),
+                }),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wave_buffer.as_entire_binding(),
+            },
+        ],
+    })
 }
 
 impl ModelScene {
@@ -425,28 +460,13 @@ impl ModelScene {
             contents: bytemuck::bytes_of(&WaveUniform::from(storm_sim::Waves::default())),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-        let camera_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Model camera"),
-            layout: &camera_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                        buffer: &pose_buffer,
-                        offset: 0,
-                        size: std::num::NonZeroU64::new(OBJECT_BYTES as u64),
-                    }),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wave_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let camera_group = model_camera_group(
+            device,
+            &camera_layout,
+            &camera_buffer,
+            &pose_buffer,
+            &wave_buffer,
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Original texture sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -726,6 +746,7 @@ impl ModelScene {
             pose_bytes,
             pipeline,
             ocean,
+            camera_layout,
             camera_buffer,
             pose_buffer,
             pose: ModelPose::default(),
@@ -787,6 +808,156 @@ impl ModelScene {
         camera: &OrbitCamera,
         wind: SailWind,
     ) -> Result<()> {
+        Self::draw_fleet(
+            std::slice::from_mut(self),
+            gpu,
+            encoder,
+            target,
+            width,
+            height,
+            seconds,
+            camera,
+            wind,
+        )
+    }
+    /// All opaque ships share depth, followed by their particle draws in one pass.
+    /// Each scene keeps separate GPU buffers and replay/history state.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_fleet(
+        scenes: &mut [Self],
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        camera: &OrbitCamera,
+        wind: SailWind,
+    ) -> Result<()> {
+        ensure!(
+            !scenes.is_empty() && scenes.len() <= 16,
+            "fleet scene count must be 1..=16"
+        );
+        let mut total = 0usize;
+        for scene in scenes.iter_mut() {
+            scene.sync_particle_profiles(gpu)?;
+            for mesh in &scene.meshes {
+                if let Some((d, _)) = &mesh.dynamic
+                    && d.particle()
+                {
+                    total = total
+                        .checked_add(d.frame_vertex_count(&scene.ship_state, seconds)?)
+                        .ok_or_else(|| anyhow::anyhow!("fleet particle budget overflow"))?;
+                    ensure!(
+                        total <= MAX_PARTICLE_VERTICES,
+                        "fleet particle vertex budget"
+                    );
+                }
+            }
+        }
+        for scene in scenes.iter_mut() {
+            scene.prepare_frame(gpu, width, height, seconds, camera, wind)?;
+        }
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Original model and water"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &scenes[0].depth,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        });
+        pass.set_bind_group(0, &scenes[0].camera_group, &[0]);
+        pass.set_pipeline(&scenes[0].ocean);
+        pass.draw(0..3, 0..1);
+        for particles in [false, true] {
+            for scene in scenes.iter() {
+                scene.encode_meshes(&mut pass, seconds, particles);
+            }
+        }
+        Ok(())
+    }
+    fn encode_meshes(&self, pass: &mut wgpu::RenderPass<'_>, seconds: f32, particles: bool) {
+        pass.set_pipeline(if particles {
+            &self.particle_pipeline
+        } else {
+            &self.pipeline
+        });
+        for (i, mesh) in self.meshes.iter().enumerate() {
+            if mesh.dynamic.as_ref().is_some_and(|(d, _)| d.particle()) != particles {
+                continue;
+            }
+            if mesh
+                .dynamic
+                .as_ref()
+                .is_some_and(|(d, _)| !d.visible(&self.ship_state, seconds))
+            {
+                continue;
+            }
+            if mesh
+                .ship_node
+                .as_deref()
+                .is_some_and(|n| self.ship.hidden(n, &self.ship_state, seconds))
+            {
+                continue;
+            }
+            if mesh
+                .rigging
+                .as_ref()
+                .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
+            {
+                continue;
+            }
+            pass.set_bind_group(1, &self.textures[mesh.texture], &[]);
+            pass.set_bind_group(
+                0,
+                &self.camera_group,
+                &[((i + 1) as u32) * self.pose_stride],
+            );
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            if mesh.sail.is_some() {
+                // SAIL::Realize draws the damaged region with mirror U first.
+                if mesh.normal_count < mesh.count {
+                    pass.set_pipeline(&self.sail_pipelines[1]);
+                    pass.draw_indexed(mesh.normal_count..mesh.count, 0, 0..1);
+                }
+                if mesh.normal_count > 0 {
+                    pass.set_pipeline(&self.sail_pipelines[0]);
+                    pass.draw_indexed(0..mesh.normal_count, 0, 0..1);
+                }
+            } else {
+                pass.set_pipeline(if particles {
+                    &self.particle_pipeline
+                } else {
+                    &self.pipeline
+                });
+                pass.draw_indexed(0..mesh.count, 0, 0..1);
+            }
+        }
+    }
+    fn prepare_frame(
+        &mut self,
+        gpu: &Gpu,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        camera: &OrbitCamera,
+        wind: SailWind,
+    ) -> Result<()> {
+        self.sync_particle_profiles(gpu)?;
         let uniform = camera.uniform(width, height, seconds)?;
         wind.validate()?;
         // Cloth currently accepts horizontal wind only: project the inverse rigid
@@ -962,89 +1133,6 @@ impl ModelScene {
         }
         gpu.queue
             .write_buffer(&self.pose_buffer, 0, &self.pose_bytes);
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Original model and water"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: target,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.depth,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        });
-        pass.set_bind_group(0, &self.camera_group, &[0]);
-        pass.set_pipeline(&self.ocean);
-        pass.draw(0..3, 0..1);
-        for particles in [false, true] {
-            pass.set_pipeline(if particles {
-                &self.particle_pipeline
-            } else {
-                &self.pipeline
-            });
-            for (i, mesh) in self.meshes.iter().enumerate() {
-                if mesh.dynamic.as_ref().is_some_and(|(d, _)| d.particle()) != particles {
-                    continue;
-                }
-                if mesh
-                    .dynamic
-                    .as_ref()
-                    .is_some_and(|(d, _)| !d.visible(&self.ship_state, seconds))
-                {
-                    continue;
-                }
-                if mesh
-                    .ship_node
-                    .as_deref()
-                    .is_some_and(|n| self.ship.hidden(n, &self.ship_state, seconds))
-                {
-                    continue;
-                }
-                if mesh
-                    .rigging
-                    .as_ref()
-                    .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
-                {
-                    continue;
-                }
-                pass.set_bind_group(1, &self.textures[mesh.texture], &[]);
-                pass.set_bind_group(
-                    0,
-                    &self.camera_group,
-                    &[((i + 1) as u32) * self.pose_stride],
-                );
-                pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-                pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-                if mesh.sail.is_some() {
-                    // SAIL::Realize draws the damaged region with mirror U first.
-                    if mesh.normal_count < mesh.count {
-                        pass.set_pipeline(&self.sail_pipelines[1]);
-                        pass.draw_indexed(mesh.normal_count..mesh.count, 0, 0..1);
-                    }
-                    if mesh.normal_count > 0 {
-                        pass.set_pipeline(&self.sail_pipelines[0]);
-                        pass.draw_indexed(0..mesh.normal_count, 0, 0..1);
-                    }
-                } else {
-                    pass.set_pipeline(if particles {
-                        &self.particle_pipeline
-                    } else {
-                        &self.pipeline
-                    });
-                    pass.draw_indexed(0..mesh.count, 0, 0..1);
-                }
-            }
-        }
         Ok(())
     }
 }

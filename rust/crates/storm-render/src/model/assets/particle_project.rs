@@ -111,6 +111,32 @@ impl Builder {
                 missing.insert(key);
             }
         }
+        {
+            let mut paths = Vec::new();
+            let mut bytes = 0u64;
+            for key in &available {
+                let mut path = directory.to_path_buf();
+                for part in key.split('/') {
+                    path = find_child(&path, part)?;
+                }
+                bytes = bytes
+                    .checked_add(fs::metadata(&path)?.len())
+                    .context("particle cache size overflow")?;
+                ensure!(
+                    bytes <= 64 * 1024 * 1024,
+                    "particle project exceeds 64 MiB source budget"
+                );
+                paths.push((key.clone(), path));
+            }
+            let data = paths
+                .into_iter()
+                .map(|(key, path)| Ok((key, read_asset_bytes(&path)?)))
+                .collect::<Result<Vec<_>>>()?;
+            self.asset.ship.particle_library = Some(std::sync::Arc::new(
+                crate::model::ParticleLibrary::from_bytes(data)?,
+            ));
+            self.asset.ship.particle_texture = Some(atlas);
+        }
         self.asset.ship.particle_project = Some(ParticleProjectInfo {
             source,
             texture,
