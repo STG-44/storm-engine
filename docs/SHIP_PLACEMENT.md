@@ -67,3 +67,34 @@ LoadShipParameters, native matrix construction or Execute. Further tests cover
 live attributes and mounted-value lifetimes, missing/foreign bindings, invalid
 numbers, overflow, unchanged motion state and frame-partition-independent viewer
 body/history updates. Placement is standalone scenario twenty-one.
+
+
+## Four-platform evidence, 2026-10-25
+
+Code `d900f9c9abcb1e7268033a579e86e112b5a86b02` passes one
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40224545294) on macOS
+Apple Silicon/Intel, Windows and Linux: formatting, warnings-denied Clippy,
+builds, 330 CPU tests (135 interpreter tests) and twenty-one standalone scenarios.
+Actual host triples/counts are verified from logs. Linux additionally passes
+seventeen explicit software Vulkan render tests, existing window fixtures and
+three frames of the new fleet window. The local Intel Mac passes seventeen
+Metal render tests and three native viewer frames; a paused original-resource
+viewer was also launched for inspection. Interaction remains a manual check.
+Four archive digests / 84 complete JSON reports match local output; all twenty
+preceding reports remain unchanged.
+
+The executable loads all forty original ship roots with the diagnostic 0.75-m
+immersion and 0.5-m waterline. Pose height matches native float32 subtraction;
+native movement state/rocking grids match the preceding audit. Both model poses
+and emitter histories use the placed roots. Across all models, 274 locators
+retain 548 systems / 822 finite world rows / 12,243 living particles at three
+seconds. Original fire/mast/hull/crew/waypoint metadata remains unchanged.
+Four generated/original Metal captures at 1.5/3 seconds were produced; original
+frames were inspected. Commercial resources, captures, launcher and evidence
+remain outside Git.
+
+This establishes the retained placement component and a bounded viewer. Actual
+commercial ship parameters, cargo computation, native presentation lag, sinking,
+original SEA and full mounted gameplay remain pending. Physical hosted
+Windows/macOS GPU/window coverage remains necessary. Earlier whole-profile/
+manual-damage audits were not repeated for this placement/viewer increment.

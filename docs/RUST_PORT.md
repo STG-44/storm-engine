@@ -733,3 +733,17 @@ The new interactive fleet window reuses fixed native motion/rocking, keeps both
 ships visible and supports orbit/zoom, pause, immersion changes and explicit
 fire toggling. Commercial ship parameters, original SEA and full mounted gameplay
 remain pending.
+
+
+The [placement/viewer PR run](https://github.com/STG-44/storm-engine/actions/runs/40224545294)
+passes all four hosts for `d900f9c9`: 330 CPU tests and twenty-one standalone
+scenarios. Linux also passes seventeen explicit software Vulkan render tests
+and three frames of the new native fleet window; local Metal checks pass the
+same render suite and bounded viewer. All 84 reports match local results with
+verified ZIP digests, preserving the preceding twenty reports. Sixty-four
+native sequences / 192 complete immersion/root-argument snapshots match.
+All forty original models use correctly placed roots without changing native
+body state, and four generated/original Metal captures pass. The interactive
+viewer keeps both ships and supports orbit, pause, immersion changes and fire.
+Full mounted gameplay and original SEA remain pending; see
+[placement/viewer scope](SHIP_PLACEMENT.md).
