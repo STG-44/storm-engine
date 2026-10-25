@@ -92,3 +92,43 @@ seven absent profile files and an unavailable Particles_3.txx color request
 (the renderer would request particles_3.txx.tx). It is inspectable but cannot
 render from this resource folder; the loader reports that missing atlas.
 The original default-project mode uses the available particles_list.tga atlas.
+
+
+## Four-platform evidence, 2026-10-25
+
+Code `9781dbe542475b8f8b6c4a8bd8cd71da3543fbbd` passes one manually dispatched
+[four-platform run](https://github.com/STG-44/storm-engine/actions/runs/40198817921)
+on macOS Apple Silicon/Intel, Windows and Linux. All four native jobs pass
+formatting, Clippy with warnings denied, builds, 305 CPU tests (135 interpreter
+tests) and seventeen standalone scenarios. Actual host triples and test totals
+are checked from job logs. Linux also passes sixteen explicit software Vulkan
+GPU tests and native-window fixtures. Four archive SHA-256 digests and all
+68 complete JSON reports match local results. All sixteen preceding scenarios
+remain unchanged; the seventeenth inspects the synthetic PRJ descriptor.
+
+The final-build resource audit reloads all forty original ship roots. At two
+seconds, 274 fire locators / 117 style patches retain 822 birth/world rows,
+38,086 created and 10,347 living particles. All 120 complete baseline,
+default-project and sailing-world reports match the preceding phase after
+removing the new explicit-project metadata. Named-project reports match for
+all 39 nonempty models. The default catalog contains 66 entries; the Boat
+model stays empty while retaining explicit project metadata. These are
+selected-profile presentation checks, not complete global DataSource loading.
+
+The supplied AoP.prj declares thirty entries, seven missing profile files and
+an unavailable particles_3.txx.tx atlas request. Inspection succeeds and
+rendering fails explicitly at the missing atlas. Traversal and missing project
+names are also rejected. A selected external descriptor referencing available
+original profiles/atlas works without copying resources into the repository.
+
+Local Metal passes the new synthetic atlas-selection/repeat/default-restoration
+test and the extended XPS instance/world-transform test. Twenty-second original
+resource captures using default discovery and the selected external descriptor
+are byte-identical to the previously inspected sailing-world frame. Commercial
+resources, captures and audit reports stay outside Git. Whole-profile decoding,
+damage and local native-window audits were not repeated; physical macOS/Windows
+GPU/window coverage and the global-manager scope above remain pending.
+
+The owner re-enabled the fork-specific Actions opt-in before this run. Rust
+validation now uses one four-host matrix per pull request, preserving develop
+pushes and manual dispatch, to avoid duplicate push/PR checks on rust-port.

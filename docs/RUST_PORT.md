@@ -627,3 +627,17 @@ atlases at startup. The default-project option discovers root-level XPS files;
 named projects retain native INI ordering/gap/duplicate rules and texture suffix/
 stem requests. Presentation still uses the explicitly loaded billboard subset.
 See [project scope and verification](PARTICLE_PROJECTS.md).
+
+
+The [particle project validation](https://github.com/STG-44/storm-engine/actions/runs/40198817921)
+passes all four native hosts for `9781dbe5`: 305 CPU tests / 135 interpreter
+tests, sixteen explicit Linux software Vulkan GPU tests and native windows.
+Four archive digests / 68 complete JSON reports match local results; all sixteen
+prior scenarios remain unchanged. Seventeen unedited-native PRJ/INI/atlas
+snapshots pass. All forty original ship roots reload with 120 full prior-report
+matches and 39 named-project matches. Both original-resource Metal captures
+match the preceding sailing frame. The owner restored fork Actions; future
+rust-port PR updates use one matrix, with develop pushes/manual dispatch retained.
+Full global cache/GeomCache registration, arbitrary lazy creation, live project
+switching, native normal/blend techniques and manager RNG remain pending; see
+[project scope](PARTICLE_PROJECTS.md).
