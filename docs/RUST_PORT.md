@@ -713,3 +713,16 @@ vertical smoothing and pitch/roll calculation. An additional fleet option uses
 root GM dimensions and the rendered diagnostic wave surface, with reflected
 coordinates and independent grids/particle pose histories. Original SEA,
 immersion/waterline, wake, sinking and full Mount/Execute remain pending.
+
+
+The [ship rocking PR run](https://github.com/STG-44/storm-engine/actions/runs/40222394085)
+passes all four hosts for `98509601`: 325 CPU tests, seventeen explicit Linux
+software Vulkan GPU tests and native-window fixtures. All 80 complete reports
+match local results with verified ZIP digests; nineteen preceding scenarios
+are unchanged. Ninety-six native sequences / 480 complete rocking snapshots
+match with recorded native scalar math; pinned software kernels are independently
+checked within one ULP with exact signs/zeros. All forty original models use
+their root GM dimensions and independent rocking grids, with first-owner freeze,
+second-owner survival and original model metadata preserved. Four local Metal
+captures and all seventeen render tests pass. Original SEA and full Mount/Execute
+remain pending; see [rocking scope](SHIP_ROCKING.md).

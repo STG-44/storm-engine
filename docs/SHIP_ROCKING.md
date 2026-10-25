@@ -57,3 +57,31 @@ plane signs, the time cap, failed-grid rollback, sea/pose reflection, original
 root dimensions, independent grids, owner removal and fractional presentation.
 
 The rocking report is the twentieth resource-free standalone scenario.
+
+
+## Four-platform evidence, 2026-10-25
+
+Code `985096015e25fa3ad0e4e4eeb531a686fdb7f936` passes one
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40222394085) on macOS
+Apple Silicon/Intel, Windows and Linux: formatting, warnings-denied Clippy,
+builds, 325 CPU tests (135 interpreter tests) and twenty standalone scenarios.
+Actual host triples and counts are verified from logs. Linux additionally
+passes seventeen explicit software Vulkan GPU tests, the new rocking capture
+and existing native-window fixtures. All seventeen render tests pass locally
+on Metal. Four archive digests and all 80 complete JSON reports match local
+output; the nineteen preceding reports are unchanged.
+
+The executable loads all forty original model roots, including Boat with no
+fireplace locators. Grid dimensions match the root GM headers; both hulls have
+finite nonzero heave/pitch/roll. First-owner removal freezes its body and grid
+while the second continues. Across all ships, 274 locators retain 548 surviving
+systems, 822 finite world rows and 12,243 living particles. Fire, mast, hull,
+crew and waypoint metadata match the preceding audit. Four generated/original
+Metal captures at 1.5/3 seconds were produced; the original frames were inspected.
+Commercial resources, captures and audit reports stay outside Git.
+
+These checks establish the retained rocking calculation over a diagnostic sea.
+Original SEA, full mounting/immersion/waterline, wakes, sinking, force providers
+and complete gameplay remain pending. Earlier whole-profile/manual-damage
+audits were not repeated for this opt-in rigid-body pose increment. Hosted
+Windows/macOS GPU/window behavior still needs physical coverage.
