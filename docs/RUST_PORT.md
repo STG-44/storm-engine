@@ -693,3 +693,17 @@ rounding differences. The native oracle records C-library trig observations;
 movement arithmetic replays them bit-exactly and the production trig kernels
 are checked within one ULP, including exact signs/signed zeros. Existing sailing
 and rendering math remain unchanged; see [movement numeric scope](SHIP_MOTION.md).
+
+
+The [SHIP movement PR run](https://github.com/STG-44/storm-engine/actions/runs/40220630111)
+passes all four hosts for `d47ade14`: 318 CPU tests / 135 interpreter tests,
+seventeen explicit Linux software Vulkan GPU tests and native windows. Four ZIP
+digests / 76 full JSON reports match local output; all eighteen preceding
+scenarios are unchanged. Sixty-four native sequences / 704 complete arithmetic
+snapshots use recorded C-library trig values; pinned software trig is separately
+checked within one ULP. This resolves the initial ARM/Windows rounding mismatch.
+All forty original models run with independent native bodies, including the
+empty-fireplace Boat. Three-second owner routing retains 548 systems / 822 world
+rows / 12,243 living particles, with original model metadata preserved. Four local
+Metal captures and all seventeen render tests pass. See [movement scope](SHIP_MOTION.md)
+and the newly explicit [weather roadmap](WEATHER_ROADMAP.md).

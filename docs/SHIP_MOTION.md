@@ -95,3 +95,39 @@ restoration/side effects. Additional checks cover live attributes, missing/forei
 bindings, malformed messages, finite-state guards, sparse touch output, independent
 bodies, impulse consumption, deletion freeze and fractional presentation. The
 native-motion fleet report is the nineteenth resource-free standalone scenario.
+
+
+## Four-platform evidence, 2026-10-25
+
+Code `d47ade14da3998993ddcecec778d63cf2335880d` passes one corrected
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40220630111) on macOS
+Apple Silicon/Intel, Windows and Linux. All four native jobs pass formatting,
+warnings-denied Clippy, builds, 318 CPU tests (135 interpreter tests) and nineteen
+standalone scenarios. Actual host triples and test totals are checked from logs.
+Linux also passes seventeen explicit software Vulkan GPU tests, the native-motion
+capture and existing window fixtures. All seventeen render tests pass locally
+on Metal. Four ZIP digests / 76 complete JSON reports match local results; all
+eighteen preceding standalone reports remain unchanged.
+
+The first run exposed platform C-library trig rounding differences on Apple
+Silicon and Windows. Pinned software movement trig resolves that variation.
+All 704 complete arithmetic snapshots match with recorded native trig inputs;
+production scalar outputs are checked within one ULP with exact signs/zeros.
+This is the numeric boundary described above, not a claim that every platform's
+original C library returns identical sine/cosine bits.
+
+The final executable loads all forty original model roots with two independent
+native bodies, including Boat without fireplace locators. At three seconds,
+first-owner removal freezes its body while the second keeps moving. Across the
+fleet, 274 fire locators retain 548 second-owner systems, 822 finite world rows
+and 12,243 living particles. Reflected pose translation matches body state;
+fire/mast/hull/crew/waypoint/source metadata matches the preceding resource audit.
+Four generated/original Metal captures at 1.5/3 seconds exercise the queued
+first-body impulse and surviving second ship. Original frames were inspected.
+Commercial resources, captures and audit reports remain outside Git.
+
+Weather is explicitly added to the roadmap; its implementation remains pending.
+Previous full manual/damage/whole-profile audits were not repeated for this
+opt-in motion component. Physical hosted macOS/Windows window/GPU coverage,
+complete Mount/Execute, original sea/sail/weather providers, contact resolution
+and full gameplay remain pending.
