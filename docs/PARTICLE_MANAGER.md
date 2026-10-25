@@ -109,3 +109,40 @@ already created, adds their profiles on demand, checks each half of the image
 against its unlit baseline, repeats the draw exactly, releases the first owner's
 effect and requires unchanged pixels for the second. The fleet report is the
 eighteenth resource-free standalone scenario.
+
+
+## Four-platform evidence, 2026-10-25
+
+Code `a58e0227cc9763eae01bbd7efc48b6f2ed0b9eed` passes one
+[PR validation](https://github.com/STG-44/storm-engine/actions/runs/40202477211)
+on macOS Apple Silicon/Intel, Windows and Linux. All four native jobs pass
+formatting, warnings-denied Clippy, builds, 312 CPU tests (135 interpreter tests)
+and eighteen standalone scenarios. Actual host triples/test totals are checked
+from job logs. Linux additionally passes seventeen explicit software Vulkan GPU
+tests, the two fleet captures and existing native-window fixtures. Four archive
+SHA-256 digests / 72 complete JSON reports match local output. All seventeen
+preceding scenarios remain unchanged; the eighteenth records the shared service.
+
+All seventeen explicit render tests also pass locally on Metal. The new test
+prepares profiles after both GPU scenes exist, requires per-half pixel changes
+on each ship, exact repeated draws and unchanged survivor pixels after releasing
+the first owner. The registry/IsAlive oracle retains five native bodies, twelve
+complete registry snapshots and nine predicate cases under UBSan.
+
+The final executable reloads all forty original ship roots. All 120 complete
+baseline/default-project/world reports match prior output after removing explicit
+project metadata: 274 fire locators / 117 style patches, 822 birth/world rows,
+38,086 created and 10,347 living particles. All 39 nonempty models request an
+additional project profile without --particle-profile and produce its dynamic
+mesh/world report. Empty Boat remains empty. The default project caches 66 raw
+XPS descriptions. This is not complete native DataSource schema conversion.
+
+Four local Metal captures exercise generated and original ArabellaShip1 pairs
+at one/three seconds. The original pair retains 42 systems after restart; explicit
+first-owner release leaves 14 second-owner systems and 315 living particles at
+three seconds. The generated pair changes from six systems to two, preserving
+IDs 3/4. Both original-resource frames were inspected. Resources, captures and
+audit reports stay outside Git. Whole-profile decoding, damage and local native
+window audits were not repeated. Physical macOS/Windows window/GPU coverage,
+full native manager/processors/RNG, SHIP gameplay, land/deck locomotion and
+boarding remain pending.

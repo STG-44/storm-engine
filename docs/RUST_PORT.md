@@ -656,3 +656,17 @@ through shared depth. A deterministic two-ship diagnostic exercises pause,
 restart and first-owner removal while the second keeps emitting. This advances
 project/service presentation; complete native processors, global RNG, SHIP
 physics, naval combat, land/deck locomotion and boarding remain pending.
+
+
+The [shared-service PR validation](https://github.com/STG-44/storm-engine/actions/runs/40202477211)
+passes all four native hosts for `a58e0227`: 312 CPU tests / 135 interpreter
+tests, seventeen explicit Linux software Vulkan GPU tests and native windows.
+All seventeen explicit render tests pass locally on Metal. Four ZIP digests /
+72 complete JSON reports match local results; all seventeen preceding scenarios
+remain unchanged. Five unedited native bodies match twelve registry snapshots
+and nine IsAlive cases. All forty original roots reload, retaining 120 complete
+prior manual/world reports; 39 models create an additional project profile on
+demand. Original two-ship captures retain 42 systems after restart and fourteen
+second-owner systems / 315 living particles after first-owner release. See
+[shared-service scope](PARTICLE_MANAGER.md) for the diagnostic motion, native
+adapters, resource limits and remaining game systems.
