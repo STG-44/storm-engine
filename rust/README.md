@@ -494,3 +494,10 @@ Add `--native-ship-rocking` to that native-motion fleet command for original
 36-point ShipRocking over the diagnostic sea. Root GM dimensions drive the grid;
 pitch, roll and heave propagate to geometry and particle pose histories. Original
 SEA and full mounted gameplay remain pending. See [rocking scope](../docs/SHIP_ROCKING.md).
+
+Add `--native-ship-placement --fleet-window` to open an interactive window with
+the original immersion/waterline placement. Drag/arrows orbit, wheel zooms,
+Space pauses, bracket keys adjust immersion, B toggles fire, R restarts and Esc
+closes. Both ships stay visible; the 30-second preview pauses at its end.
+Use `--model /path/to/ship.gm --game-dir /path/to/game` for original resources.
+See [viewer and placement scope](../docs/SHIP_PLACEMENT.md).

@@ -71,6 +71,10 @@ An additional opt-in [native rocking component](SHIP_ROCKING.md) now replaces
 the flat callback when `--native-ship-rocking` is selected. It samples the
 diagnostic water surface through the retained 36-point algorithm.
 
+[Immersion and waterline placement](SHIP_PLACEMENT.md) now apply the retained
+model-root correction in an additional mode. An interactive fleet viewer uses
+the same motion/rocking steps with persistent GPU scenes and orbit/pause controls.
+
 Full Mount/Execute, original sea, sail/wind speed providers, contact
 resolution, islands, naval AI and gameplay remain pending. Weather is tracked
 separately in the [weather roadmap](WEATHER_ROADMAP.md), including wind, fog,

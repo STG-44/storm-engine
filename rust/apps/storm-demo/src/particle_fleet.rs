@@ -6,7 +6,9 @@ use super::{
 use anyhow::{Result, ensure};
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
-use storm_core::{Entity, EntityId, Message, Value};
+use storm_core::{AttributeId, AttributeStore, Entity, EntityId, Message, Value};
+use storm_sim::ship_placement::ShipPlacement;
+mod window;
 use storm_render::{
     Gpu,
     model::{
@@ -24,6 +26,12 @@ struct NativeMotion {
     inputs: Vec<storm_sim::ship_motion::FlatMovement>,
     elapsed_ms: u32,
     rocking: Option<NativeRocking>,
+    placement: Option<NativePlacement>,
+}
+struct NativePlacement {
+    attributes: AttributeStore,
+    characters: Vec<AttributeId>,
+    states: Vec<ShipPlacement>,
 }
 struct NativeRocking {
     bodies: Vec<ShipRocking>,
@@ -69,6 +77,8 @@ impl MovementPort for RockingMovement<'_> {
     }
 }
 pub struct Fleet {
+    next_frame: u32,
+    preview: bool,
     native_motion: Option<NativeMotion>,
     assets: Vec<ModelAsset>,
     sessions: Vec<Session>,
@@ -104,6 +114,8 @@ impl Fleet {
             });
         }
         Ok(Self {
+            next_frame: 0,
+            preview: false,
             native_motion: None,
             assets,
             sessions,
@@ -147,7 +159,66 @@ impl Fleet {
             inputs,
             elapsed_ms: 0,
             rocking: None,
+            placement: None,
         });
+    }
+    fn enable_native_placement(&mut self, immersion: f32, waterline: f32) -> Result<()> {
+        ensure!(
+            immersion.is_finite() && waterline.is_finite(),
+            "invalid placement parameters"
+        );
+        let motion = self
+            .native_motion
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("placement requires native movement"))?;
+        let mut binding = NativePlacement {
+            attributes: AttributeStore::default(),
+            characters: Vec::new(),
+            states: Vec::new(),
+        };
+        for body in &motion.bodies {
+            let character = binding.attributes.create_root()?;
+            let ship = binding.attributes.create_root()?;
+            let value = binding
+                .attributes
+                .create_path(character, "Ship.Immersion")?;
+            binding.attributes.set_float(value, None, immersion)?;
+            let value = binding.attributes.create_path(ship, "WaterLine")?;
+            binding.attributes.set_float(value, None, waterline)?;
+            let mut state = ShipPlacement::default();
+            state.load_waterline(&binding.attributes, ship)?;
+            state.calculate_immersion(&binding.attributes, character)?;
+            state.root(
+                body.state.position,
+                body.state.angles,
+                body.offsets,
+                [0.0; 2],
+            )?;
+            binding.characters.push(character);
+            binding.states.push(state);
+        }
+        motion.placement = Some(binding);
+        Ok(())
+    }
+    fn placed_pose(&self, index: usize, seconds: f32) -> Result<ModelPose> {
+        if let Some(motion) = &self.native_motion
+            && let Some(binding) = &motion.placement
+        {
+            let body = &motion.bodies[index];
+            let root = binding.states[index].root(
+                body.state.position,
+                body.state.angles,
+                body.offsets,
+                [0.0; 2],
+            )?;
+            return Ok(ModelPose {
+                translation: [root.position[0], root.position[1], -root.position[2]],
+                yaw: -root.angles[1],
+                pitch: -root.angles[0],
+                roll: root.angles[2],
+            });
+        }
+        Ok(self.pose(index, seconds))
     }
     fn enable_native_rocking(&mut self) -> Result<()> {
         let mut bodies = Vec::new();
@@ -186,6 +257,9 @@ impl Fleet {
                         "size_bits":r.parameters.size.map(f32::to_bits),"offset_bits":r.parameters.offsets.map(f32::to_bits),
                         "height_factor_bits":r.parameters.height_factor.to_bits(),"angle_factor_bits":r.parameters.angle_factor.to_bits(),
                         "height_bits":r.heights.map(|row|row.map(f32::to_bits))})).collect::<Vec<_>>()});
+            }
+            if let Some(binding)=&m.placement {
+                report["placement"]=json!({"original_ship_parameters":false,"bodies":binding.states.iter().map(|s|json!({"immersion_bits":s.immersion.to_bits(),"waterline_bits":s.waterline.to_bits()})).collect::<Vec<_>>()});
             }
             report
         })
@@ -272,19 +346,29 @@ impl Fleet {
             self.snapshots.last_mut().unwrap()["native_motion"] = motion;
         }
     }
-    pub fn advance(mut self, through: f32) -> Result<Self> {
+    fn advance_frames(&mut self, through: f32) -> Result<()> {
         ensure!(
-            through.is_finite() && (0.0..=30.0).contains(&through),
+            through.is_finite() && (self.seconds..=30.0).contains(&through),
             "fleet fixture time must be 0..=30 seconds"
         );
         let frames = (f64::from(through) * 60.0).floor() as u32;
-        for frame in 0..=frames {
+        for frame in self.next_frame..=frames {
             self.seconds = (f64::from(frame) / 60.0) as f32;
             self.sessions[0]
                 .world
                 .borrow_mut()
                 .set_clock(self.seconds)?;
             if let Some(motion) = &mut self.native_motion {
+                if let Some(binding) = &mut motion.placement {
+                    for index in 0..2 {
+                        if self.visible[index] {
+                            binding.states[index].calculate_immersion(
+                                &binding.attributes,
+                                binding.characters[index],
+                            )?;
+                        }
+                    }
+                }
                 let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
                 let delta = elapsed - motion.elapsed_ms;
                 for index in 0..2 {
@@ -310,7 +394,7 @@ impl Fleet {
                 motion.elapsed_ms = elapsed;
             }
             for index in 0..2 {
-                self.poses[index] = self.pose(index, self.seconds);
+                self.poses[index] = self.placed_pose(index, self.seconds)?;
                 self.assets[index]
                     .ship_state
                     .particle_history
@@ -325,68 +409,82 @@ impl Fleet {
                     )?;
                 }
             }
-            match frame {
-                0 => {
-                    self.activate(0, false)?;
-                    self.activate(1, false)?;
-                    self.snapshot("both_started");
+            if !self.preview {
+                match frame {
+                    0 => {
+                        self.activate(0, false)?;
+                        self.activate(1, false)?;
+                        self.snapshot("both_started");
+                    }
+                    30 => {
+                        self.sessions[0]
+                            .controller
+                            .as_ref()
+                            .unwrap()
+                            .borrow_mut()
+                            .stop_all();
+                        self.snapshot("first_paused");
+                    }
+                    45 => {
+                        self.activate(0, true)?;
+                        self.snapshot("first_restarted");
+                    }
+                    60 if self.native_motion.is_some() => {
+                        let mut message = Message::new(
+                            "llffffff",
+                            vec![
+                                Value::Long(storm_sim::ship_motion::MSG_SHIP_ADD_MOVE_IMPULSE),
+                                Value::Long(0),
+                                Value::Float(3.0),
+                                Value::Float(0.0),
+                                Value::Float(1.5),
+                                Value::Float(0.0),
+                                Value::Float(0.1),
+                                Value::Float(0.0),
+                            ],
+                        )?;
+                        self.native_motion.as_mut().unwrap().bodies[0]
+                            .process_message(&mut message)?;
+                        self.snapshot("first_impulse_queued");
+                    }
+                    120 => {
+                        self.sessions[0].controller.take();
+                        self.sessions[0]
+                            .world
+                            .borrow_mut()
+                            .release_owner(self.sessions[0].owner);
+                        self.visible[0] = false;
+                        self.snapshot("first_released");
+                    }
+                    _ => {}
                 }
-                30 => {
-                    self.sessions[0]
-                        .controller
-                        .as_ref()
-                        .unwrap()
-                        .borrow_mut()
-                        .stop_all();
-                    self.snapshot("first_paused");
-                }
-                45 => {
-                    self.activate(0, true)?;
-                    self.snapshot("first_restarted");
-                }
-                60 if self.native_motion.is_some() => {
-                    let mut message = Message::new(
-                        "llffffff",
-                        vec![
-                            Value::Long(storm_sim::ship_motion::MSG_SHIP_ADD_MOVE_IMPULSE),
-                            Value::Long(0),
-                            Value::Float(3.0),
-                            Value::Float(0.0),
-                            Value::Float(1.5),
-                            Value::Float(0.0),
-                            Value::Float(0.1),
-                            Value::Float(0.0),
-                        ],
-                    )?;
-                    self.native_motion.as_mut().unwrap().bodies[0].process_message(&mut message)?;
-                    self.snapshot("first_impulse_queued");
-                }
-                120 => {
-                    self.sessions[0].controller.take();
-                    self.sessions[0]
-                        .world
-                        .borrow_mut()
-                        .release_owner(self.sessions[0].owner);
-                    self.visible[0] = false;
-                    self.snapshot("first_released");
-                }
-                _ => {}
             }
+            self.next_frame = frame + 1;
         }
+        Ok(())
+    }
+    fn present_at(&mut self, through: f32, record_fractional: bool) -> Result<()> {
         // Preserve exact requested draw time without inventing fractional births.
         self.seconds = through;
         self.sessions[0].world.borrow_mut().set_clock(through)?;
         for index in 0..2 {
-            self.poses[index] = self.pose(index, through);
-            self.assets[index]
-                .ship_state
-                .particle_history
-                .as_ref()
-                .unwrap()
-                .record(self.poses[index].sample(f64::from(through)))?;
+            self.poses[index] = self.placed_pose(index, through)?;
+            if record_fractional {
+                self.assets[index]
+                    .ship_state
+                    .particle_history
+                    .as_ref()
+                    .unwrap()
+                    .record(self.poses[index].sample(f64::from(through)))?;
+            }
             self.sessions[index].apply(&mut self.assets[index].ship_state);
             self.assets[index].sync_particle_profiles()?;
         }
+        Ok(())
+    }
+    pub fn advance(mut self, through: f32) -> Result<Self> {
+        self.advance_frames(through)?;
+        self.present_at(through, true)?;
         self.snapshot("final");
         Ok(self)
     }
@@ -467,11 +565,7 @@ fn generated() -> Result<Fleet> {
     }
     Fleet::new(assets, library)
 }
-pub fn run(options: &Options) -> Result<()> {
-    ensure!(
-        options.headless.is_some() || options.particle_fleet_report.is_some(),
-        "select --headless or --particle-fleet-report for the fleet fixture"
-    );
+fn load(options: &Options) -> Result<Fleet> {
     let mut fleet = if let Some(path) = &options.model {
         let mut assets = Vec::new();
         for _ in 0..2 {
@@ -506,7 +600,24 @@ pub fn run(options: &Options) -> Result<()> {
     if options.native_ship_rocking {
         fleet.enable_native_rocking()?;
     }
-    let fleet = fleet.advance(options.time)?;
+    if options.native_ship_placement {
+        fleet.enable_native_placement(options.ship_immersion, options.ship_waterline)?;
+    }
+    Ok(fleet)
+}
+pub fn run(options: &Options) -> Result<()> {
+    if options.fleet_window {
+        return window::run(options);
+    }
+    ensure!(
+        options.frames.is_none(),
+        "--frames requires --fleet-window for a fleet"
+    );
+    ensure!(
+        options.headless.is_some() || options.particle_fleet_report.is_some(),
+        "select --fleet-window, --headless or --particle-fleet-report"
+    );
+    let fleet = load(options)?.advance(options.time)?;
     if let Some(path) = &options.particle_fleet_report {
         std::fs::write(path, serde_json::to_vec_pretty(&fleet.report()?)?)?;
     }
@@ -522,6 +633,120 @@ pub fn run(options: &Options) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn immersion_and_waterline_shift_presentation_without_changing_native_motion() {
+        let run = |placement| {
+            let mut fleet = generated().unwrap();
+            fleet.enable_native_motion();
+            fleet.enable_native_rocking().unwrap();
+            if placement {
+                fleet.enable_native_placement(0.75, 0.5).unwrap();
+            }
+            fleet.advance(3.0).unwrap()
+        };
+        let original = run(false);
+        let placed = run(true);
+        for i in 0..2 {
+            let old = original.native_motion.as_ref().unwrap().bodies[i].state;
+            let new = placed.native_motion.as_ref().unwrap().bodies[i].state;
+            assert_eq!(old, new);
+            assert_eq!(
+                placed.poses[i].translation[1].to_bits(),
+                (new.position[1] - 0.75 - 0.5).to_bits()
+            );
+            assert_eq!(
+                placed.poses[i].translation[0],
+                original.poses[i].translation[0]
+            );
+            assert_eq!(
+                placed.poses[i].translation[2],
+                original.poses[i].translation[2]
+            );
+            let history = placed.assets[i]
+                .ship_state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap();
+            assert_eq!(
+                history.last().unwrap().translation[1],
+                placed.poses[i].translation[1]
+            );
+        }
+        assert!(
+            !placed.report().unwrap()["native_motion"]["placement"]["original_ship_parameters"]
+                .as_bool()
+                .unwrap()
+        );
+    }
+    #[test]
+    fn preview_partition_and_repeated_presentation_preserve_fixed_motion_and_pose_history() {
+        let create = || {
+            let mut f = generated().unwrap();
+            f.preview = true;
+            f.enable_native_motion();
+            f.enable_native_rocking().unwrap();
+            f.enable_native_placement(0.25, 0.5).unwrap();
+            f
+        };
+        let mut single = create();
+        single.advance_frames(3.0).unwrap();
+        single.present_at(3.0, false).unwrap();
+        let mut split = create();
+        for seconds in [0.0, 0.005, 0.2, 0.333, 1.005, 1.5, 3.0, 3.0] {
+            split.advance_frames(seconds).unwrap();
+            split.present_at(seconds, false).unwrap();
+        }
+        assert_eq!(single.motion_report(), split.motion_report());
+        assert_eq!(split.visible, [true, true]);
+        assert!(split.snapshots.is_empty());
+        assert_eq!(
+            split.sessions[0].world.borrow().report()["manager"]["systems"],
+            0
+        );
+        for i in 0..2 {
+            let a = single.assets[i]
+                .ship_state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap();
+            let b = split.assets[i]
+                .ship_state
+                .particle_history
+                .as_ref()
+                .unwrap()
+                .read()
+                .unwrap();
+            assert_eq!(&*a, &*b);
+            assert_eq!(a.len(), 181);
+        }
+        let binding = split
+            .native_motion
+            .as_mut()
+            .unwrap()
+            .placement
+            .as_mut()
+            .unwrap();
+        let attr = binding
+            .attributes
+            .create_path(binding.characters[0], "Ship.Immersion")
+            .unwrap();
+        binding.attributes.set_float(attr, None, 1.5).unwrap();
+        split.advance_frames(3.05).unwrap();
+        split.present_at(3.05, false).unwrap();
+        let binding = split
+            .native_motion
+            .as_ref()
+            .unwrap()
+            .placement
+            .as_ref()
+            .unwrap();
+        assert_eq!(binding.states[0].immersion, 1.5);
+        assert_eq!(binding.states[1].immersion, 0.25);
+    }
     #[test]
     fn two_owners_restart_and_release_independently_from_a_shared_project() {
         let fleet = generated().unwrap().advance(3.0).unwrap();

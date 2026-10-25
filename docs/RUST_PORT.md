@@ -726,3 +726,10 @@ their root GM dimensions and independent rocking grids, with first-owner freeze,
 second-owner survival and original model metadata preserved. Four local Metal
 captures and all seventeen render tests pass. Original SEA and full Mount/Execute
 remain pending; see [rocking scope](SHIP_ROCKING.md).
+
+[Immersion and model placement](SHIP_PLACEMENT.md) add the native live character
+lookup, separately loaded ship-type waterline and original root expression.
+The new interactive fleet window reuses fixed native motion/rocking, keeps both
+ships visible and supports orbit/zoom, pause, immersion changes and explicit
+fire toggling. Commercial ship parameters, original SEA and full mounted gameplay
+remain pending.

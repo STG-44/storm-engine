@@ -80,7 +80,7 @@ struct Options {
     #[arg(long)]
     ship_demo: bool,
     /// Two ships share the particle service; deterministic fire/restart/release fixture.
-    #[arg(long, conflicts_with_all = ["sail_demo", "rigging_demo", "ship_demo", "sail", "frames", "gpu_info"])]
+    #[arg(long, conflicts_with_all = ["sail_demo", "rigging_demo", "ship_demo", "sail", "gpu_info"])]
     particle_fleet_demo: bool,
     /// Use retained SHIP inertia/movement and impulse dispatch for the fleet fixture.
     #[arg(long, requires = "particle_fleet_demo")]
@@ -88,6 +88,18 @@ struct Options {
     /// Add retained 36-point ShipRocking over the diagnostic wave surface.
     #[arg(long, requires = "native_ship_motion")]
     native_ship_rocking: bool,
+    /// Apply native character immersion and mounted waterline to the model root.
+    #[arg(long, requires = "native_ship_motion")]
+    native_ship_placement: bool,
+    /// Diagnostic character Ship.Immersion in metres (original scripts are not loaded).
+    #[arg(long, requires = "native_ship_placement", default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
+    ship_immersion: f32,
+    /// Diagnostic ship-type WaterLine in metres.
+    #[arg(long, requires = "native_ship_placement", default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
+    ship_waterline: f32,
+    /// Open an interactive two-ship viewer instead of the scripted removal fixture.
+    #[arg(long, requires_all = ["particle_fleet_demo", "native_ship_motion", "native_ship_rocking"], conflicts_with_all = ["headless", "particle_fleet_report"])]
+    fleet_window: bool,
     /// Export the shared-service fleet scenario without requiring a GPU.
     #[arg(long, requires = "particle_fleet_demo")]
     particle_fleet_report: Option<PathBuf>,
