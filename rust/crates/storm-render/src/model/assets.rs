@@ -15,6 +15,7 @@ use storm_formats::{
     geometry::Geometry,
     texture::{Mip, Texture},
 };
+mod particle_project;
 mod presentation;
 
 pub struct Mesh {
@@ -57,6 +58,8 @@ pub struct ModelAsset {
 
 #[derive(Default)]
 pub struct LoadOptions {
+    /// "default" scans XPS names; otherwise a native project name or absolute PRJ path.
+    pub particle_project: Option<PathBuf>,
     /// Additional profiles cached for native fire messages, relative to RESOURCE/Particles.
     pub particle_profiles: Vec<String>,
     /// None uses the original preview default (five) when a ship graph exists.
@@ -431,7 +434,7 @@ impl ModelAsset {
 
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
         ensure!(
-            options.particle_profiles.is_empty()
+            (options.particle_profiles.is_empty() && options.particle_project.is_none())
                 || (!options.single_mesh && !options.untextured && options.game_dir.is_some()),
             "particle profiles require a textured ship hierarchy and game directory"
         );
@@ -629,6 +632,9 @@ impl Builder {
             return Ok(0);
         };
         let path = files.find(name)?;
+        self.texture_path(path)
+    }
+    fn texture_path(&mut self, path: PathBuf) -> Result<usize> {
         if let Some(&id) = self.cache.get(&path) {
             return Ok(id);
         }

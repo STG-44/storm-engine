@@ -468,3 +468,10 @@ smoke tails across stop/restart, including the same XPS in both channels.
 Replay and dynamically sized draw geometry preserve old generations until
 expiry; complete global manager/RNG/project behavior remains pending.
 See [instance identity, limits and verification](../docs/PARTICLE_INSTANCES.md).
+
+
+Particle project descriptors now select native profile membership and global
+atlases at startup. The default-project option discovers root-level XPS files;
+named projects retain native INI ordering/gap/duplicate rules and texture suffix/
+stem requests. Presentation still uses the explicitly loaded billboard subset.
+See [project scope and verification](../docs/PARTICLE_PROJECTS.md).

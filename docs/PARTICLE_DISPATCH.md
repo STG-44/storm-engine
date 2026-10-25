@@ -51,7 +51,8 @@ default names and source-to-service dispatch. The extended GPU atlas test
 requires identical pixels when the named profile uses the opposite channel,
 and an unlit image when a different cached name is selected.
 
-Cache selection remains explicit. Native .prj loading, global PARTICLES
+Cache selection remains explicit. The subsequent [project increment](PARTICLE_PROJECTS.md)
+adds startup PRJ/atlas selection. Global PARTICLES
 registration, other creation messages and dynamic GPU resource loading are
 pending. The default atlas, existing shader and prior checked lifetime/count/
 world-replay limits still apply. Model/attached particles and remaining

@@ -5,6 +5,9 @@ use serde_json::{Value as Json, json};
 /// Portable relative cache key used by PARTICLES::CreateSystem and DataCache.
 /// Windows separators are accepted on every host; unsafe/non-ASCII paths are excluded.
 pub fn profile_key(name: &str) -> Result<String, FormatError> {
+    resource_key(name, "xps")
+}
+pub(super) fn resource_key(name: &str, suffix: &str) -> Result<String, FormatError> {
     let path = name.replace('\\', "/");
     if path.is_empty() || path.len() > 512 || !path.is_ascii() || path.contains(['\0', ':']) {
         return Err(FormatError("invalid particle profile name"));
@@ -20,12 +23,16 @@ pub fn profile_key(name: &str) -> Result<String, FormatError> {
     let extension = std::path::Path::new(&path)
         .extension()
         .and_then(|s| s.to_str());
-    let suffix = if extension.is_some_and(|s| s.eq_ignore_ascii_case("xps")) {
+    let suffix = if extension.is_some_and(|s| s.eq_ignore_ascii_case(suffix)) {
         ""
     } else {
-        ".xps"
+        suffix
     };
-    Ok(format!("{path}{suffix}").to_ascii_lowercase())
+    Ok(if suffix.is_empty() {
+        path.to_ascii_lowercase()
+    } else {
+        format!("{path}.{suffix}").to_ascii_lowercase()
+    })
 }
 
 #[derive(Clone, Debug, PartialEq)]

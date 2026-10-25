@@ -246,7 +246,7 @@ impl ModelAsset {
         }
         builder.asset.ship.crew_count = 3;
         builder.asset.ship.waypoint_counts = Some([4, 4]);
-        builder.add_fire_effects(&[])?;
+        builder.add_fire_effects(&[], None)?;
         Ok(builder.asset)
     }
 }
@@ -280,7 +280,10 @@ impl Builder {
                 "original crew requires --game-dir"
             );
         }
-        self.add_fire_effects(&options.particle_profiles)?;
+        self.add_fire_effects(
+            &options.particle_profiles,
+            options.particle_project.as_deref(),
+        )?;
         Ok(())
     }
     fn add_crew(
@@ -404,7 +407,11 @@ impl Builder {
         });
         Ok(())
     }
-    fn add_xps_fire_effects(&mut self, additional: &[String]) -> Result<bool> {
+    pub(super) fn add_xps_fire_effects(
+        &mut self,
+        additional: &[String],
+        project: Option<&Path>,
+    ) -> Result<bool> {
         let Some(files) = &self.files else {
             return Ok(false);
         };
@@ -419,14 +426,14 @@ impl Builder {
             });
         if !has_particles {
             ensure!(
-                additional.is_empty(),
+                additional.is_empty() && project.is_none(),
                 "requested XPS profiles require RESOURCE/Particles"
             );
             return Ok(false);
         }
         let directory = find_child(resource, "Particles")?;
         let points = Arc::new(self.asset.ship.fires.clone());
-        let texture = self.texture("particles_list.tga")?;
+        let (texture, membership) = self.select_particle_project(&directory, project)?;
         ensure!(
             additional.len() <= 30,
             "particle cache exceeds 32 selected profiles"
@@ -440,6 +447,15 @@ impl Builder {
         .chain(additional.iter().map(|name| (name.as_str(), false, false)))
         {
             let key = storm_formats::particles::profile_key(name)?;
+            if let Some(available) = &membership
+                && !available.contains(&key)
+            {
+                ensure!(
+                    preview,
+                    "requested particle profile {name:?} is not available in the selected project"
+                );
+                continue;
+            }
             if !selected.insert(key.clone()) {
                 continue;
             }
@@ -464,6 +480,9 @@ impl Builder {
                     let lifetime = style.lifetime.maximum();
                     self.asset.ship.fire_tail_seconds =
                         self.asset.ship.fire_tail_seconds.max(lifetime);
+                    if points.is_empty() {
+                        continue;
+                    }
                     let patch = ParticlePatch {
                         points: points.clone(),
                         smoke,
@@ -479,9 +498,9 @@ impl Builder {
         self.asset.ship.particle_profiles = Some(selected);
         Ok(true)
     }
-    fn add_fire_effects(&mut self, additional: &[String]) -> Result<()> {
+    fn add_fire_effects(&mut self, additional: &[String], project: Option<&Path>) -> Result<()> {
         ensure!(
-            self.files.is_some() || additional.is_empty(),
+            self.files.is_some() || (additional.is_empty() && project.is_none()),
             "requested XPS profiles require original resources"
         );
         if self.asset.ship.fires.is_empty() {
@@ -489,9 +508,11 @@ impl Builder {
                 additional.is_empty(),
                 "requested particle profiles require fireplace locators"
             );
-            return Ok(());
+            if project.is_none() {
+                return Ok(());
+            }
         }
-        if self.add_xps_fire_effects(additional)? {
+        if self.add_xps_fire_effects(additional, project)? {
             return Ok(());
         }
         let mut fire = "fire3.tga".to_owned();

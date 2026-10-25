@@ -130,6 +130,10 @@ jobs:
           python -c "import json; s=json.load(open('sail-events.json')); l=json.load(open('ship-layout.json')); assert s['attribute_notifications']==6; assert s['attribute_restored_sails']==2; assert s['attribute_sail_masks']=={str(p['mesh']):p['hole_mask'] for p in l['sails']}"
           cargo run -p storm-demo --locked -- --sail-demo --rig-report rig-layout.json
           cargo run -p storm-demo --locked -- --rigging-demo --flag-nation spain --flag-role merchant --rig-report flags-layout.json
+      - name: Verify particle project decoding without game resources
+        run: |
+          cargo run -p storm-formats --bin storm-assets --locked -- decode rust/crates/storm-formats/reference/particle_project/project.prj > particle-project-state.json
+          python -c "import json; p=json.load(open('particle-project-state.json'))['decoded']; assert p['kind']=='particle_project' and p['texture']=='fixture.tga'; assert p['systems']==['fire','smoke']; assert p['system_bytes']==[[102,105,114,101],[115,109,111,107,101]]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -159,6 +163,7 @@ jobs:
             ship-queries-script-state.json
             ship-fire-script-state.json
             particle-profile-state.json
+            particle-project-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

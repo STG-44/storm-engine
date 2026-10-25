@@ -7,6 +7,7 @@
 
 pub mod animation;
 pub mod geometry;
+pub mod particle_project;
 pub mod particles;
 #[cfg(test)]
 mod presentation_tests;

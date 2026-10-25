@@ -71,7 +71,8 @@ isolation, rewind/cache rebuilding, geometry growth/expiry and duplicate IDs.
 The Metal/Vulkan atlas test also checks overlapping-generation pixels, repeat
 draw equality and stale-geometry removal after shrink and clear.
 
-Explicit XPS cache selection, .prj/atlas loading, complete PARTICLES registration,
+The subsequent [project increment](PARTICLE_PROJECTS.md) adds startup PRJ/atlas
+selection while retaining the explicit XPS presentation subset. Complete PARTICLES registration,
 automatic global deletion, model/attached particle rendering, audio and native
 gameplay retain their preceding unfinished scope. Multiple diagnostic entities
 still share one sailing simulation and one preview ship.

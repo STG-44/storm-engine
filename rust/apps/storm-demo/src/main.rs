@@ -87,6 +87,9 @@ struct Options {
     /// Cache an additional XPS profile for native fire messages (repeatable).
     #[arg(long, requires = "game_dir", conflicts_with = "single_mesh")]
     particle_profile: Vec<String>,
+    /// Particle project name, "default", or an absolute descriptor path.
+    #[arg(long, requires = "game_dir", conflicts_with = "single_mesh")]
+    particle_project: Option<PathBuf>,
     /// Render geometry with a white material, without loading commercial textures.
     #[arg(long, requires = "model", conflicts_with = "game_dir")]
     untextured: bool,
@@ -885,6 +888,7 @@ fn main() -> Result<()> {
                         game_dir: options.game_dir.clone(),
                         texture_dir: options.texture_dir.clone(),
                         particle_profiles: options.particle_profile.clone(),
+                        particle_project: options.particle_project.clone(),
                         untextured: options.untextured,
                         single_mesh: options.single_mesh,
                         crew: options.crew.map(|n| n as usize),

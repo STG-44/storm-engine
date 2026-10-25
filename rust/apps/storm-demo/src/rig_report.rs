@@ -69,6 +69,11 @@ pub fn ship_frame(asset: &ModelAsset, seconds: f32) -> Result<Value> {
         report["xps_particle_styles"] = json!(profiles);
     }
     let mut births = vec![];
+    if let Some(p) = &asset.ship.particle_project {
+        report["particle_project"] = json!({"source":p.source,"texture":p.texture,"color_key":p.color_key,
+            "normal_key":p.normal_key,"normal_loaded":p.normal_loaded,"declared":p.declared,
+            "available":p.available,"missing":p.missing,"selected":asset.ship.particle_profiles});
+    }
     let mut motions = vec![];
     let mut world = vec![];
     for (mesh_index, mesh) in asset.meshes.iter().enumerate() {

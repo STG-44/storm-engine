@@ -32,6 +32,17 @@ pub struct FireEmission {
     pub profile: Option<String>,
 }
 #[derive(Clone, Debug, Default)]
+pub struct ParticleProjectInfo {
+    pub source: String,
+    pub texture: String,
+    pub color_key: String,
+    pub normal_key: String,
+    pub normal_loaded: bool,
+    pub declared: Vec<String>,
+    pub available: Vec<String>,
+    pub missing: Vec<String>,
+}
+#[derive(Clone, Debug, Default)]
 pub struct ShipAsset {
     pub deck_center: Option<Vec3>,
     pub nodes: Vec<ShipNode>,
@@ -39,6 +50,7 @@ pub struct ShipAsset {
     pub fire_tail_seconds: f32,
     /// None uses generated/legacy particles; Some requires an exact cached XPS profile.
     pub particle_profiles: Option<std::collections::BTreeSet<String>>,
+    pub particle_project: Option<ParticleProjectInfo>,
     pub crew_count: usize,
     pub waypoint_counts: Option<[usize; 2]>,
     pub waypoint_missing_links: usize,

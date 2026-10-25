@@ -620,3 +620,10 @@ All 40 original ships reload; 39 nonempty roots retain 1,096 distinct instances
 and 2,192 world rows across both generations. Manual counters and a Metal
 capture remain unchanged. Global project/atlas/processor/RNG/deletion and
 multi-ship service behavior remain pending; see [instance scope](PARTICLE_INSTANCES.md).
+
+
+Particle project descriptors now select native profile membership and global
+atlases at startup. The default-project option discovers root-level XPS files;
+named projects retain native INI ordering/gap/duplicate rules and texture suffix/
+stem requests. Presentation still uses the explicitly loaded billboard subset.
+See [project scope and verification](PARTICLE_PROJECTS.md).
