@@ -595,7 +595,12 @@ impl Fleet {
                     .unwrap()
                     .record(self.poses[index].sample(f64::from(self.seconds)))?;
                 if let Some(controller) = &self.sessions[index].controller {
-                    super::ship_fire::update(
+                    let update = if self.drive.is_some() {
+                        drive::update_effects
+                    } else {
+                        super::ship_fire::update
+                    };
+                    update(
                         &mut controller.borrow_mut(),
                         if frame == 0 { 0.0 } else { 1.0 / 60.0 },
                         self.poses[index],
@@ -878,6 +883,36 @@ mod tests {
         }
         f.enable_native_drive(request, direction).unwrap();
         f
+    }
+    #[test]
+    fn pinned_drive_effect_frames_match_the_rendered_pose_orientation() {
+        for yaw in [-2.5, 0.0, 0.75] {
+            for pitch in [-0.25, 0.0, 0.125] {
+                for roll in [-0.3, 0.0, 0.4] {
+                    let pose = ModelPose {
+                        translation: [3.0, -0.75, 2.0],
+                        yaw,
+                        pitch,
+                        roll,
+                    };
+                    let pinned = drive::effect_matrix(pose).unwrap();
+                    for (actual, expected) in pinned
+                        .into_iter()
+                        .zip(pose.matrix().unwrap().to_cols_array())
+                    {
+                        assert!((actual - expected).abs() <= 0.000001);
+                    }
+                    assert_eq!(&pinned[12..15], &pose.translation);
+                }
+            }
+        }
+        assert!(
+            drive::effect_matrix(ModelPose {
+                pitch: f32::NAN,
+                ..Default::default()
+            })
+            .is_err()
+        );
     }
     #[test]
     fn native_sail_drive_changes_real_motion_with_wind_sets_and_holes() {

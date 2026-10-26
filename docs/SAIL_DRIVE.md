@@ -23,7 +23,10 @@ order, and fSpeedMul retains the original formula; it is not an extra multiplier
 in CalculateSailWind. Non-finite inputs, overflow and oversized collections fail
 explicitly in the checked Rust API. Raw script sail commands remain separate.
 
-The fleet adapter feeds actual strength[0].speed.z. Static node axes enter the
+The fleet adapter feeds actual strength[0].speed.z. Effect-locator frames also
+use pinned scalar trig, scoped to this mode; legacy diagnostics retain their
+previous math. This frame is a viewer adapter, not native CMatrix construction.
+Static node axes enter the
 native dot products after inverting the viewer pose with pinned scalar trig.
 Each fixed frame evaluates sails, runs the query, settles requested geometry,
 then advances the ship. A changed request uses the preceding set's drive for

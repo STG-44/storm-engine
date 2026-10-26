@@ -6,6 +6,62 @@ use storm_sim::{
     ship_sails::ShipSailState,
 };
 
+/// The adapter's T * Ry * Rx * Rz frame with the same pinned trig as motion.
+/// Keep this scoped to the new drive; legacy diagnostic reports retain their math.
+pub(super) fn effect_matrix(pose: ModelPose) -> Result<[f32; 16]> {
+    ensure!(
+        pose.translation
+            .into_iter()
+            .chain([pose.yaw, pose.pitch, pose.roll])
+            .all(f32::is_finite),
+        "invalid effect pose"
+    );
+    let (sy, cy) = (libm::sinf(pose.yaw), libm::cosf(pose.yaw));
+    let (sx, cx) = (libm::sinf(pose.pitch), libm::cosf(pose.pitch));
+    let (sz, cz) = (libm::sinf(pose.roll), libm::cosf(pose.roll));
+    Ok([
+        cy * cz + sy * sx * sz,
+        cx * sz,
+        -sy * cz + cy * sx * sz,
+        0.0,
+        -cy * sz + sy * sx * cz,
+        cx * cz,
+        sy * sz + cy * sx * cz,
+        0.0,
+        sy * cx,
+        -sx,
+        cy * cx,
+        0.0,
+        pose.translation[0],
+        pose.translation[1],
+        pose.translation[2],
+        1.0,
+    ])
+}
+pub(super) fn update_effects(
+    controller: &mut Controller,
+    delta: f32,
+    pose: ModelPose,
+) -> Result<()> {
+    let values = effect_matrix(pose)?;
+    let mut matrix = pose.matrix()?;
+    let column = |i: usize| {
+        [
+            values[i * 4],
+            values[i * 4 + 1],
+            values[i * 4 + 2],
+            values[i * 4 + 3],
+        ]
+    };
+    matrix.x_axis = column(0).into();
+    matrix.y_axis = column(1).into();
+    matrix.z_axis = column(2).into();
+    matrix.w_axis = column(3).into();
+    controller.set_transform(matrix)?;
+    controller.execute(delta);
+    Ok(())
+}
+
 pub(super) struct Drive {
     pub groups: Vec<Group>,
     requests: Vec<ShipSailState>,
