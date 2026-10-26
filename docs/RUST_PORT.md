@@ -793,3 +793,15 @@ node-frame input and the three set thresholds are preserved. W/S selects the
 first viewer ship's sail set; groups and release remain independent. Static node
 frames and instant settled geometry are explicit adapters; original yard turning,
 rolling animation, weather and full scheduling remain pending.
+
+
+The [sail-drive PR run](https://github.com/STG-44/storm-engine/actions/runs/40387887268)
+passes all four hosts for `9d573fdf`: 348 CPU tests, 24 scenarios and 96 complete
+JSON reports matching local output with verified ZIP digests; all 23 preceding
+reports stay unchanged. Ninety-six native profiles / 288 sail outputs / 384 group
+snapshots match. All forty original roots and 368 sails use native drive while
+preserving metadata and owner lifetimes. Linux passes seventeen Vulkan render
+tests and three updated viewer frames; Metal passes seventeen render tests and
+six captures, including three inspected original sail sets. Local native-window
+checks were not repeated. Original rolling/yard turning and weather remain
+pending. See [scope and adapters](SAIL_DRIVE.md).

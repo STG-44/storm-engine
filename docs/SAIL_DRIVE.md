@@ -64,3 +64,35 @@ rolling/turning, renderer execution, full entity transport and native group
 registration order are excluded. Tests also cover independent groups, null/error
 boundaries, local capacity/node axes, actual motion with different wind/sets/holes,
 one-query selection delay and owner release.
+
+
+## Four-platform evidence, 2026-10-26
+
+Code `9d573fdf20844382a3682c9d24d99500ed59ea18` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40387887268) on macOS
+Apple Silicon/Intel, Windows and Linux: formatting, warnings-denied Clippy,
+native builds, 348 CPU tests (135 interpreter tests) and 24 standalone scenarios.
+Host triples/counts are checked from logs. Apple Silicon passes a single-job
+retry after GitHub could not acquire its initial hosted runner; the other three
+successful jobs are retained. Four ZIP digests / 96 complete JSON
+reports match local output. The preceding 23 reports remain unchanged.
+
+Linux passes seventeen explicit software Vulkan render tests and three native
+sail-drive fleet-window frames. Local Metal passes seventeen render tests and
+six generated/original captures, including all three settled sail sets on the
+original ship; those three frames were inspected. A local native-window check
+was not repeated; the preceding Mac three-frame check remained unconfirmed.
+Hosted Windows/macOS physical GPU and window checks remain open.
+
+All forty original roots and 368 sails pass the drive audit: original metadata,
+type/character values and independent owner lifetimes are retained. Native
+formulas change actual motion. Boat has zero sail drive, with rowing pending.
+Across 274 locators the surviving owner retains 548 systems / 822 finite world
+rows / 12,243 living particles at three seconds. The 96 native profiles cover
+288 sail outputs and 384 represented group/query snapshots under UBSan.
+
+Static node frames, immediate settled geometry, diagnostic weather and explicit
+stage ordering remain adapters. Original rolling/turning, group rehosting,
+weather/scripts and full Mount/Execute/gameplay integration remain pending.
+Commercial resources, captures and evidence stay outside Git; earlier manual
+damage and whole-profile audits were not repeated for this increment.
