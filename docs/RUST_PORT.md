@@ -772,3 +772,16 @@ and numeric Mount state, configuring inertia/mass and waterline without resettin
 motion. Current character limits stay separate from nominal type rates. The
 viewer uses the reader and accepts bounded external attribute files; commercial
 PROGRAM definitions and full mounting/forces remain pending.
+
+
+The [ship-parameter PR run](https://github.com/STG-44/storm-engine/actions/runs/40381752291)
+passes all four hosts for `53a83b2c`: 342 CPU tests, twenty-three standalone
+scenarios and 92 complete JSON reports matching local output with verified ZIP
+digests. All 22 preceding reports remain unchanged. The parameter/mounting oracle
+matches 64 distinct profiles / 192 complete represented snapshots. Linux passes
+seventeen software Vulkan tests and three parameter-enabled viewer frames;
+local Metal passes seventeen render tests and four generated/original captures.
+The Mac window initializes, but its current three-frame presentation check is
+unverified. All forty original roots accept external records and preserve
+metadata while actual motion changes. Commercial ship definitions, full mounted
+services and original SEA remain pending. See [parameter scope](SHIP_PARAMETERS.md).

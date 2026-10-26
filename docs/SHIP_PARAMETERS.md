@@ -60,3 +60,38 @@ string parsing is covered separately by existing attribute references. Further
 tests cover defaults, live/latched lifetimes, invalid numeric setup, file bounds,
 unchanged default dynamics and actual body changes from external attributes.
 This is standalone scenario twenty-three.
+
+
+## Four-platform evidence, 2026-10-26
+
+Code `53a83b2c7ab852470b65d0706866a9b7f8e3166b` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40381752291) on macOS
+Apple Silicon/Intel, Windows and Linux: formatting, warnings-denied Clippy,
+builds, 342 CPU tests (135 interpreter tests) and twenty-three standalone
+scenarios. Logs verify actual host triples and test counts. Linux also passes
+seventeen explicit software Vulkan render tests and three frames of the fleet
+window with parameter loading enabled.
+
+Four ZIP digests / 92 complete JSON reports match local output. The preceding
+22 batch reports remain unchanged. The new native parameter oracle covers 64
+distinct profiles / 192 complete represented snapshots under UBSan.
+
+Local Metal passes seventeen explicit render tests. Four generated/original
+captures at 1.5/3 seconds exercise external type and character records; original
+frames were inspected. The native Mac window initializes the GPU and scene, but
+its three-frame check did not finish before termination; current physical window
+frame presentation and manual interaction remain unverified.
+
+All forty original model roots use the external parameter fixture, with root
+dimensions, type values and independent live character limits checked. Actual
+motion changes from the preceding presentation fixture. First-owner removal
+freezes its state while the second continues. Original fire/mast/hull/crew and
+waypoint metadata remains unchanged. Across 274 locators the surviving owner
+retains 548 systems / 822 finite world rows / 12,243 living particles at three
+seconds; the model without fire points also moves. Commercial resources,
+captures and audit reports remain outside Git.
+
+The fixture is explicitly diagnostic/external. Original PROGRAM ship definitions,
+full Mount/Execute services, cargo/force providers, calibrated sailing and the
+original SEA remain pending. Hosted Windows/macOS GPU/window coverage also
+remains open. Earlier whole-profile/manual-damage audits were not repeated.
