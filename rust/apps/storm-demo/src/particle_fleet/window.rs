@@ -24,6 +24,9 @@ fn prepare(
     if fleet.native_motion.as_ref().unwrap().placement.is_none() {
         fleet.enable_native_placement(0.0, 0.0)?;
     }
+    if fleet.native_motion.as_ref().unwrap().parameters.is_none() {
+        fleet.enable_native_parameters(None)?;
+    }
     fleet.enable_native_presentation()?;
     fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] = 0.0;
     fleet.advance_frames(seconds)?;

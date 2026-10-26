@@ -9,6 +9,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use storm_core::{AttributeId, AttributeStore, Entity, EntityId, Message, Value};
 use storm_sim::ship_placement::ShipPlacement;
 use storm_sim::{ship_placement::RootPose, ship_presentation};
+mod parameters;
 mod window;
 use storm_render::{
     Gpu,
@@ -17,6 +18,7 @@ use storm_render::{
     },
     render_fleet_offscreen,
 };
+use storm_sim::ship_parameters::{MountedParameters, ShipParameters};
 use storm_sim::{
     ship_motion::{FlatMovement, MovementPort},
     ship_rocking::{DiagnosticSea, RockingInput, SeaSurface, ShipRocking},
@@ -29,6 +31,12 @@ struct NativeMotion {
     rocking: Option<NativeRocking>,
     placement: Option<NativePlacement>,
     presentation: Option<Vec<RootPose>>,
+    parameters: Option<NativeParameters>,
+}
+struct NativeParameters {
+    loaded: Vec<ShipParameters>,
+    mounted: Vec<MountedParameters>,
+    external: bool,
 }
 fn step_body(
     body: &mut storm_sim::ship_motion::ShipMotion,
@@ -46,6 +54,7 @@ fn step_body(
 struct NativePlacement {
     attributes: AttributeStore,
     characters: Vec<AttributeId>,
+    ship_types: Vec<AttributeId>,
     states: Vec<ShipPlacement>,
 }
 struct NativeRocking {
@@ -176,6 +185,7 @@ impl Fleet {
             rocking: None,
             placement: None,
             presentation: None,
+            parameters: None,
         });
     }
     fn enable_native_placement(&mut self, immersion: f32, waterline: f32) -> Result<()> {
@@ -190,6 +200,7 @@ impl Fleet {
         let mut binding = NativePlacement {
             attributes: AttributeStore::default(),
             characters: Vec::new(),
+            ship_types: Vec::new(),
             states: Vec::new(),
         };
         for body in &motion.bodies {
@@ -211,9 +222,84 @@ impl Fleet {
                 [0.0; 2],
             )?;
             binding.characters.push(character);
+            binding.ship_types.push(ship);
             binding.states.push(state);
         }
         motion.placement = Some(binding);
+        Ok(())
+    }
+    fn enable_native_parameters(&mut self, config: Option<&Json>) -> Result<()> {
+        let sizes = self
+            .assets
+            .iter()
+            .map(|a| a.root_box_size.unwrap_or([6.0, 4.0, 16.0]))
+            .collect::<Vec<_>>();
+        let motion = self
+            .native_motion
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("parameters require native movement"))?;
+        let binding = motion
+            .placement
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("parameters require placement bindings"))?;
+        let mut result = NativeParameters {
+            loaded: Vec::new(),
+            mounted: Vec::new(),
+            external: config.is_some(),
+        };
+        for (i, size) in sizes.into_iter().enumerate() {
+            let ship = binding.ship_types[i];
+            let character = binding.characters[i];
+            for (name, value) in [
+                ("Class", 1 + i as u32),
+                ("MinCrew", 5),
+                ("MaxCrew", 50),
+                ("Capacity", 1000 + 1000 * i as u32),
+            ] {
+                binding.attributes.set_dword(ship, Some(name), value)?;
+            }
+            for (name, value) in [
+                ("SpeedRate", 12.0 + 2.0 * i as f32),
+                ("TurnRate", 35.52),
+                ("Weight", 125.0 + 25.0 * i as f32),
+                ("SpeedDependWeight", 0.1),
+                ("SubSeaDependWeight", 0.2),
+                ("TurnDependWeight", 0.3),
+                ("TurnDependSpeed", 0.4),
+                ("InertiaAccelerationX", 0.5),
+                ("InertiaAccelerationY", 1.0),
+                ("InertiaAccelerationZ", 2.0),
+                ("InertiaBrakingX", 0.2),
+                ("InertiaBrakingY", 0.7),
+                ("InertiaBrakingZ", 0.45),
+            ] {
+                binding.attributes.set_float(ship, Some(name), value)?;
+            }
+            for (path, value) in [
+                ("Ship.MaxSpeedZ", motion.inputs[i].max_speed_z),
+                ("Ship.MaxSpeedY", motion.inputs[i].max_speed_y),
+            ] {
+                let id = binding.attributes.create_path(character, path)?;
+                binding.attributes.set_float(id, None, value)?;
+            }
+            if let Some(config) = config {
+                parameters::apply(&mut binding.attributes, ship, character, config)?;
+            }
+            let p = ShipParameters::load(&binding.attributes, ship)?;
+            let limits = FlatMovement::from_character(&binding.attributes, character)?;
+            ensure!(
+                [limits.max_speed_z, limits.max_speed_y]
+                    .into_iter()
+                    .all(f32::is_finite),
+                "non-finite character speed limits"
+            );
+            let mounted = p.configure(&mut motion.bodies[i].state, &mut binding.states[i], size)?;
+            binding.states[i].calculate_immersion(&binding.attributes, character)?;
+            motion.inputs[i] = limits;
+            result.loaded.push(p);
+            result.mounted.push(mounted);
+        }
+        motion.parameters = Some(result);
         Ok(())
     }
     fn placed_pose(&self, index: usize, seconds: f32) -> Result<ModelPose> {
@@ -318,6 +404,14 @@ impl Fleet {
                     });
                     json!({"position_bits":p.position.map(f32::to_bits),"angles_bits":p.angles.map(f32::to_bits),"script":{"speed":fields[0],"pos":fields[1],"ang":fields[2]}})
                 }).collect::<Vec<_>>()});
+            }
+            if let Some(parameters)=&m.parameters {
+                report["parameters"]=json!({"source":if parameters.external {"external_attributes"} else {"diagnostic_attributes"},"original_game_scripts":false,
+                    "bodies":parameters.loaded.iter().zip(&parameters.mounted).enumerate().map(|(i,(p,v))|json!({
+                    "integers":[p.class,p.crew_min,p.crew_max,p.capacity],"type_bits":([p.speed_rate,p.turn_rate,p.weight,p.speed_depend_weight,p.sub_sea_depend_weight,p.turn_depend_weight,p.turn_depend_speed,p.waterline].map(f32::to_bits)),
+                    "accel_bits":p.inertia_accel.map(f32::to_bits),"brake_bits":p.inertia_brake.map(f32::to_bits),
+                    "mounted_bits":([v.length,v.width,v.load,v.nominal_speed_z,v.nominal_speed_y,v.inertia_factor,v.mass_inertia,v.weight,v.gravity].map(f32::to_bits)),
+                    "limit_bits":[m.inputs[i].max_speed_z.to_bits(),m.inputs[i].max_speed_y.to_bits()]})).collect::<Vec<_>>()});
             }
             report
         })
@@ -424,6 +518,12 @@ impl Fleet {
                                 &binding.attributes,
                                 binding.characters[index],
                             )?;
+                            if motion.parameters.is_some() {
+                                motion.inputs[index] = FlatMovement::from_character(
+                                    &binding.attributes,
+                                    binding.characters[index],
+                                )?;
+                            }
                         }
                     }
                 }
@@ -674,6 +774,14 @@ fn load(options: &Options) -> Result<Fleet> {
     if options.native_ship_presentation {
         fleet.enable_native_presentation()?;
     }
+    if options.native_ship_parameters {
+        let config = options
+            .ship_parameter_file
+            .as_deref()
+            .map(parameters::read)
+            .transpose()?;
+        fleet.enable_native_parameters(config.as_ref())?;
+    }
     Ok(fleet)
 }
 pub fn run(options: &Options) -> Result<()> {
@@ -704,6 +812,73 @@ pub fn run(options: &Options) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn parameter_fixture(config: Option<&Json>) -> Fleet {
+        let mut f = generated().unwrap();
+        f.enable_native_motion();
+        f.enable_native_rocking().unwrap();
+        f.enable_native_placement(0.75, 0.5).unwrap();
+        f.enable_native_presentation().unwrap();
+        f.enable_native_parameters(config).unwrap();
+        f
+    }
+    #[test]
+    fn native_parameters_preserve_default_motion_and_external_attributes_change_the_real_body() {
+        let configured = parameter_fixture(None).advance(3.0).unwrap();
+        let mut base = generated().unwrap();
+        base.enable_native_motion();
+        base.enable_native_rocking().unwrap();
+        base.enable_native_placement(0.75, 0.5).unwrap();
+        base.enable_native_presentation().unwrap();
+        let base = base.advance(3.0).unwrap();
+        let a = base.motion_report().unwrap();
+        let b = configured.motion_report().unwrap();
+        for field in ["bodies", "rocking", "placement", "presentation"] {
+            assert_eq!(a[field], b[field], "{field}");
+        }
+        let config: Json =
+            serde_json::from_str(include_str!("../fixtures/ship_parameters.json")).unwrap();
+        let external = parameter_fixture(Some(&config)).advance(3.0).unwrap();
+        let m = external.native_motion.as_ref().unwrap();
+        let p = m.parameters.as_ref().unwrap();
+        assert_eq!(p.loaded[0].speed_rate, 18.0);
+        assert_eq!(p.loaded[0].capacity, 3000);
+        assert_eq!(p.mounted[0].mass_inertia, 0.1);
+        assert_eq!(m.inputs[0].max_speed_z, 10.0);
+        assert_eq!(m.inputs[0].max_speed_y, 0.06);
+        assert_eq!(m.bodies[0].state.inertia_accel, [0.25, 0.75, 1.5]);
+        assert_eq!(m.placement.as_ref().unwrap().states[0].waterline, 0.25);
+        assert!(
+            m.bodies[0].state.speed[2]
+                < configured.native_motion.as_ref().unwrap().bodies[0]
+                    .state
+                    .speed[2]
+        );
+    }
+    #[test]
+    fn runtime_character_limits_refresh_independently_of_mounted_type_parameters() {
+        let mut f = parameter_fixture(None);
+        f.preview = true;
+        f.advance_frames(1.0).unwrap();
+        f.present_at(1.0, false).unwrap();
+        let m = f.native_motion.as_mut().unwrap();
+        let b = m.placement.as_mut().unwrap();
+        let id = b
+            .attributes
+            .create_path(b.characters[0], "Ship.MaxSpeedZ")
+            .unwrap();
+        b.attributes.set_float(id, None, 3.0).unwrap();
+        b.attributes
+            .set_float(b.ship_types[0], Some("SpeedRate"), 99.0)
+            .unwrap();
+        f.advance_frames(1.02).unwrap();
+        f.present_at(1.02, false).unwrap();
+        let m = f.native_motion.as_ref().unwrap();
+        assert_eq!(m.inputs[0].max_speed_z, 3.0);
+        assert_eq!(m.inputs[1].max_speed_z, 14.0);
+        let p = m.parameters.as_ref().unwrap();
+        assert_eq!(p.loaded[0].speed_rate, 12.0);
+        assert_eq!(p.mounted[0].nominal_speed_z, 12.0);
+    }
     #[test]
     fn native_presentation_uses_pre_move_pose_and_publishes_post_move_state() {
         let mut f = generated().unwrap();

@@ -94,6 +94,12 @@ struct Options {
     /// Use living Execute's delayed model pose, turn heel and script state outputs.
     #[arg(long, requires_all = ["native_ship_placement", "native_ship_rocking"])]
     native_ship_presentation: bool,
+    /// Load native ship-type/mount parameters and refresh character speed limits.
+    #[arg(long, requires = "native_ship_placement")]
+    native_ship_parameters: bool,
+    /// Override diagnostic ship_type/character attributes from a bounded JSON file.
+    #[arg(long, requires = "native_ship_parameters")]
+    ship_parameter_file: Option<PathBuf>,
     /// Diagnostic character Ship.Immersion in metres (original scripts are not loaded).
     #[arg(long, requires = "native_ship_placement", default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
     ship_immersion: f32,

@@ -507,3 +507,10 @@ pre-Move pose and adds bounded turn heel, while script outputs describe the
 post-Move state. Hold physical A/D to steer the first ship; release to centre.
 For CPU/batch use add `--native-ship-presentation` alongside placement/rocking.
 See [living frame scope](../docs/SHIP_FRAME.md).
+
+
+The viewer now reads native ship-type inertia/waterline and numeric Mount
+parameters through ATTRIBUTES. Add `--native-ship-parameters` for batch mode;
+`--ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json` changes
+type and character attributes without editing Rust. Nominal type rates and live
+character speed limits remain separate. See [parameter scope](../docs/SHIP_PARAMETERS.md).

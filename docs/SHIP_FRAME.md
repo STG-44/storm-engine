@@ -90,3 +90,9 @@ Full mounted Execute, dead/sinking paths, native matrix construction, original
 sea/force providers and original game programs remain pending. Physical hosted
 Windows/macOS GPU/window coverage and manual steering verification remain open.
 Earlier whole-profile/manual-damage audits were not repeated for this increment.
+
+
+The additional [parameter reader](SHIP_PARAMETERS.md) loads native inertia and
+numeric mounting state, while character MaxSpeedZ/Y refresh independently. The
+viewer enables it automatically; bounded external attributes can override the
+diagnostic defaults.

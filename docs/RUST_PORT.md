@@ -765,3 +765,10 @@ movement and script-write slices. All forty original model roots use delayed,
 heeled presentation with independent script outputs, unchanged physical state
 and preserved metadata. A/D steering is available in the viewer; full mounted
 Execute and original SEA remain pending. See [frame scope](SHIP_FRAME.md).
+
+
+[Ship-type parameters](SHIP_PARAMETERS.md) now load retained typed attributes
+and numeric Mount state, configuring inertia/mass and waterline without resetting
+motion. Current character limits stay separate from nominal type rates. The
+viewer uses the reader and accepts bounded external attribute files; commercial
+PROGRAM definitions and full mounting/forces remain pending.
