@@ -785,3 +785,11 @@ The Mac window initializes, but its current three-frame presentation check is
 unverified. All forty original roots accept external records and preserve
 metadata while actual motion changes. Commercial ship definitions, full mounted
 services and original SEA remain pending. See [parameter scope](SHIP_PARAMETERS.md).
+
+
+[Native sail drive](SAIL_DRIVE.md) now supplies actual fleet strength from retained
+wind/damage formulas and the speed message case. Local hard-point capacities,
+node-frame input and the three set thresholds are preserved. W/S selects the
+first viewer ship's sail set; groups and release remain independent. Static node
+frames and instant settled geometry are explicit adapters; original yard turning,
+rolling animation, weather and full scheduling remain pending.

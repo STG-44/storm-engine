@@ -9,6 +9,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use storm_core::{AttributeId, AttributeStore, Entity, EntityId, Message, Value};
 use storm_sim::ship_placement::ShipPlacement;
 use storm_sim::{ship_placement::RootPose, ship_presentation};
+mod drive;
 mod parameters;
 mod window;
 use storm_render::{
@@ -104,6 +105,7 @@ pub struct Fleet {
     next_frame: u32,
     preview: bool,
     native_motion: Option<NativeMotion>,
+    drive: Option<drive::Drive>,
     assets: Vec<ModelAsset>,
     sessions: Vec<Session>,
     poses: Vec<ModelPose>,
@@ -141,6 +143,7 @@ impl Fleet {
             next_frame: 0,
             preview: false,
             native_motion: None,
+            drive: None,
             assets,
             sessions,
             poses: vec![ModelPose::default(); 2],
@@ -187,6 +190,19 @@ impl Fleet {
             presentation: None,
             parameters: None,
         });
+    }
+    fn enable_native_drive(&mut self, request: f32, direction: f32) -> Result<()> {
+        ensure!(
+            self.native_motion
+                .as_ref()
+                .is_some_and(|m| m.parameters.is_some()),
+            "native sail drive requires ship parameters"
+        );
+        self.drive = Some(drive::Drive::new(&self.assets, request, direction)?);
+        for i in 0..2 {
+            self.poses[i] = self.placed_pose(i, self.seconds)?;
+        }
+        Ok(())
     }
     fn enable_native_placement(&mut self, immersion: f32, waterline: f32) -> Result<()> {
         ensure!(
@@ -510,6 +526,15 @@ impl Fleet {
                 .world
                 .borrow_mut()
                 .set_clock(self.seconds)?;
+            if let Some(drive) = &mut self.drive {
+                drive.step(
+                    &self.assets,
+                    &self.poses,
+                    self.visible,
+                    self.seconds,
+                    &mut self.native_motion.as_mut().unwrap().bodies,
+                )?;
+            }
             if let Some(motion) = &mut self.native_motion {
                 if let Some(binding) = &mut motion.placement {
                     for index in 0..2 {
@@ -622,6 +647,9 @@ impl Fleet {
                             .borrow_mut()
                             .release_owner(self.sessions[0].owner);
                         self.visible[0] = false;
+                        if let Some(drive) = &mut self.drive {
+                            drive.groups[0].deleted = true;
+                        }
                         self.snapshot("first_released");
                     }
                     _ => {}
@@ -663,6 +691,9 @@ impl Fleet {
         if let Some(motion) = self.motion_report() {
             report["native_motion"] = motion;
         }
+        if let Some(drive) = &self.drive {
+            report["native_sail_drive"] = drive.report();
+        }
         Ok(report)
     }
     pub fn render(
@@ -701,6 +732,9 @@ impl Fleet {
             .map(|(i, a)| {
                 let mut scene = ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, a)?;
                 scene.set_pose(self.poses[i])?;
+                if let Some(drive) = &self.drive {
+                    scene.set_rig_state(drive.rig(i))?;
+                }
                 if let Some(rocking) = self.native_motion.as_ref().and_then(|m| m.rocking.as_ref())
                 {
                     scene.set_waves(rocking.waves)?;
@@ -708,6 +742,7 @@ impl Fleet {
                 Ok(scene)
             })
             .collect::<Result<Vec<_>>>()?;
+        let wind = self.drive.as_ref().map_or(wind, drive::Drive::wind);
         render_fleet_offscreen(gpu, &mut scenes, &camera, wind, width, height, self.seconds)
     }
 }
@@ -782,6 +817,12 @@ fn load(options: &Options) -> Result<Fleet> {
             .transpose()?;
         fleet.enable_native_parameters(config.as_ref())?;
     }
+    if options.native_sail_drive {
+        fleet.enable_native_drive(
+            options.fleet_sail_setting,
+            options.fleet_wind_direction.to_radians(),
+        )?;
+    }
     Ok(fleet)
 }
 pub fn run(options: &Options) -> Result<()> {
@@ -820,6 +861,84 @@ mod tests {
         f.enable_native_presentation().unwrap();
         f.enable_native_parameters(config).unwrap();
         f
+    }
+    fn sail_fixture(request: f32, direction: f32, damaged: bool) -> Fleet {
+        let mut f = parameter_fixture(None);
+        f.preview = true;
+        if damaged {
+            for a in &mut f.assets {
+                for (i, m) in a.meshes.iter().enumerate() {
+                    if let Some(p) = &m.sail {
+                        a.ship_state
+                            .sail_holes
+                            .insert(i, (1 << p.section_count()) - 1);
+                    }
+                }
+            }
+        }
+        f.enable_native_drive(request, direction).unwrap();
+        f
+    }
+    #[test]
+    fn native_sail_drive_changes_real_motion_with_wind_sets_and_holes() {
+        let full = sail_fixture(1.0, 0.0, false).advance(1.5).unwrap();
+        let normal = sail_fixture(0.5, 0.0, false).advance(1.5).unwrap();
+        let furled = sail_fixture(0.0, 0.0, false).advance(1.5).unwrap();
+        let reverse = sail_fixture(1.0, std::f32::consts::PI, false)
+            .advance(1.5)
+            .unwrap();
+        let holed = sail_fixture(1.0, 0.0, true).advance(1.5).unwrap();
+        let speed = |f: &Fleet| f.native_motion.as_ref().unwrap().bodies[0].state.speed[2];
+        assert!(speed(&full) > speed(&normal));
+        assert!(speed(&normal) > speed(&furled));
+        assert_eq!(speed(&furled), 0.0);
+        assert_eq!(speed(&holed), 0.0);
+        assert!(speed(&full) > speed(&reverse));
+        assert_eq!(normal.drive.as_ref().unwrap().groups[0].current_set, 1);
+        assert_eq!(
+            furled.drive.as_ref().unwrap().rig(0),
+            storm_sim::RigState::uniform(0.0)
+        );
+    }
+    #[test]
+    fn native_sail_selection_and_release_preserve_the_other_owner() {
+        let mut changed = sail_fixture(1.0, 0.0, false);
+        let mut baseline = sail_fixture(1.0, 0.0, false);
+        for f in [&mut changed, &mut baseline] {
+            f.advance_frames(0.5).unwrap();
+            f.present_at(0.5, false).unwrap();
+        }
+        changed.drive.as_mut().unwrap().change(0, -0.5);
+        changed.advance_frames(0.52).unwrap();
+        baseline.advance_frames(0.52).unwrap();
+        assert_eq!(
+            changed.native_motion.as_ref().unwrap().bodies[0].strengths[0].speed[2],
+            baseline.native_motion.as_ref().unwrap().bodies[0].strengths[0].speed[2]
+        );
+        assert_eq!(changed.drive.as_ref().unwrap().groups[0].current_set, 1);
+        assert_eq!(changed.drive.as_ref().unwrap().groups[1].current_set, 2);
+        for f in [&mut changed, &mut baseline] {
+            f.advance_frames(1.0).unwrap();
+        }
+        assert_eq!(
+            changed.native_motion.as_ref().unwrap().bodies[1].state,
+            baseline.native_motion.as_ref().unwrap().bodies[1].state
+        );
+        let run = |time| {
+            let mut f = sail_fixture(1.0, 0.0, false);
+            f.preview = false;
+            f.advance(time).unwrap()
+        };
+        let at = run(2.0);
+        let after = run(3.0);
+        assert_eq!(
+            at.drive.as_ref().unwrap().report()["bodies"][0],
+            after.drive.as_ref().unwrap().report()["bodies"][0]
+        );
+        assert_ne!(
+            at.drive.as_ref().unwrap().report()["bodies"][1],
+            after.drive.as_ref().unwrap().report()["bodies"][1]
+        );
     }
     #[test]
     fn native_parameters_preserve_default_motion_and_external_attributes_change_the_real_body() {

@@ -514,3 +514,11 @@ parameters through ATTRIBUTES. Add `--native-ship-parameters` for batch mode;
 `--ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json` changes
 type and character attributes without editing Rust. Nominal type rates and live
 character speed limits remain separate. See [parameter scope](../docs/SHIP_PARAMETERS.md).
+
+
+The fleet viewer now enables [native sail drive](../docs/SAIL_DRIVE.md). W/S chooses
+the first ship's three sail sets; wind direction and holes affect actual motion.
+Batch mode opts in with --native-sail-drive after --native-ship-parameters. Use
+--fleet-sail-setting 0/0.5/1 and --fleet-wind-direction DEGREES for initial inputs.
+This uses static node frames and immediate settled geometry; original rolling
+animation and weather providers remain pending.

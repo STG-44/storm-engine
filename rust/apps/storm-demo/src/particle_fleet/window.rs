@@ -28,6 +28,12 @@ fn prepare(
         fleet.enable_native_parameters(None)?;
     }
     fleet.enable_native_presentation()?;
+    if fleet.drive.is_none() {
+        fleet.enable_native_drive(
+            options.fleet_sail_setting,
+            options.fleet_wind_direction.to_radians(),
+        )?;
+    }
     fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] = 0.0;
     fleet.advance_frames(seconds)?;
     fleet.present_at(seconds, false)?;
@@ -39,7 +45,12 @@ fn prepare(
     let scenes = fleet
         .assets
         .iter()
-        .map(|a| ModelScene::new(gpu, format, a))
+        .enumerate()
+        .map(|(i, a)| {
+            let mut scene = ModelScene::new(gpu, format, a)?;
+            scene.set_rig_state(fleet.drive.as_ref().unwrap().rig(i))?;
+            Ok(scene)
+        })
         .collect::<Result<Vec<_>>>()?;
     Ok((fleet, scenes, camera))
 }
@@ -110,7 +121,7 @@ impl State {
         state.resize(size);
         state.window.focus_window();
         eprintln!(
-            "Viewer: drag/arrows orbit; scroll zoom; Space pause; hold A/D steer first ship; [/] immersion; B toggle fire; R restart the 30-second preview; Esc close. Both ships stay visible."
+            "Viewer: drag/arrows orbit; scroll zoom; Space pause; hold A/D steer and W/S change first ship sails; [/] immersion; B toggle fire; R restart the 30-second preview; Esc close. Both ships stay visible."
         );
         Ok(state)
     }
@@ -144,7 +155,13 @@ impl State {
     }
     fn steer(&mut self) {
         self.fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] =
-            f32::from(u8::from(self.right)) - f32::from(u8::from(self.left));
+            if self.right {
+                1.0
+            } else if self.left {
+                -1.0
+            } else {
+                0.0
+            };
     }
     fn toggle_fire(&mut self) -> Result<()> {
         let active = self.fleet.sessions.iter().any(|s| {
@@ -168,7 +185,7 @@ impl State {
         }
         Ok(())
     }
-    fn draw(&mut self, instance: &wgpu::Instance, options: &Options) -> Result<()> {
+    fn draw(&mut self, instance: &wgpu::Instance) -> Result<()> {
         if !self.configured || self.occluded {
             return Ok(());
         }
@@ -200,6 +217,7 @@ impl State {
         for i in 0..2 {
             self.scenes[i].set_pose(self.fleet.poses[i])?;
             self.scenes[i].set_ship_state(self.fleet.assets[i].ship_state.clone())?;
+            self.scenes[i].set_rig_state(self.fleet.drive.as_ref().unwrap().rig(i))?;
             let waves = self
                 .fleet
                 .native_motion
@@ -225,7 +243,7 @@ impl State {
             .unwrap()
             .states[0]
             .immersion;
-        self.window.set_title(&format!("Storm — корабли • A/D: руль • осадка {immersion:.2} м • {seconds:.1}/30 с{} • Пробел: пауза • R: сначала",
+        self.window.set_title(&format!("Storm — корабли • A/D: руль • W/S: паруса • осадка {immersion:.2} м • {seconds:.1}/30 с{} • Пробел: пауза • R: сначала",
             if self.clock.paused {" • пауза"} else {""}));
         let view = frame.texture.create_view(&Default::default());
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
@@ -238,7 +256,7 @@ impl State {
             self.config.height,
             seconds,
             &self.camera,
-            options.wind(),
+            self.fleet.drive.as_ref().unwrap().wind(),
         )?;
         self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
@@ -320,6 +338,12 @@ impl Application<'_> {
                     PhysicalKey::Code(KeyCode::BracketLeft) => s.immersion(-0.25)?,
                     PhysicalKey::Code(KeyCode::BracketRight) => s.immersion(0.25)?,
                     PhysicalKey::Code(KeyCode::KeyB) if !event.repeat => s.toggle_fire()?,
+                    PhysicalKey::Code(KeyCode::KeyW) if !event.repeat => {
+                        s.fleet.drive.as_mut().unwrap().change(0, 0.5)
+                    }
+                    PhysicalKey::Code(KeyCode::KeyS) if !event.repeat => {
+                        s.fleet.drive.as_mut().unwrap().change(0, -0.5)
+                    }
                     PhysicalKey::Code(KeyCode::KeyR) if !event.repeat => {
                         let (fleet, scenes, camera) =
                             prepare(self.options, &s.gpu, s.config.format, 0.0)?;
@@ -342,7 +366,7 @@ impl Application<'_> {
                 }
             }
             WindowEvent::RedrawRequested => {
-                s.draw(&self.instance, self.options)?;
+                s.draw(&self.instance)?;
                 if self.options.frames.is_some_and(|n| s.frames >= n) {
                     eprintln!("Presented {} fleet frames", s.frames);
                     event_loop.exit();

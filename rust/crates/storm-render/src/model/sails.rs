@@ -61,6 +61,8 @@ pub struct SailPatch {
     pub weight: f64,
     pub origin: Option<SailOrigin>,
     pub damage_settings: super::sail_damage::SailDamageSettings,
+    drive_maximum: f32,
+    drive_axes: [[f32; 3]; 3],
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +100,15 @@ impl SailPatch {
             SailShape::Triangle(p) => (p[2] - p[0]).length() * (p[1] - p[2]).length() * 0.5,
         };
         ensure!(weight.is_finite() && weight > 0.0, "invalid sail weight");
+        let points = match shape {
+            SailShape::Triangle(p) => [p[0], p[1], p[2], Vec3::ZERO],
+            // Native hard points swap the third/fourth locator corners.
+            SailShape::Quad(p) => [p[0], p[1], p[3], p[2]],
+        };
+        let drive_maximum = storm_sim::sail_drive::capacity(
+            points.map(|p| p.to_array()),
+            matches!(shape, SailShape::Triangle(_)),
+        )?;
         Ok(Self {
             shape,
             normal,
@@ -106,11 +117,46 @@ impl SailPatch {
             weight: f64::from(weight),
             origin: None,
             damage_settings: Default::default(),
+            drive_maximum,
+            drive_axes: [Vec3::X.to_array(), Vec3::Y.to_array(), Vec3::Z.to_array()],
         })
     }
 
     pub fn is_triangle(&self) -> bool {
         matches!(self.shape, SailShape::Triangle(_))
+    }
+    /// Native scalar drive input. Static node axes and roll geometry are ports;
+    /// this does not execute the original turning/rolling cloth processor.
+    pub fn native_drive(&self, mask: u16) -> storm_sim::sail_drive::Sail {
+        use storm_sim::sail_drive::{Kind, Sail};
+        let kind = if self.is_triangle() {
+            Kind::Triangle
+        } else if self
+            .origin
+            .as_ref()
+            .is_some_and(|o| matches!(o.group.as_bytes().get(4), Some(b'f' | b'n')))
+        {
+            Kind::Trapezoid
+        } else if self
+            .origin
+            .as_ref()
+            .is_some_and(|o| o.group.as_bytes().get(4) == Some(&b'x'))
+        {
+            Kind::Special
+        } else {
+            Kind::Square
+        };
+        Sail {
+            kind,
+            maximum: self.drive_maximum,
+            axes: self.drive_axes,
+            holes: (mask & ((1 << self.section_count()) - 1)).count_ones() as i32,
+            hole_maximum: self.section_count() as i32,
+            hole_dependence: self.damage_settings.speed_depend,
+            rolling: false,
+            rolling_delta: None,
+            roll_type: if self.tier == SailTier::Normal { 1 } else { 2 },
+        }
     }
     /// Rope ties follow the closest original hard point and preserve their rest offset.
     pub(super) fn gather_anchor(&self, point: Vec3, deployed: f32) -> Vec3 {
@@ -385,13 +431,20 @@ pub(super) fn from_labels(
                 _ => bail!("unsupported sail locator group: {group}"),
             };
             // C++ maxSpeed uses local locator dimensions, before node transforms.
-            let weight = SailPatch::new(shape)?.weight;
+            let local = SailPatch::new(shape)?;
+            let weight = local.weight;
             let world_shape = match shape {
                 SailShape::Triangle(p) => SailShape::Triangle(p.map(|p| world.transform_point3(p))),
                 SailShape::Quad(p) => SailShape::Quad(p.map(|p| world.transform_point3(p))),
             };
             let mut patch = SailPatch::new(world_shape)?;
             patch.weight = weight;
+            patch.drive_maximum = local.drive_maximum;
+            patch.drive_axes = [
+                world.x_axis.truncate().to_array(),
+                world.y_axis.truncate().to_array(),
+                world.z_axis.truncate().to_array(),
+            ];
             patch.tier = SailTier::from_original(group, node, parent);
             patch.origin = Some(SailOrigin {
                 group: group.into(),
@@ -610,6 +663,37 @@ mod tests {
         assert!(SailPatch::new(SailShape::Triangle([Vec3::ZERO; 3])).is_err());
     }
 
+    #[test]
+    fn native_sail_capacity_uses_local_hard_points_and_keeps_node_axes() {
+        let points = [
+            Vec3::ZERO,
+            Vec3::X * 3.0,
+            Vec3::new(2.0, 4.0, 0.0),
+            Vec3::Y * 4.0,
+        ];
+        let labels = points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Label {
+                group: "sailn1".into(),
+                name: format!("sail{}", i + 1),
+                matrix: Mat4::from_translation(*p).to_cols_array(),
+            })
+            .collect::<Vec<_>>();
+        let transform = Mat4::from_scale_rotation_translation(
+            Vec3::new(2.0, 3.0, 1.0),
+            glam::Quat::from_rotation_y(0.5),
+            Vec3::new(4.0, 0.0, 2.0),
+        );
+        let local =
+            from_labels(&labels, Mat4::IDENTITY, "rey_b2", "mast2").unwrap()[0].native_drive(0);
+        let world = from_labels(&labels, transform, "rey_b2", "mast2").unwrap()[0].native_drive(3);
+        assert_eq!(local.maximum, world.maximum);
+        assert_eq!(world.kind, storm_sim::sail_drive::Kind::Trapezoid);
+        assert_eq!(world.roll_type, 2);
+        assert_eq!(world.holes, 2);
+        assert_eq!(world.axes[0], transform.x_axis.truncate().to_array());
+    }
     #[test]
     fn original_locator_types_corner_order_uvs_and_parent_transform_are_preserved() {
         let mut labels = Vec::new();

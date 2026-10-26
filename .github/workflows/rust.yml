@@ -91,7 +91,7 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
-          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --fleet-window --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --fleet-window --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 1.5 --headless native-ship-rocking-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
@@ -163,6 +163,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-parameters-state.json
           python -c "import json,struct; s=json.load(open('ship-parameters-state.json')); m=s['native_motion']; p=m['parameters']; f=lambda bits:struct.unpack('<f',struct.pack('<I',bits))[0]; assert p['source']=='external_attributes' and p['original_game_scripts'] is False; assert all(b['integers']==[3,5,50,3000] for b in p['bodies']); assert all(f(b['type_bits'][0])==18 and f(b['limit_bits'][0])==10 and f(b['type_bits'][7])==0.25 for b in p['bodies']); a=json.load(open('ship-presentation-state.json')); assert m['bodies']!=a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise native sail wind, damage and sail-set drive
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --fleet-sail-setting 0.5 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-drive-state.json
+          python -c "import json; s=json.load(open('sail-drive-state.json')); d=s['native_sail_drive']; assert d['original_weather'] is False and d['rolling_geometry']=='settled_adapter'; assert [g['set'] for g in d['bodies']]==[1,1]; assert [g['deleted'] for g in d['bodies']]==[True,False]; assert all(g['sails'] for g in d['bodies']); a=json.load(open('ship-parameters-state.json')); assert s['native_motion']['bodies']!=a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -199,6 +203,7 @@ jobs:
             ship-placement-state.json
             ship-presentation-state.json
             ship-parameters-state.json
+            sail-drive-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

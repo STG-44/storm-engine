@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+libm.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 storm-core = { path = "../../crates/storm-core" }

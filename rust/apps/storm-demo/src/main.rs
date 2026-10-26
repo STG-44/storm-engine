@@ -100,6 +100,15 @@ struct Options {
     /// Override diagnostic ship_type/character attributes from a bounded JSON file.
     #[arg(long, requires = "native_ship_parameters")]
     ship_parameter_file: Option<PathBuf>,
+    /// Feed retained sail wind/damage factors into native fleet movement.
+    #[arg(long, requires = "native_ship_parameters")]
+    native_sail_drive: bool,
+    /// Initial native fleet sail request: 0 furled, 0.5 normal, 1 full.
+    #[arg(long, requires = "native_sail_drive", default_value_t = 1.0, value_parser = sail_setting)]
+    fleet_sail_setting: f32,
+    /// Wind direction for the native fleet drive and cloth, in degrees.
+    #[arg(long, requires = "native_sail_drive", default_value_t = 45.0, value_parser = finite, allow_negative_numbers = true)]
+    fleet_wind_direction: f32,
     /// Diagnostic character Ship.Immersion in metres (original scripts are not loaded).
     #[arg(long, requires = "native_ship_placement", default_value_t = 0.0, value_parser = finite, allow_negative_numbers = true)]
     ship_immersion: f32,
