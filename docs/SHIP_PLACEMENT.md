@@ -98,7 +98,7 @@ frames were inspected. Commercial resources, captures, launcher and evidence
 remain outside Git.
 
 This establishes the retained placement component and a bounded viewer. Actual
-commercial ship parameters, cargo computation, native presentation lag, sinking,
+commercial ship parameters, cargo computation, complete Execute integration, sinking,
 original SEA and full mounted gameplay remain pending. Physical hosted
 Windows/macOS GPU/window coverage remains necessary. Earlier whole-profile/
 manual-damage audits were not repeated for this placement/viewer increment.

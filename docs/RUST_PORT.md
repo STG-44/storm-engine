@@ -753,3 +753,15 @@ bounded additive turn heel and post-Move script outputs. The viewer uses this
 boundary and supports held A/D steering. Body state, model root and script
 fields remain separate; complete mounted gameplay and original sea/force
 providers remain pending.
+
+
+The [living-frame PR run](https://github.com/STG-44/storm-engine/actions/runs/40227614735)
+passes all four hosts for `5ec7e101`: 335 CPU tests and twenty-two standalone
+scenarios. Linux software Vulkan and local Metal each pass seventeen render tests
+and three frames of the updated fleet window. All 88 reports match local output
+with verified archive digests; 21 preceding reports stay unchanged. Forty-eight
+distinct input profiles / 288 complete snapshots match native living-frame,
+movement and script-write slices. All forty original model roots use delayed,
+heeled presentation with independent script outputs, unchanged physical state
+and preserved metadata. A/D steering is available in the viewer; full mounted
+Execute and original SEA remain pending. See [frame scope](SHIP_FRAME.md).

@@ -56,3 +56,37 @@ scenario twenty-two.
 Full Execute/Mount, native matrix construction, dead presentation, strand/contact
 handling, original SEA/weather/wakes and original game-script integration remain
 pending. This viewer is not complete commercial-game startup.
+
+
+## Four-platform evidence, 2026-10-26
+
+Code `5ec7e101653b6d39c55dfe4d32b0d67e594ca9c9` passes the
+[PR run](https://github.com/STG-44/storm-engine/actions/runs/40227614735) on macOS
+Apple Silicon/Intel, Windows and Linux: formatting, warnings-denied Clippy,
+builds, 335 CPU tests (135 interpreter tests) and twenty-two standalone scenarios.
+Logs verify actual host triples and counts. Linux also passes seventeen explicit
+software Vulkan render tests, existing windows and three frames of the updated
+fleet window. Local Metal passes seventeen render tests and three viewer frames;
+the original-resource viewer was launched with the new frame boundary and A/D
+controls. Interaction remains manual.
+
+Four ZIP digests / 88 complete JSON reports match local output. The preceding
+21 batch reports stay unchanged. The 48 distinct native input profiles produce
+288 complete snapshots. A follow-up varies target speed to remove repeated
+profiles; the production executable SHA remains unchanged, so original-resource
+and graphics evidence still applies to this final code.
+
+All forty original models preserve native physical state and rocking grids
+while applying delayed, heeled model roots. All nine script strings match current
+state with native formatting. First-owner removal freezes its model/script
+snapshot while the second continues. Across 274 locators, the surviving owner
+retains 548 systems / 822 finite world rows / 12,243 living particles at three
+seconds. Original fire/mast/hull/crew/waypoint metadata remains unchanged.
+Four generated/original Metal captures at 1.5/3 seconds were produced; original
+frames were inspected. Commercial resources, captures and audit reports stay
+outside Git.
+
+Full mounted Execute, dead/sinking paths, native matrix construction, original
+sea/force providers and original game programs remain pending. Physical hosted
+Windows/macOS GPU/window coverage and manual steering verification remain open.
+Earlier whole-profile/manual-damage audits were not repeated for this increment.
