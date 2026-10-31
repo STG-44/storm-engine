@@ -810,3 +810,15 @@ tests and three updated viewer frames; Metal passes seventeen render tests and
 six captures, including three inspected original sail sets. Local native-window
 checks were not repeated. Original rolling/yard turning and weather remain
 pending. See [scope and adapters](SAIL_DRIVE.md).
+
+
+The [sail-motion PR run](https://github.com/STG-44/storm-engine/actions/runs/41201261031)
+passes all four hosts for `a23d44b9`: 354 CPU tests, 25 scenarios and 100 complete
+JSON reports matching local output with verified archive digests. The preceding
+24 reports remain unchanged. Retained rolling state, reversals, geometry-vector
+scaling and unconstrained turn decisions match 64 native profiles / 1,088
+represented snapshots. All 40 original roots / 368 sails pass partial deployment
+and finite rig-transform checks. Linux passes 17 Vulkan tests and three updated
+viewer frames; Metal passes 17 render tests and six generated/original captures.
+Original cloth construction, rope constraints, native matrix accumulation and
+full scheduling remain pending. See [motion scope](SAIL_MOTION.md).

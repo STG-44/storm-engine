@@ -73,3 +73,33 @@ Additional tests cover parent-space yard pivots/inheritance, rope endpoints,
 partial drive, reversal continuity, fixed forced turns and independent release.
 The resource-free CLI scenario is included in the four-host workflow. Original
 resources and local capture/audit evidence remain outside Git.
+
+
+## Four-platform evidence, 2026-10-31
+
+Code `a23d44b9129f9bba71d4cc2fd5787ed4bcaae6af` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41201261031)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting, warnings-denied
+Clippy, builds, 354 CPU tests (135 interpreter tests) and 25 standalone scenarios.
+Actual host triples/counts are checked from logs. Four archive digests and all
+100 complete JSON reports match local output, including the new rig transforms;
+the preceding 24 scenarios remain unchanged.
+
+Linux passes 17 explicit software Vulkan rendering tests and three viewer frames
+with sail motion enabled. Local Metal passes 17 render tests and six captures:
+generated folding/unfolding and original folding/unfolding, normal-set transition
+and owner release. Original folding/unfolding frames were visually inspected.
+Native Mac window presentation was not repeated; hosted macOS/Windows physical
+GPU/window checks remain open.
+
+All 40 original roots and 368 sails pass partial-deployment, finite-rig-transform,
+metadata, type/character and independent owner-lifetime checks. Across 274 fire
+locators, the surviving owner retains 548 systems / 822 finite world rows /
+12,243 living particles at three seconds. Boat has no sail drive; rowing remains
+pending. The native reference compares 64 profiles / 1,088 complete represented
+snapshots under UBSan.
+
+This establishes the documented timing/decision scope and viewer adapters.
+Original cloth/LOD construction, rope-constrained turning, native matrix
+accumulation, native registration/scheduling, weather and full gameplay remain
+pending. Commercial resources and capture/audit evidence stay outside Git;
+earlier whole-profile and manual damage audits were not repeated.
