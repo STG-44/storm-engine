@@ -75,3 +75,34 @@ GoVWave/GoTWave, DoSRollSail/DoTRollSail, native rolling topology/LOD, the origi
 wind table/RNG/INI, limit points, rope constraints, native matrix accumulation,
 full entity scheduling and complete gameplay remain pending. Commercial assets,
 captures and audit evidence stay outside Git.
+
+
+## Four-platform evidence, 2026-10-31
+
+Code `eaa6186c8ffae280b8cb00f4fc038fe35235510e` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41209725502)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting, warnings-denied
+Clippy, builds, 358 CPU tests (135 interpreter tests) and 26 standalone scenarios.
+Actual host triples/counts are checked from logs. Four verified archive digests
+and all 104 complete JSON reports match local output, including every position,
+normal and UV channel in the static-grid scenario; the preceding 25 reports
+remain unchanged.
+
+Linux passes 18 explicit software Vulkan rendering tests and three existing
+sail-motion viewer frames (static inspection deliberately excludes the window).
+Local Metal passes 18 render tests and three static-grid captures: generated,
+original, and original after first-owner release. The original full-grid frame
+was visually inspected. Native Mac window presentation was not repeated;
+hosted macOS/Windows physical GPU/window coverage remains open.
+
+All 40 original roots and 368 sails pass native fixed-grid size/finite-value,
+metadata, type/character, motion and independent owner-lifetime checks. Across
+274 fire locators, the surviving owner retains 548 systems / 822 finite world
+rows / 12,243 living particles at three seconds. Boat has no sail drive; rowing
+remains pending. The native oracle compares 48 profiles / 96 complete snapshots /
+20,128 complete vertices under UBSan.
+
+This covers static construction and the documented providers. Native wave and
+rolled vertex generation/LOD, limit points, RNG/weather/INI, rope constraints,
+native matrix accumulation and full scheduling remain pending. Resources,
+captures and local audit evidence stay outside Git; earlier whole-profile and
+manual damage audits were not repeated.

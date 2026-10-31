@@ -823,3 +823,14 @@ and finite rig-transform checks. Linux passes 17 Vulkan tests and three updated
 viewer frames; Metal passes 17 render tests and six generated/original captures.
 Original cloth construction, rope constraints, native matrix accumulation and
 full scheduling remain pending. See [motion scope](SAIL_MOTION.md).
+
+
+The [sail-geometry PR run](https://github.com/STG-44/storm-engine/actions/runs/41209725502)
+passes all four hosts for `eaa6186c`: 358 CPU tests, 26 scenarios and 104 complete
+JSON reports matching local output with verified archive digests. The preceding
+25 reports remain unchanged. Original construction/vertices/three UV sets match
+48 native profiles / 96 complete snapshots / 20,128 complete vertices. All 40
+original roots / 368 sails pass fixed-grid and finite-value checks. Linux passes
+18 Vulkan tests and three existing motion-viewer frames; Metal passes 18 render
+tests and three static-grid captures. Original waves, rolled geometry/LOD, rope
+constraints and full scheduling remain pending. See [geometry scope](SAIL_GEOMETRY.md).
