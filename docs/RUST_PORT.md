@@ -845,3 +845,15 @@ pass attached-grid/finite checks with unchanged native normals and UVs. Linux
 passes 19 Vulkan tests and three existing motion-viewer frames; Metal passes
 19 render tests and four captures. Rolled/free processors, index LOD, rope
 bindings/constraints and full scheduling remain pending. See [wave scope](SAIL_WAVES.md).
+
+
+The [rolled-cloth PR run](https://github.com/STG-44/storm-engine/actions/runs/41248756147)
+passes all four hosts for `fd3fb10e`: 368 CPU tests, 28 scenarios and 112 complete
+JSON reports matching local output with verified archive digests. All preceding
+27 reports remain unchanged. Native comparisons cover 60 rolled profiles / 180
+frames / 37,740 vertices, 525 index profiles and 108 grid selections. All 40
+original roots / 368 sails pass rolled/transition checks. Linux passes 20 Vulkan
+tests and six fleet-window frames (three using new cloth). Metal passes 20 render
+tests, three paused native window frames and seven captures. Automatic camera
+LOD, free/falling cloth, rope binding/constraints and full scheduling remain
+pending. See [rolled cloth scope](SAIL_ROLLS.md).

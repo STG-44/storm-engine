@@ -79,3 +79,37 @@ snapshots cover the threshold boundaries and changed flags. CPU integration
 checks all three sets, completed/reversed requests, saved geometry after damage
 and independent owner release; the GPU check exercises persistent buffers and
 exact restoration. Commercial assets/captures/evidence stay outside Git.
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `fd3fb10e3656ee9da63aaf34de92c7ea8e08f550` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41248756147)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, builds, 368 CPU tests (135 interpreter) and 28 scenarios.
+Four archive digests and all 112 complete JSON reports match local output,
+including complete rolling/saved geometry, vertex fields and index allocations /
+ranges. All preceding 27 reports remain unchanged. Actual host triples and
+counts are checked from logs.
+
+Linux passes 20 software Vulkan tests and six fleet-window frames: three existing
+motion frames and three paused frames with attached/rolled cloth. Local Metal
+passes 20 render tests and presents three paused frames of the new window mode.
+Seven generated/original captures cover full, normal, furled, folding, unfolding
+and owner release; the original normal/furled frames were visually inspected.
+These three-frame checks do not establish manual keyboard interaction. Hosted
+macOS/Windows physical GPU/window coverage remains open.
+
+All 40 original roots / 368 sails pass rolled/transition and finite-value checks.
+Every active rolled index references a written vertex; normals and all UVs
+exactly retain their preceding static values. Metadata, parameters, motion and
+owner routing also pass. At three seconds, 274 fire locators retain 548 systems /
+822 finite world rows / 12,243 living particles under the surviving owner. Boat
+has no sail drive; rowing is pending. Under UBSan, 60 rolled profiles / 180 frames /
+37,740 complete vertices, 525 full index allocations and 108 grid selections
+match the retained code; regeneration is byte-identical.
+
+This covers the numeric processors and documented providers. Automatic camera
+LOD, free/falling cloth, native RNG/weather/INI/limit points, rope output binding
+and constraints, full matrix accumulation and game scheduling remain pending.
+Resources, captures and local evidence stay outside Git. Earlier whole-profile
+and manual damage audits were not repeated.
