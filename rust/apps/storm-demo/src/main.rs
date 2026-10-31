@@ -118,6 +118,9 @@ struct Options {
     /// Use original free-cloth processors on descendants of the falling diagnostic mast.
     #[arg(long, requires = "native_sail_rolls")]
     native_sail_free: bool,
+    /// Use retained rope limits/turning with paired locator and matrix providers.
+    #[arg(long, requires = "native_sail_rolls")]
+    native_sail_ropes: bool,
     /// First ship's mast to drop; defaults to the mast carrying the most sails.
     #[arg(long, requires = "native_sail_free")]
     fleet_free_mast: Option<u32>,

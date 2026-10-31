@@ -1,4 +1,5 @@
-//! Node/cloth adapters for retained sail timing and unconstrained yard decisions.
+//! Node/cloth adapters for retained sail timing and optional rope constraints.
+mod ropes;
 use super::*;
 use std::collections::BTreeMap;
 use storm_render::model::{NativeRigFrame, ShipAsset};
@@ -8,7 +9,7 @@ const ROLL_RATE: f32 = 0.0003;
 const TURN_RATE: f32 = 0.002;
 const TURN_DISCRETE: f32 = 0.01;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Yard {
     position: [f32; 3],
     local: f32,
@@ -33,6 +34,7 @@ pub(super) struct Motion {
     free: Vec<bool>,
     owners: Vec<Option<String>>,
     yards: BTreeMap<String, Yard>,
+    ropes: Option<ropes::Ropes>,
 }
 impl Motion {
     pub fn set_free(&mut self, index: usize) -> Result<()> {
@@ -63,12 +65,15 @@ impl Motion {
         index: usize,
         p: storm_sim::sail_geometry::Parameters,
     ) -> Result<()> {
-        storm_sim::sail_geometry::rebuild(
+        let sphere = storm_sim::sail_geometry::rebuild(
             self.sails
                 .get_mut(index)
                 .ok_or_else(|| anyhow::anyhow!("unknown native cloth sail"))?,
             p,
         )?;
+        if let Some(ropes) = &mut self.ropes {
+            ropes.geometry(index, p, sphere)?;
+        }
         Ok(())
     }
     pub fn new(asset: &ModelAsset, meshes: &[usize], group: &Group) -> Result<Self> {
@@ -104,6 +109,7 @@ impl Motion {
             sails,
             owners,
             yards,
+            ropes: None,
         })
     }
     fn copy_state(&self, group: &mut Group) {
@@ -113,17 +119,56 @@ impl Motion {
         }
     }
     fn nodes(&self, asset: &ShipAsset) -> Result<BTreeMap<String, [f32; 16]>> {
-        let mut deltas = BTreeMap::new();
-        for (name, yard) in &self.yards {
-            if yard.global != 0.0 {
-                deltas.insert(
-                    name.clone(),
-                    asset.yard_delta(name, libm::sinf(yard.global), libm::cosf(yard.global))?,
-                );
+        node_frames(&self.yards, asset)
+    }
+    pub fn enable_ropes(&mut self, asset: &ModelAsset, meshes: &[usize]) -> Result<()> {
+        self.ropes = Some(ropes::Ropes::new(asset, meshes, &mut self.sails)?);
+        Ok(())
+    }
+    pub fn rope_enabled(&self) -> bool {
+        self.ropes.is_some()
+    }
+    pub fn cloth_rope_input(
+        &self,
+        index: usize,
+    ) -> Option<(
+        storm_sim::sail_geometry::Parameters,
+        storm_sim::sail_geometry::Sphere,
+    )> {
+        self.ropes.as_ref().map(|r| r.input(index))
+    }
+    pub fn rope_outputs(&mut self, index: usize, points: [[f32; 3]; 4]) -> Result<()> {
+        if self.ropes.is_some() {
+            let s = &mut self.sails[index];
+            for (i, p) in points.into_iter().enumerate() {
+                if s.ties[i].is_some() {
+                    ensure!(
+                        p.into_iter().all(f32::is_finite),
+                        "invalid cloth rope output"
+                    );
+                    s.ties[i] = Some(p);
+                }
             }
         }
-        Ok(asset.posed_nodes(&deltas))
+        Ok(())
     }
+}
+fn node_frames(
+    yards: &BTreeMap<String, Yard>,
+    asset: &ShipAsset,
+) -> Result<BTreeMap<String, [f32; 16]>> {
+    let mut deltas = BTreeMap::new();
+    for (name, yard) in yards {
+        if yard.global != 0.0 {
+            deltas.insert(
+                name.clone(),
+                asset.yard_delta(name, libm::sinf(yard.global), libm::cosf(yard.global))?,
+            );
+        }
+    }
+    Ok(asset.posed_nodes(&deltas))
+}
+impl Motion {
     pub fn advance(
         &mut self,
         asset: &ModelAsset,
@@ -157,7 +202,22 @@ impl Motion {
         }
         Ok(())
     }
-    pub fn turn(&mut self, outputs: &[SailOutput], delta_ms: u32) -> Result<()> {
+    pub fn turn(
+        &mut self,
+        asset: &ModelAsset,
+        outputs: &[SailOutput],
+        delta_ms: u32,
+    ) -> Result<()> {
+        if let Some(r) = &mut self.ropes {
+            return r.turn(
+                asset,
+                &mut self.sails,
+                &self.owners,
+                &mut self.yards,
+                outputs,
+                delta_ms,
+            );
+        }
         for ((motion, owner), output) in self.sails.iter_mut().zip(&self.owners).zip(outputs) {
             if let Some(owner) = owner.as_ref().filter(|n| n.starts_with("rey_")) {
                 motion.turn(
@@ -190,6 +250,13 @@ impl Motion {
             let deployed = motion.deployment();
             frame.sails.insert(mesh, deployed);
             if let Some(origin) = &asset.meshes[mesh].sail.as_ref().unwrap().origin {
+                if self.ropes.is_some() {
+                    frame
+                        .rope_points
+                        .entry(origin.node.clone())
+                        .or_default()
+                        .insert(origin.group.clone(), motion.ties);
+                }
                 frame
                     .origins
                     .entry(origin.node.clone())
@@ -201,6 +268,10 @@ impl Motion {
         asset.ship_state.validate(&asset.ship)
     }
     pub fn report(&self) -> Json {
-        json!({"sails":self.sails.iter().map(|m|json!({"rolled":m.rolling,"deployment_bits":m.deployment().to_bits(),"old_wind_angle_bits":m.old_wind_angle.to_bits(),"transition":m.transition.map(|t|json!({"up":t.up,"delta_bits":t.delta.to_bits()}))})).collect::<Vec<_>>(),"nodes":self.yards.iter().map(|(name,y)|json!({"name":name,"local_angle_bits":y.local.to_bits(),"global_angle_bits":y.global.to_bits()})).collect::<Vec<_>>()})
+        let mut out = json!({"sails":self.sails.iter().map(|m|json!({"rolled":m.rolling,"deployment_bits":m.deployment().to_bits(),"old_wind_angle_bits":m.old_wind_angle.to_bits(),"transition":m.transition.map(|t|json!({"up":t.up,"delta_bits":t.delta.to_bits()}))})).collect::<Vec<_>>(),"nodes":self.yards.iter().map(|(name,y)|json!({"name":name,"local_angle_bits":y.local.to_bits(),"global_angle_bits":y.global.to_bits()})).collect::<Vec<_>>()});
+        if let Some(r) = &self.ropes {
+            out["rope_constraints"] = r.report(&self.sails);
+        }
+        out
     }
 }

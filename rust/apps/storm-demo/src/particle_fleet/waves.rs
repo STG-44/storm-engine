@@ -83,13 +83,25 @@ impl ClothFleet {
                 .filter_map(|(i, m)| m.sail.as_ref().map(|s| (i, s)))
             {
                 let mask = asset.ship_state.sail_holes.get(&mesh).copied().unwrap_or(0);
-                let (motion, sphere) = patch.native_geometry(mask)?;
+                let (mut motion, sphere) = patch.native_geometry(mask)?;
+                if let Some(origin) = &patch.origin
+                    && let Some(points) = asset
+                        .ship_state
+                        .native_rig
+                        .as_ref()
+                        .and_then(|f| f.rope_points.get(&origin.node))
+                        .and_then(|g| g.get(&origin.group))
+                {
+                    motion.ties = *points;
+                }
                 let input = patch.native_wave_input(mask)?;
+                let rope_points = motion.ties.map(|p| p.unwrap_or([0.0; 3]));
                 cloth.push(Cloth {
                     mesh,
                     vertices: sail_geometry::fill(&motion, sphere, [1.0; 2])?,
                     motion,
                     state: State {
+                        rope_points,
                         maximum_sum_wind: input.height * 0.02,
                         ..Default::default()
                     },
@@ -163,6 +175,11 @@ impl ClothFleet {
                     }
                     cloth.mask = mask;
                 }
+                if let Some((p, s)) = drive.cloth_rope_input(i, j) {
+                    cloth.input.parameters = p;
+                    cloth.input.sphere = s;
+                    cloth.input.ties = cloth.motion.ties.map(|p| p.is_some());
+                }
                 cloth.input.local_wind = output.wind;
                 if self.rolls && cloth.motion.rolling {
                     let patch = assets[i].meshes[cloth.mesh].sail.as_ref().unwrap();
@@ -219,6 +236,9 @@ impl ClothFleet {
                 }
                 cloth.frames += 1;
             }
+            for (j, cloth) in body.iter().enumerate() {
+                drive.rope_outputs(i, j, cloth.state.rope_points)?;
+            }
         }
         self.publish(assets)
     }
@@ -237,6 +257,22 @@ impl ClothFleet {
                 .filter_map(|c| c.topology.as_ref().map(|(_, _, _, t)| (c.mesh, t.clone())))
                 .collect();
             frame.pinned_cloth_fall = self.free_mode.is_some();
+            for c in body {
+                if c.motion.ties.iter().any(Option::is_some)
+                    && let Some(origin) = &asset.meshes[c.mesh].sail.as_ref().unwrap().origin
+                {
+                    frame
+                        .rope_points
+                        .entry(origin.node.clone())
+                        .or_default()
+                        .insert(
+                            origin.group.clone(),
+                            std::array::from_fn(|i| {
+                                c.motion.ties[i].map(|_| c.state.rope_points[i])
+                            }),
+                        );
+                }
+            }
             asset.ship_state.validate(&asset.ship)?;
         }
         Ok(())

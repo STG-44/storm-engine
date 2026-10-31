@@ -111,6 +111,8 @@ struct PlacedLabel {
     group: String,
     name: String,
     position: Vec3,
+    local: [f32; 3],
+    frame: [f32; 16],
 }
 impl Collector {
     pub fn add(&mut self, labels: &[Label], world: Mat4, node: &str) {
@@ -133,6 +135,11 @@ impl Collector {
                     name: l.name.clone(),
                     position: world
                         .transform_point3(Mat4::from_cols_array(&l.matrix).w_axis.truncate()),
+                    local: Mat4::from_cols_array(&l.matrix)
+                        .w_axis
+                        .truncate()
+                        .to_array(),
+                    frame: world.to_cols_array(),
                 }),
         );
     }
@@ -205,7 +212,7 @@ impl Collector {
         };
         let mut lines = Vec::new();
         let mut cloth = Vec::new();
-        for ((kind, _), ends) in ropes {
+        for ((kind, id), ends) in ropes {
             let [Some(a), Some(b)] = ends else {
                 stats.unmatched_ropes += 1;
                 continue;
@@ -222,7 +229,7 @@ impl Collector {
                     })
                     .cloned(),
             };
-            if let Some(line) = RopeLine::new(
+            if let Some(mut line) = RopeLine::new(
                 bind(a),
                 bind(b),
                 if kind == "stay" {
@@ -233,6 +240,20 @@ impl Collector {
                 kind == "rope",
                 config.segment_length,
             ) {
+                if matches!(kind.as_str(), "rope" | "fal") {
+                    let number = id
+                        .checked_add(if kind == "fal" { 1000 } else { 0 })
+                        .and_then(|n| i32::try_from(n).ok());
+                    line.locator = number.map(|number| LocatorRope {
+                        number,
+                        ends: [a, b].map(|l| LocatorEnd {
+                            node: l.node.clone(),
+                            group: l.group.clone(),
+                            point: l.local,
+                            frame: l.frame,
+                        }),
+                    });
+                }
                 lines.push(line);
                 stats.ropes += 1;
             } else {
@@ -306,6 +327,28 @@ pub struct RopeEnd {
 impl RopeEnd {
     fn at_frame(&self, rig: RigState, frame: Option<&super::NativeRigFrame>) -> Vec3 {
         let point = self.sail.as_ref().map_or(self.position, |s| {
+            if let Some(f) = frame
+                && let Some(origin) = &s.origin
+                && let Some(points) = f
+                    .rope_points
+                    .get(&origin.node)
+                    .and_then(|g| g.get(&origin.group))
+            {
+                let end = storm_sim::sail_rope::End {
+                    point: [0.0; 3],
+                    matrix: s.native_frame(),
+                };
+                if let Ok(local) = end.local(self.position.to_array())
+                    && let Some(point) = points[s.rope_slot(local)]
+                    && let Ok(world) = (storm_sim::sail_rope::End {
+                        point,
+                        matrix: s.native_frame(),
+                    })
+                    .world()
+                {
+                    return Vec3::from_array(world);
+                }
+            }
             s.gather_anchor(
                 self.position,
                 frame
@@ -318,6 +361,7 @@ impl RopeEnd {
 }
 #[derive(Clone, Debug)]
 pub struct RopeLine {
+    locator: Option<LocatorRope>,
     cut_node: Option<String>,
     start: RopeEnd,
     end: RopeEnd,
@@ -339,6 +383,7 @@ impl RopeLine {
             return None;
         }
         Some(Self {
+            locator: None,
             cut_node: None,
             start,
             end,
@@ -415,6 +460,33 @@ impl RopeLine {
                 };
             }
         }
+    }
+}
+
+/// Paired viewer locators. Ordering and registration are adapter data, not the
+/// original ROPE entity's label enumeration or message lifetime.
+#[derive(Clone, Debug)]
+pub struct LocatorEnd {
+    pub node: String,
+    pub group: String,
+    pub point: [f32; 3],
+    pub frame: [f32; 16],
+}
+#[derive(Clone, Debug)]
+pub struct LocatorRope {
+    pub number: i32,
+    pub ends: [LocatorEnd; 2],
+}
+impl super::ModelAsset {
+    pub fn locator_ropes(&self) -> Vec<LocatorRope> {
+        self.meshes
+            .iter()
+            .filter_map(|m| m.rigging.as_ref())
+            .flat_map(|r| match r {
+                RigMesh::Ropes(lines) => lines.iter().filter_map(|l| l.locator.clone()).collect(),
+                _ => Vec::new(),
+            })
+            .collect()
     }
 }
 

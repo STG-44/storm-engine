@@ -72,6 +72,40 @@ pub(super) struct Drive {
     animation: Option<Vec<motion::Motion>>,
 }
 impl Drive {
+    pub fn enable_ropes(&mut self, assets: &mut [ModelAsset]) -> Result<()> {
+        let animation = self
+            .animation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("rope constraints require native motion"))?;
+        for (i, a) in assets.iter_mut().enumerate() {
+            animation[i].enable_ropes(a, &self.meshes[i])?;
+            animation[i].publish(a, &self.meshes[i])?;
+        }
+        Ok(())
+    }
+    pub fn ropes_enabled(&self) -> bool {
+        self.animation
+            .as_ref()
+            .is_some_and(|a| a.iter().all(motion::Motion::rope_enabled))
+    }
+    pub fn cloth_rope_input(
+        &self,
+        body: usize,
+        sail: usize,
+    ) -> Option<(
+        storm_sim::sail_geometry::Parameters,
+        storm_sim::sail_geometry::Sphere,
+    )> {
+        self.animation
+            .as_ref()
+            .and_then(|a| a[body].cloth_rope_input(sail))
+    }
+    pub fn rope_outputs(&mut self, body: usize, sail: usize, points: [[f32; 3]; 4]) -> Result<()> {
+        if let Some(a) = &mut self.animation {
+            a[body].rope_outputs(sail, points)?;
+        }
+        Ok(())
+    }
     pub fn free_cloth(&mut self, body: usize, sail: usize) -> Result<()> {
         self.animation
             .as_mut()
@@ -263,7 +297,7 @@ impl Drive {
             }
             self.outputs[i] = self.groups[i].evaluate(v, Coefficients::default())?;
             if let Some(animation) = &mut self.animation {
-                animation[i].turn(&self.outputs[i], delta_ms)?;
+                animation[i].turn(&assets[i], &self.outputs[i], delta_ms)?;
             }
             let mut output = bodies[i].strengths[0].speed[2];
             let calls = sail_drive::request_speed(
@@ -292,6 +326,9 @@ impl Drive {
         if let Some(animation) = &self.animation {
             report["rolling_geometry"] = json!("native_timing_with_preview_geometry");
             report["motion"] = json!({"native_cloth":false,"native_matrix_accumulation":false,"rope_constrained_turning":false,"bodies":animation.iter().map(motion::Motion::report).collect::<Vec<_>>()});
+            if self.ropes_enabled() {
+                report["motion"]["rope_constrained_turning"] = json!(true);
+            }
         }
         report
     }

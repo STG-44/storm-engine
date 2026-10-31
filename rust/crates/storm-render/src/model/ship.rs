@@ -46,6 +46,7 @@ pub struct ParticleProjectInfo {
 pub struct ShipAsset {
     /// Static model-space node frames; commercial geometry stays external.
     pub node_frames: BTreeMap<String, [f32; 16]>,
+    pub node_widths: BTreeMap<String, f32>,
     pub deck_center: Option<Vec3>,
     pub nodes: Vec<ShipNode>,
     pub fires: Vec<FirePoint>,
@@ -110,6 +111,18 @@ impl Default for ShipState {
 impl ShipState {
     pub fn validate(&self, asset: &ShipAsset) -> Result<()> {
         if let Some(frame) = &self.native_rig {
+            ensure!(
+                frame.rope_points.values().map(|g| g.len()).sum::<usize>() <= 4096
+                    && frame
+                        .rope_points
+                        .values()
+                        .flat_map(|g| g.values())
+                        .flatten()
+                        .flatten()
+                        .flatten()
+                        .all(|v| v.is_finite()),
+                "invalid native rope outputs"
+            );
             ensure!(
                 frame.cloth_indices.len() <= 4096
                     && frame.cloth_indices.iter().all(|(mesh, t)| frame
@@ -363,8 +376,11 @@ impl ShipAsset {
     }
 }
 
+pub type SailRopePoints = BTreeMap<String, [Option<[f32; 3]>; 4]>;
 #[derive(Clone, Debug, Default)]
 pub struct NativeRigFrame {
+    /// Local points written by native cloth, grouped by original node/sail group.
+    pub rope_points: BTreeMap<String, SailRopePoints>,
     /// Select the pinned diagnostic mast frame used by free-cloth CPU and draw paths.
     pub pinned_cloth_fall: bool,
     pub cloth_indices: BTreeMap<usize, storm_sim::sail_topology::Topology>,

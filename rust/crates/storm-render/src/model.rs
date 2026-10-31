@@ -19,7 +19,9 @@ pub use sail_damage::{SailDamageMaterial, SailDamageSettings, SailImpact};
 mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
-pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
+pub use rigging::{
+    FlagOrigin, FlagPatch, LocatorEnd, LocatorRope, RigMesh, RiggingConfig, RiggingStats,
+};
 pub use ship::ParticleProjectInfo;
 pub use ship::{
     FireEmission, FirePoint, MAX_PARTICLE_INSTANCES, MAX_PARTICLE_VERTICES, NativeRigFrame,

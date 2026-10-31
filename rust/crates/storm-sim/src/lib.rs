@@ -14,6 +14,7 @@ pub mod sail_free;
 pub mod sail_geometry;
 pub mod sail_motion;
 pub mod sail_roll;
+pub mod sail_rope;
 pub mod sail_topology;
 pub mod sail_wave;
 pub mod ship_motion;

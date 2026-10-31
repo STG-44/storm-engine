@@ -8,6 +8,94 @@ use storm_formats::{
 };
 
 impl ModelAsset {
+    /// Additional generated locators for the opt-in rope diagnostic only.
+    pub fn add_sail_rope_fixture(&mut self) -> Result<()> {
+        use crate::model::{SailOrigin, ShipNode};
+        use storm_formats::geometry::Label;
+        use storm_sim::RigState;
+        for mesh in &mut self.meshes {
+            if let Some(s) = &mut mesh.sail {
+                let node = if s.is_triangle() { "rey_t1" } else { "rey_b2" };
+                s.origin = Some(SailOrigin {
+                    node: node.into(),
+                    parent: if s.is_triangle() { "mast1" } else { "mast2" }.into(),
+                    group: "sails1".into(),
+                });
+                mesh.ship_node = Some(node.into());
+                self.ship
+                    .node_frames
+                    .insert(node.into(), Mat4::IDENTITY.to_cols_array());
+            }
+        }
+        self.ship.nodes.push(ShipNode {
+            name: "rey_t1".into(),
+            parent: "mast1".into(),
+            pivot: Vec3::ZERO,
+        });
+        self.ship
+            .node_frames
+            .insert("fixture".into(), Mat4::IDENTITY.to_cols_array());
+        self.ship.node_widths.insert("mast1".into(), 0.0);
+        self.ship.node_widths.insert("mast2".into(), 0.0);
+        let mut collector = rigging::Collector::default();
+        let mut patches = Vec::new();
+        for (i, s) in self
+            .meshes
+            .iter()
+            .filter_map(|m| m.sail.as_ref())
+            .enumerate()
+        {
+            let h = s.native_geometry(0)?.0.hard_points;
+            patches.push(s.clone());
+            for (j, slot) in if s.is_triangle() {
+                [0, 1, 2]
+            } else {
+                [0, 2, 3]
+            }
+            .into_iter()
+            .enumerate()
+            {
+                let id = 9000 + i * 10 + j;
+                let point = Vec3::from_array(h[slot]);
+                for (node, group, name, p) in [
+                    (
+                        s.origin.as_ref().unwrap().node.as_str(),
+                        "sails1",
+                        format!("falb{id}"),
+                        point,
+                    ),
+                    (
+                        "fixture",
+                        "hull",
+                        format!("fale{id}"),
+                        point + Vec3::new(2.0, -0.5, 3.0),
+                    ),
+                ] {
+                    collector.add(
+                        &[Label {
+                            group: group.into(),
+                            name,
+                            matrix: Mat4::from_translation(p).to_cols_array(),
+                        }],
+                        Mat4::IDENTITY,
+                        node,
+                    );
+                }
+            }
+        }
+        let (lines, _, _) = collector.build(&patches, &RiggingConfig::default())?;
+        let rig = RigMesh::Ropes(lines);
+        self.meshes.push(Mesh {
+            vertices: rig.vertices(SailWind::default(), 0.0, RigState::default())?,
+            indices: rig.indices(),
+            rigging: Some(rig),
+            ship_node: None,
+            dynamic: None,
+            texture: 1,
+            sail: None,
+        });
+        Ok(())
+    }
     /// Generated crew/particle/damage fixture; no commercial data.
     pub fn ship_demo() -> Result<Self> {
         use crate::model::{FirePoint, RigMesh, SailOrigin, ShipNode};

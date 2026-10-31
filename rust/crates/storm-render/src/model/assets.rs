@@ -695,6 +695,10 @@ impl Builder {
             .ship
             .node_frames
             .insert(node.into(), world.to_cols_array());
+        self.asset
+            .ship
+            .node_widths
+            .insert(node.into(), model.header.bounds_size[0]);
         for label in &model.labels {
             if matches!(label.group.as_str(), "fireplace" | "fireplaces") {
                 self.asset.ship.fires.push(super::FirePoint {

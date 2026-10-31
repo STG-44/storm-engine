@@ -727,6 +727,8 @@ impl Fleet {
         if let Some(cloth) = &self.cloth {
             report[if cloth.free_enabled() {
                 "native_sail_free"
+            } else if self.drive.as_ref().is_some_and(|d| d.ropes_enabled()) {
+                "native_sail_ropes"
             } else if cloth.rolls() {
                 "native_sail_rolls"
             } else {
@@ -863,6 +865,11 @@ fn load(options: &Options) -> Result<Fleet> {
         fleet.enable_native_parameters(config.as_ref())?;
     }
     if options.native_sail_drive {
+        if options.native_sail_ropes && options.model.is_none() {
+            for asset in &mut fleet.assets {
+                asset.add_sail_rope_fixture()?;
+            }
+        }
         fleet.enable_native_drive(
             options.fleet_sail_setting,
             options.fleet_wind_direction.to_radians(),
@@ -874,6 +881,13 @@ fn load(options: &Options) -> Result<Fleet> {
             .as_mut()
             .unwrap()
             .enable_motion(&mut fleet.assets)?;
+    }
+    if options.native_sail_ropes {
+        fleet
+            .drive
+            .as_mut()
+            .unwrap()
+            .enable_ropes(&mut fleet.assets)?;
     }
     if options.native_sail_geometry {
         ensure!(
@@ -1068,6 +1082,154 @@ mod tests {
             .enable_free(&f.assets, Some(2), 0.75)
             .unwrap();
         f
+    }
+    fn rope_fixture(setting: f32) -> Fleet {
+        let mut f = parameter_fixture(None);
+        f.preview = true;
+        for a in &mut f.assets {
+            a.add_sail_rope_fixture().unwrap();
+        }
+        f.enable_native_drive(setting, 135.0_f32.to_radians())
+            .unwrap();
+        let d = f.drive.as_mut().unwrap();
+        d.enable_motion(&mut f.assets).unwrap();
+        d.enable_ropes(&mut f.assets).unwrap();
+        f.cloth = Some(waves::ClothFleet::with_rolls(&mut f.assets).unwrap());
+        f
+    }
+    #[test]
+    fn native_rope_turns_rebuild_geometry_publish_cloth_endpoints_and_release_independently() {
+        let mut f = rope_fixture(1.0);
+        let before = f.drive.as_ref().unwrap().report();
+        f.advance_frames(1.5).unwrap();
+        let after = f.drive.as_ref().unwrap().report();
+        assert_eq!(after["motion"]["rope_constrained_turning"], true);
+        for (i, b) in after["motion"]["bodies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .enumerate()
+        {
+            let r = &b["rope_constraints"];
+            assert_eq!(r["ropes"], 8);
+            for (j, s) in r["sails"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(
+                    s["records"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter(|r| !r.is_null())
+                        .count(),
+                    2
+                );
+                assert!(s["rebuilds"].as_u64().unwrap() > 0);
+                assert_eq!(s["held_turns"], 0);
+                assert_ne!(
+                    s["hard_point_bits"],
+                    before["motion"]["bodies"][i]["rope_constraints"]["sails"][j]["hard_point_bits"]
+                );
+                let mesh = f.assets[i]
+                    .meshes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.sail.is_some())
+                    .nth(j)
+                    .unwrap()
+                    .0;
+                let origin = f.assets[i].meshes[mesh]
+                    .sail
+                    .as_ref()
+                    .unwrap()
+                    .origin
+                    .as_ref()
+                    .unwrap();
+                let points = f.assets[i]
+                    .ship_state
+                    .native_rig
+                    .as_ref()
+                    .unwrap()
+                    .rope_points[&origin.node][&origin.group];
+                assert_eq!(
+                    json!(points.map(|p| p.map(|p| p.map(f32::to_bits)))),
+                    s["tie_bits"]
+                );
+            }
+        }
+        f.preview = false;
+        f.advance_frames(2.0).unwrap();
+        let frozen = f.drive.as_ref().unwrap().report();
+        let cloth = f.cloth.as_ref().unwrap().report();
+        f.advance_frames(3.0).unwrap();
+        let later = f.drive.as_ref().unwrap().report();
+        assert_eq!(frozen["motion"]["bodies"][0], later["motion"]["bodies"][0]);
+        assert_ne!(frozen["motion"]["bodies"][1], later["motion"]["bodies"][1]);
+        assert_eq!(
+            cloth["bodies"][0],
+            f.cloth.as_ref().unwrap().report()["bodies"][0]
+        );
+    }
+    #[test]
+    fn rope_geometry_damage_and_transitions_are_independent_of_presentation_partition() {
+        let mut a = rope_fixture(1.0);
+        let mut b = rope_fixture(1.0);
+        for f in [&mut a, &mut b] {
+            f.drive.as_mut().unwrap().set_target(0, 0.0).unwrap();
+        }
+        a.advance_frames(0.75).unwrap();
+        for t in [0.005, 0.333, 0.749, 0.75] {
+            b.advance_frames(t).unwrap();
+            let before = (
+                b.drive.as_ref().unwrap().report(),
+                b.cloth.as_ref().unwrap().report(),
+            );
+            b.present_at(t, true).unwrap();
+            assert_eq!(
+                before,
+                (
+                    b.drive.as_ref().unwrap().report(),
+                    b.cloth.as_ref().unwrap().report()
+                )
+            );
+        }
+        assert_eq!(
+            a.drive.as_ref().unwrap().report(),
+            b.drive.as_ref().unwrap().report()
+        );
+        assert_eq!(
+            a.cloth.as_ref().unwrap().report(),
+            b.cloth.as_ref().unwrap().report()
+        );
+        for f in [&mut a, &mut b] {
+            let mesh = f.assets[0]
+                .meshes
+                .iter()
+                .position(|m| m.sail.is_some())
+                .unwrap();
+            f.assets[0].ship_state.sail_holes.insert(mesh, 3);
+            f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        }
+        a.advance_frames(1.5).unwrap();
+        for t in [0.751, 1.005, 1.5] {
+            b.advance_frames(t).unwrap();
+            b.present_at(t, true).unwrap();
+        }
+        assert_eq!(
+            a.drive.as_ref().unwrap().report(),
+            b.drive.as_ref().unwrap().report()
+        );
+        assert_eq!(
+            a.cloth.as_ref().unwrap().report(),
+            b.cloth.as_ref().unwrap().report()
+        );
+        assert!(
+            a.drive
+                .as_ref()
+                .unwrap()
+                .cloth_state(0, 0)
+                .unwrap()
+                .transition
+                .is_some()
+        );
     }
     #[test]
     fn native_free_entry_preserves_samples_freezes_transition_and_retains_rolled_priority() {

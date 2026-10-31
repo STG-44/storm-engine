@@ -2,11 +2,11 @@
 
 Started: 2026-10-17.
 
-Current increment: [original free sail cloth](SAIL_FREE.md).
-DoSFreeSail/DoTFreeSail follow the native free flag and rolled-first dispatch,
-retaining coarse grids and transition state after a diagnostic mast fall.
-Random draws and matrix axes are explicit providers. Native mast physics/group
-migration, camera LOD, rope constraints and full game scheduling remain pending.
+Current increment: [original sail rope constraints](SAIL_ROPES.md).
+SetTurnLimits, constrained TurnSail, numeric tie registration and endpoint queries
+now feed changed geometry and visible rope endpoints in an opt-in fleet mode.
+Label order/matrix construction remain adapters; native service registration,
+camera LOD, mast physics/group migration and full scheduling remain pending.
 
 ## Goal
 

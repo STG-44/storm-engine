@@ -4,6 +4,51 @@ use storm_sim::SailTier;
 use storm_sim::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 
 #[test]
+fn native_cloth_rope_outputs_replace_gathered_anchors_and_retain_node_motion() {
+    let mut asset = crate::model::ModelAsset::ship_demo().unwrap();
+    let original = asset.locator_ropes().len();
+    asset.add_sail_rope_fixture().unwrap();
+    assert_eq!(asset.locator_ropes().len(), original + 6);
+    let line = asset
+        .meshes
+        .iter()
+        .filter_map(|m| m.rigging.as_ref())
+        .find_map(|m| {
+            if let RigMesh::Ropes(lines) = m {
+                lines.iter().find(|l| l.start.sail.is_some())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+    let end = &line.start;
+    let patch = end.sail.as_ref().unwrap();
+    let origin = patch.origin.as_ref().unwrap();
+    let mut f = crate::model::NativeRigFrame::default();
+    let slot = patch.rope_slot(end.position.to_array());
+    let point = [1.0, -2.0, 3.0];
+    let mut points = [None; 4];
+    points[slot] = Some(point);
+    f.rope_points
+        .entry(origin.node.clone())
+        .or_default()
+        .insert(origin.group.clone(), points);
+    f.nodes.insert(
+        origin.node.clone(),
+        Mat4::from_rotation_y(0.4).to_cols_array(),
+    );
+    let expected =
+        Mat4::from_cols_array(&f.nodes[&origin.node]).transform_point3(Vec3::from_array(point));
+    assert!(
+        end.at_frame(RigState::uniform(0.0), Some(&f))
+            .distance(expected)
+            < 0.000001
+    );
+    f.rope_points.clear();
+    assert_ne!(end.at_frame(RigState::uniform(0.0), Some(&f)), expected);
+}
+
+#[test]
 fn native_rope_endpoints_follow_their_own_sail_deployment_and_yard() {
     let mut sail = SailPatch::new(SailShape::Quad([
         Vec3::ZERO,

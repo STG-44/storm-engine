@@ -75,6 +75,23 @@ pub struct SailOrigin {
 }
 
 impl SailPatch {
+    pub fn native_frame(&self) -> [f32; 16] {
+        self.native_frame
+    }
+    /// Nearest local anchor with MSG_SAIL_ROPE_TIE's threshold and strict tie order.
+    pub fn rope_slot(&self, point: [f32; 3]) -> usize {
+        let mut best = 0;
+        let mut distance = 1000.0;
+        for i in 0..if self.is_triangle() { 3 } else { 4 } {
+            let d = std::array::from_fn::<_, 3, _>(|j| self.drive_points[i][j] - point[j]);
+            let d = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            if d < distance {
+                distance = d;
+                best = i;
+            }
+        }
+        best
+    }
     pub fn new(shape: SailShape) -> Result<Self> {
         let (points, du, dv) = match &shape {
             SailShape::Triangle(p) => (&p[..], p[1] - p[0], p[2] - p[0]),

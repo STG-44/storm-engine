@@ -552,3 +552,8 @@ mast fall. Rolled cloth keeps precedence; freed transitions stop without resetti
 samples. Coarse native grids and complete reports use explicit matrix/raw-random
 providers, with last-finite retention for native divide-by-zero outcomes.
 See [scope and command](../docs/SAIL_FREE.md).
+
+`--native-sail-ropes` adds SetTurnLimits, constrained TurnSail and tied-point
+feedback to cloth and visible ropes. Paired locator ordering, node matrices
+and per-ship endpoint registries are explicit adapters; native entity lifetime
+is pending. See [scope and command](../docs/SAIL_ROPES.md).

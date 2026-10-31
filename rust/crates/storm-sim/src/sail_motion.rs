@@ -1,5 +1,5 @@
 //! Retained sail rolling state and yard-turn decisions, with an explicit node port.
-//! Rope-constrained turning and native cloth construction are separate providers.
+//! Rope constraints are added by sail_rope; node matrices remain explicit ports.
 use crate::sail_drive::Kind;
 use anyhow::{Result, ensure};
 
@@ -159,6 +159,22 @@ impl SailMotion {
         discrete: f32,
         node: &mut impl NodePort,
     ) -> Result<()> {
+        if self.turn_node(wind_x, step, discrete, node)? && self.rolling {
+            for (slot, point) in [(2, 0), (3, 1)] {
+                if self.ties[slot].is_some() {
+                    self.ties[slot] = Some(self.hard_points[point]);
+                }
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn turn_node(
+        &mut self,
+        wind_x: f32,
+        step: f32,
+        discrete: f32,
+        node: &mut impl NodePort,
+    ) -> Result<bool> {
         self.validate()?;
         ensure!(
             [wind_x, step, discrete].into_iter().all(f32::is_finite),
@@ -190,15 +206,9 @@ impl SailMotion {
             node.rotate_y(angle * self.orientation());
             node.set_position(position);
             node.update_global();
-            if self.rolling {
-                for (slot, point) in [(2, 0), (3, 1)] {
-                    if self.ties[slot].is_some() {
-                        self.ties[slot] = Some(self.hard_points[point]);
-                    }
-                }
-            }
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
     /// Renderers bound visible deployment; the raw native delta remains available for drive.
     pub fn deployment(&self) -> f32 {

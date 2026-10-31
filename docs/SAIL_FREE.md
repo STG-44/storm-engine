@@ -59,6 +59,9 @@ LOD remain pending. The default viewer is unchanged.
 
 ## Native reference
 
+The next increment adds [rope constraints](SAIL_ROPES.md) through a separate flag.
+The free-only diagnostic and its preceding reports retain their behavior.
+
 `reference/sail_free/generate.py` reads the preceding oracle's scaffolding as
 data and compiles unedited free methods, goWave, geometry/vertex initialization,
 CVECTOR and MulToInvNorm under UBSan with contraction disabled. A queued raw-draw

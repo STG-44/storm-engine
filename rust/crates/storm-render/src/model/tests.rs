@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn native_rope_output_frames_change_live_lines_and_restore_previous_buffers() {
+    let mut asset = ModelAsset::ship_demo().unwrap();
+    asset.add_sail_rope_fixture().unwrap();
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let capture = |scene: &mut ModelScene| {
+        crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba
+    };
+    let ordinary = capture(&mut scene);
+    let mut frame = NativeRigFrame::default();
+    for patch in asset.meshes.iter().filter_map(|m| m.sail.as_ref()) {
+        let origin = patch.origin.as_ref().unwrap();
+        let h = patch.native_geometry(0).unwrap().0.hard_points;
+        frame
+            .rope_points
+            .entry(origin.node.clone())
+            .or_default()
+            .insert(
+                origin.group.clone(),
+                h.map(|p| Some([p[0] + 2.0, p[1] - 1.0, p[2] + 0.5])),
+            );
+    }
+    let mut state = asset.ship_state.clone();
+    state.native_rig = Some(std::sync::Arc::new(frame));
+    scene.set_ship_state(state).unwrap();
+    let native = capture(&mut scene);
+    assert_ne!(ordinary, native);
+    scene.set_ship_state(asset.ship_state).unwrap();
+    assert_eq!(ordinary, capture(&mut scene));
+}
+
+#[test]
 fn pinned_free_mast_axes_keep_zero_wind_gravity_in_world_space() {
     let asset = ModelAsset::ship_demo().unwrap();
     let patch = asset
