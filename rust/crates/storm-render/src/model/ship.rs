@@ -44,6 +44,8 @@ pub struct ParticleProjectInfo {
 }
 #[derive(Clone, Debug, Default)]
 pub struct ShipAsset {
+    /// Static model-space node frames; commercial geometry stays external.
+    pub node_frames: BTreeMap<String, [f32; 16]>,
     pub deck_center: Option<Vec3>,
     pub nodes: Vec<ShipNode>,
     pub fires: Vec<FirePoint>,
@@ -80,6 +82,7 @@ pub fn mast_falls_with(broken: u32, candidate: u32) -> bool {
 }
 #[derive(Clone, Debug)]
 pub struct ShipState {
+    pub native_rig: Option<std::sync::Arc<NativeRigFrame>>,
     /// Draw-mesh index -> original 10/12-sector bitmask.
     pub sail_holes: BTreeMap<usize, u16>,
     pub broken_masts: BTreeMap<u32, f32>,
@@ -93,6 +96,7 @@ pub struct ShipState {
 impl Default for ShipState {
     fn default() -> Self {
         Self {
+            native_rig: None,
             sail_holes: BTreeMap::new(),
             broken_masts: BTreeMap::new(),
             broken_hulls: BTreeMap::new(),
@@ -105,6 +109,36 @@ impl Default for ShipState {
 }
 impl ShipState {
     pub fn validate(&self, asset: &ShipAsset) -> Result<()> {
+        if let Some(frame) = &self.native_rig {
+            ensure!(
+                frame.sails.len() <= 4096 && frame.nodes.len() <= 256 && frame.origins.len() <= 256,
+                "rig frame budget exceeded"
+            );
+            ensure!(
+                frame
+                    .sails
+                    .values()
+                    .chain(frame.origins.values().flat_map(|v| v.values()))
+                    .all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
+                "invalid native rig deployment"
+            );
+            ensure!(
+                frame.origins.values().map(|v| v.len()).sum::<usize>() <= 4096,
+                "rig origin budget exceeded"
+            );
+            ensure!(
+                frame
+                    .nodes
+                    .iter()
+                    .all(|(name, m)| asset.nodes.iter().any(|n| &n.name == name)
+                        && m.iter().all(|v| v.is_finite())
+                        && m[3] == 0.0
+                        && m[7] == 0.0
+                        && m[11] == 0.0
+                        && m[15] == 1.0),
+                "invalid rig node transform"
+            );
+        }
         ensure!(
             self.broken_masts.len() <= 64 && self.broken_hulls.len() <= 256,
             "too many damaged parts"
@@ -157,6 +191,65 @@ impl ShipState {
     }
 }
 impl ShipAsset {
+    /// Viewer matrix provider. Scalar sine/cosine are supplied by the caller.
+    /// This is not native CMatrix accumulation or rope-constrained turning.
+    pub fn yard_delta(&self, name: &str, sine: f32, cosine: f32) -> Result<[f32; 16]> {
+        ensure!(
+            sine.is_finite() && cosine.is_finite(),
+            "invalid yard rotation"
+        );
+        let node = self
+            .nodes
+            .iter()
+            .find(|n| n.name == name)
+            .ok_or_else(|| anyhow::anyhow!("unknown yard node"))?;
+        let frame = |name: &str| {
+            self.node_frames
+                .get(name)
+                .map(Mat4::from_cols_array)
+                .or_else(|| {
+                    self.nodes
+                        .iter()
+                        .find(|n| n.name == name)
+                        .map(|n| Mat4::from_translation(n.pivot))
+                })
+                .unwrap_or(Mat4::IDENTITY)
+        };
+        let base = frame(name);
+        let parent = frame(&node.parent);
+        let inverse = parent.inverse();
+        let local = inverse.transform_point3(base.w_axis.truncate());
+        let rotation = Mat4::from_cols_array(&[
+            cosine, 0.0, -sine, 0.0, 0.0, 1.0, 0.0, 0.0, sine, 0.0, cosine, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ]);
+        let result = parent
+            * Mat4::from_translation(local)
+            * rotation
+            * Mat4::from_translation(-local)
+            * inverse;
+        ensure!(result.is_finite(), "yard transform overflow");
+        Ok(result.to_cols_array())
+    }
+    pub fn posed_nodes(&self, deltas: &BTreeMap<String, [f32; 16]>) -> BTreeMap<String, [f32; 16]> {
+        let mut result = BTreeMap::new();
+        for node in &self.nodes {
+            let mut composed = None;
+            for ancestor in self.ancestors(&node.name) {
+                if let Some(delta) = deltas.get(&ancestor.name) {
+                    let matrix = Mat4::from_cols_array(delta);
+                    composed = Some(composed.map_or(matrix, |old| matrix * old));
+                }
+            }
+            if let Some(matrix) = composed {
+                result.insert(node.name.clone(), matrix.to_cols_array());
+            }
+        }
+        result
+    }
+    pub fn posed_axes(axes: [[f32; 3]; 3], transform: [f32; 16]) -> [[f32; 3]; 3] {
+        let m = Mat4::from_cols_array(&transform);
+        axes.map(|v| m.transform_vector3(Vec3::from_array(v)).to_array())
+    }
     pub fn masts(&self) -> Vec<u32> {
         self.nodes
             .iter()
@@ -211,6 +304,21 @@ impl ShipAsset {
         })
     }
     pub fn transform(&self, node: &str, state: &ShipState, seconds: f32) -> Option<Mat4> {
+        let fall = self.fall_transform(node, state, seconds);
+        match state.native_rig.as_ref().and_then(|r| r.nodes.get(node)) {
+            Some(m) => {
+                let motion = Mat4::from_cols_array(m);
+                Some(fall.map_or(motion, |f| f * motion))
+            }
+            None => fall,
+        }
+    }
+    pub(super) fn fall_transform(
+        &self,
+        node: &str,
+        state: &ShipState,
+        seconds: f32,
+    ) -> Option<Mat4> {
         let (_, start, pivot) = self.fallen_mast(node, state)?;
         let age = (seconds - start).max(0.0);
         let angle = (age * age * 0.22).min(1.65);
@@ -220,5 +328,85 @@ impl ShipAsset {
                 * Mat4::from_rotation_z(-angle)
                 * Mat4::from_translation(-pivot),
         )
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct NativeRigFrame {
+    pub sails: BTreeMap<usize, f32>,
+    pub origins: BTreeMap<String, BTreeMap<String, f32>>,
+    /// Model-space deltas including inherited yard motion for each affected node.
+    pub nodes: BTreeMap<String, [f32; 16]>,
+}
+impl NativeRigFrame {
+    pub fn deployment(&self, patch: &super::SailPatch) -> Option<f32> {
+        let origin = patch.origin.as_ref()?;
+        self.origins.get(&origin.node)?.get(&origin.group).copied()
+    }
+    pub fn point(&self, node: Option<&str>, point: Vec3) -> Vec3 {
+        node.and_then(|n| self.nodes.get(n))
+            .map_or(point, |m| Mat4::from_cols_array(m).transform_point3(point))
+    }
+}
+
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    #[test]
+    fn yard_rotation_uses_parent_axes_and_inherits_without_rotating_the_pivot() {
+        let parent = Mat4::from_translation(Vec3::new(3.0, 4.0, 5.0)) * Mat4::from_rotation_x(0.5);
+        let child = parent * Mat4::from_translation(Vec3::new(0.0, 3.0, 2.0));
+        let asset = ShipAsset {
+            nodes: vec![
+                ShipNode {
+                    name: "mast".into(),
+                    parent: String::new(),
+                    pivot: parent.w_axis.truncate(),
+                },
+                ShipNode {
+                    name: "rey_a".into(),
+                    parent: "mast".into(),
+                    pivot: child.w_axis.truncate(),
+                },
+                ShipNode {
+                    name: "tip".into(),
+                    parent: "rey_a".into(),
+                    pivot: child.transform_point3(Vec3::X),
+                },
+            ],
+            node_frames: BTreeMap::from([
+                ("mast".into(), parent.to_cols_array()),
+                ("rey_a".into(), child.to_cols_array()),
+            ]),
+            ..Default::default()
+        };
+        let delta = asset.yard_delta("rey_a", 1.0, 0.0).unwrap();
+        let m = Mat4::from_cols_array(&delta);
+        let pivot = child.w_axis.truncate();
+        assert!(m.transform_point3(pivot).distance(pivot) < 0.00001);
+        assert!(
+            m.transform_point3(child.transform_point3(Vec3::X))
+                .distance(child.transform_point3(-Vec3::Z))
+                < 0.00001
+        );
+        let inherited = asset.posed_nodes(&BTreeMap::from([("rey_a".into(), delta)]));
+        assert_eq!(inherited["rey_a"], inherited["tip"]);
+        assert!(!inherited.contains_key("mast"));
+        let mut state = ShipState {
+            native_rig: Some(std::sync::Arc::new(NativeRigFrame {
+                nodes: inherited,
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        state.validate(&asset).unwrap();
+        assert_eq!(
+            state.native_rig.as_ref().unwrap().nodes["tip"],
+            state.native_rig.as_ref().unwrap().nodes["rey_a"]
+        );
+        std::sync::Arc::make_mut(state.native_rig.as_mut().unwrap())
+            .sails
+            .insert(0, 1.01);
+        assert!(state.validate(&asset).is_err());
     }
 }

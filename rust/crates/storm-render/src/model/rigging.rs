@@ -304,10 +304,16 @@ pub struct RopeEnd {
     pub sail: Option<SailPatch>,
 }
 impl RopeEnd {
-    fn at(&self, rig: RigState) -> Vec3 {
-        self.sail.as_ref().map_or(self.position, |s| {
-            s.gather_anchor(self.position, rig.deployed(s.tier) as f32)
-        })
+    fn at_frame(&self, rig: RigState, frame: Option<&super::NativeRigFrame>) -> Vec3 {
+        let point = self.sail.as_ref().map_or(self.position, |s| {
+            s.gather_anchor(
+                self.position,
+                frame
+                    .and_then(|f| f.deployment(s))
+                    .unwrap_or(rig.deployed(s.tier) as f32),
+            )
+        });
+        frame.map_or(point, |f| f.point(self.node.as_deref(), point))
     }
 }
 #[derive(Clone, Debug)]
@@ -362,9 +368,16 @@ impl RopeLine {
     fn vertex_count(&self) -> usize {
         (self.segments + 1) * SIDES
     }
-    fn deform(&self, out: &mut [ModelVertex], rig: RigState, wind: SailWind, seconds: f32) {
-        let start = self.start.at(rig);
-        let end = self.end.at(rig);
+    fn deform_frame(
+        &self,
+        out: &mut [ModelVertex],
+        rig: RigState,
+        wind: SailWind,
+        seconds: f32,
+        frame: Option<&super::NativeRigFrame>,
+    ) {
+        let start = self.start.at_frame(rig, frame);
+        let end = self.end.at_frame(rig, frame);
         let delta = end - start;
         let direction = if delta.length_squared() > 1e-8 {
             delta.normalize()
@@ -642,7 +655,7 @@ impl RigMesh {
                         .start
                         .node
                         .as_deref()
-                        .and_then(|n| asset.transform(n, state, seconds))
+                        .and_then(|n| asset.fall_transform(n, state, seconds))
                 {
                     for v in vertices {
                         v.position = matrix
@@ -723,6 +736,16 @@ impl RigMesh {
         seconds: f32,
         rig: RigState,
     ) -> Result<()> {
+        self.deform_with_frame(out, wind, seconds, rig, None)
+    }
+    pub fn deform_with_frame(
+        &self,
+        out: &mut [ModelVertex],
+        wind: SailWind,
+        seconds: f32,
+        rig: RigState,
+        frame: Option<&super::NativeRigFrame>,
+    ) -> Result<()> {
         wind.validate()?;
         rig.validate()?;
         ensure!(
@@ -735,7 +758,7 @@ impl RigMesh {
                 let mut offset = 0;
                 for line in lines {
                     let count = line.vertex_count();
-                    line.deform(&mut out[offset..offset + count], rig, wind, seconds);
+                    line.deform_frame(&mut out[offset..offset + count], rig, wind, seconds, frame);
                     offset += count;
                 }
             }

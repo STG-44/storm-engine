@@ -22,8 +22,8 @@ pub use effects::{DynamicMesh, ParticlePatch};
 pub use rigging::{FlagOrigin, FlagPatch, RigMesh, RiggingConfig, RiggingStats};
 pub use ship::ParticleProjectInfo;
 pub use ship::{
-    FireEmission, FirePoint, MAX_PARTICLE_INSTANCES, MAX_PARTICLE_VERTICES, ShipAsset, ShipNode,
-    ShipState, mast_falls_with, part_number,
+    FireEmission, FirePoint, MAX_PARTICLE_INSTANCES, MAX_PARTICLE_VERTICES, NativeRigFrame,
+    ShipAsset, ShipNode, ShipState, mast_falls_with, part_number,
 };
 #[cfg(test)]
 mod presentation_tests;
@@ -1087,7 +1087,11 @@ impl ModelScene {
                     vertices,
                     local_wind,
                     seconds,
-                    self.rig.deployed(patch.tier) as f32,
+                    self.ship_state
+                        .native_rig
+                        .as_ref()
+                        .and_then(|r| r.sails.get(&index).copied())
+                        .unwrap_or(self.rig.deployed(patch.tier) as f32),
                     mask,
                 )?;
                 gpu.queue
@@ -1100,7 +1104,13 @@ impl ModelScene {
         }
         for mesh in &mut self.meshes {
             if let Some((rigging, vertices)) = &mut mesh.rigging {
-                rigging.deform(vertices, local_wind, seconds, self.rig)?;
+                rigging.deform_with_frame(
+                    vertices,
+                    local_wind,
+                    seconds,
+                    self.rig,
+                    self.ship_state.native_rig.as_deref(),
+                )?;
                 rigging.follow_damage(vertices, &self.ship, &self.ship_state, seconds);
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));

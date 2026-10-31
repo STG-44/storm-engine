@@ -34,6 +34,11 @@ fn prepare(
             options.fleet_wind_direction.to_radians(),
         )?;
     }
+    fleet
+        .drive
+        .as_mut()
+        .unwrap()
+        .enable_motion(&mut fleet.assets)?;
     fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] = 0.0;
     fleet.advance_frames(seconds)?;
     fleet.present_at(seconds, false)?;

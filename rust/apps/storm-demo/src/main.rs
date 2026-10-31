@@ -103,6 +103,12 @@ struct Options {
     /// Feed retained sail wind/damage factors into native fleet movement.
     #[arg(long, requires = "native_ship_parameters")]
     native_sail_drive: bool,
+    /// Retain native rolling timing and unconstrained yard-turn decisions.
+    #[arg(long, requires = "native_sail_drive")]
+    native_sail_motion: bool,
+    /// Change the first ship's sail request after its initial settled state.
+    #[arg(long, requires = "native_sail_motion", value_parser = sail_setting)]
+    fleet_sail_target: Option<f32>,
     /// Initial native fleet sail request: 0 furled, 0.5 normal, 1 full.
     #[arg(long, requires = "native_sail_drive", default_value_t = 1.0, value_parser = sail_setting)]
     fleet_sail_setting: f32,

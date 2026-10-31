@@ -691,6 +691,10 @@ impl Builder {
             parent: parent.into(),
             pivot: world.transform_point3(pivot),
         });
+        self.asset
+            .ship
+            .node_frames
+            .insert(node.into(), world.to_cols_array());
         for label in &model.labels {
             if matches!(label.group.as_str(), "fireplace" | "fireplaces") {
                 self.asset.ship.fires.push(super::FirePoint {

@@ -33,12 +33,13 @@ then advances the ship. A changed request uses the preceding set's drive for
 that query. This explicit order does not establish complete native entity
 scheduling or Mount/Execute order.
 
-SetRolling, DoRollingStep, forced yard turning, cloth geometry, sound and weather
-services are not ported here. The geometry adapter switches immediately to a
-settled sail set. W/S changes the first ship's request by 0.5; A/D controls its
+Without the optional [sail-motion port](SAIL_MOTION.md), the geometry adapter
+switches immediately to a settled set. That port adds retained rolling timing
+and unconstrained yard decisions; native cloth, sound and weather remain pending.
+W/S changes the first ship's request by 0.5; A/D controls its
 rudder, with right taking precedence when both are held, as in SHIP. The second
 ship stays independent. Restart reloads the initial set. The viewer enables
-native drive automatically; batch scenarios opt in.
+native drive and sail motion automatically; batch scenarios opt in.
 
 ~~~sh
 cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion \

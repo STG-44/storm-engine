@@ -528,10 +528,12 @@ impl Fleet {
                 .set_clock(self.seconds)?;
             if let Some(drive) = &mut self.drive {
                 drive.step(
-                    &self.assets,
+                    &mut self.assets,
                     &self.poses,
                     self.visible,
                     self.seconds,
+                    (f64::from(frame) * 1000.0 / 60.0).round() as u32
+                        - self.native_motion.as_ref().unwrap().elapsed_ms,
                     &mut self.native_motion.as_mut().unwrap().bodies,
                 )?;
             }
@@ -699,6 +701,11 @@ impl Fleet {
         if let Some(drive) = &self.drive {
             report["native_sail_drive"] = drive.report();
         }
+        for (i, asset) in self.assets.iter().enumerate() {
+            if let Some(frame) = &asset.ship_state.native_rig {
+                report["ships"][i]["rig_frame"] = json!({"deployment_bits":frame.sails.iter().map(|(mesh,v)|json!({"mesh":mesh,"bits":v.to_bits()})).collect::<Vec<_>>(),"nodes":frame.nodes.iter().map(|(node,m)|json!({"node":node,"matrix_bits":m.map(f32::to_bits)})).collect::<Vec<_>>()});
+            }
+        }
         Ok(report)
     }
     pub fn render(
@@ -828,6 +835,16 @@ fn load(options: &Options) -> Result<Fleet> {
             options.fleet_wind_direction.to_radians(),
         )?;
     }
+    if options.native_sail_motion {
+        fleet
+            .drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut fleet.assets)?;
+    }
+    if let Some(target) = options.fleet_sail_target {
+        fleet.drive.as_mut().unwrap().set_target(0, target)?;
+    }
     Ok(fleet)
 }
 pub fn run(options: &Options) -> Result<()> {
@@ -933,6 +950,105 @@ mod tests {
         assert_eq!(
             furled.drive.as_ref().unwrap().rig(0),
             storm_sim::RigState::uniform(0.0)
+        );
+    }
+    #[test]
+    fn native_sail_motion_keeps_partial_geometry_drive_and_reversal_in_sync() {
+        let mut f = sail_fixture(1.0, 0.0, false);
+        f.drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut f.assets)
+            .unwrap();
+        f.drive.as_mut().unwrap().set_target(0, 0.0).unwrap();
+        f.advance_frames(1.0).unwrap();
+        let deployments = |f: &Fleet| {
+            f.assets[0]
+                .ship_state
+                .native_rig
+                .as_ref()
+                .unwrap()
+                .sails
+                .values()
+                .copied()
+                .collect::<Vec<_>>()
+        };
+        let partial = deployments(&f);
+        assert!(partial.iter().all(|v| (*v - 0.7).abs() < 0.00001));
+        assert!(f.drive.as_ref().unwrap().groups[0].speed > 0.0);
+        assert!(
+            f.drive.as_ref().unwrap().groups[0]
+                .sails
+                .iter()
+                .all(|s| s.rolling_delta.is_some() && !s.rolling)
+        );
+        f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        f.advance_frames(1.02).unwrap();
+        let reversed = deployments(&f);
+        assert!(
+            reversed
+                .iter()
+                .zip(&partial)
+                .all(|(v, p)| *v < *p && (*v - *p).abs() < 0.006)
+        );
+        f.advance_frames(1.04).unwrap();
+        assert!(deployments(&f).iter().zip(&reversed).all(|(v, p)| v > p));
+        f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        f.advance_frames(1.5).unwrap();
+        assert!(deployments(&f).iter().all(|v| *v > 0.8 && *v < 0.9));
+        assert!(
+            f.assets[1]
+                .ship_state
+                .native_rig
+                .as_ref()
+                .unwrap()
+                .sails
+                .values()
+                .all(|v| *v == 1.0)
+        );
+    }
+    #[test]
+    fn native_sail_motion_release_freezes_one_owner_and_unrolling_finishes() {
+        let mut f = sail_fixture(0.0, 0.0, false);
+        f.drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut f.assets)
+            .unwrap();
+        f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        f.drive.as_mut().unwrap().set_target(1, 1.0).unwrap();
+        f.preview = false;
+        f.advance_frames(0.0).unwrap();
+        let initial = f.drive.as_ref().unwrap().report();
+        assert!(
+            initial["motion"]["bodies"][0]["sails"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|s| s["old_wind_angle_bits"] == json!((-0.002_f32).to_bits()))
+        );
+        f.advance_frames(2.0).unwrap();
+        let first = f.drive.as_ref().unwrap().report()["motion"]["bodies"][0].clone();
+        let second = f.drive.as_ref().unwrap().report()["motion"]["bodies"][1].clone();
+        f.advance_frames(4.0).unwrap();
+        let report = f.drive.as_ref().unwrap().report();
+        assert_eq!(first, report["motion"]["bodies"][0]);
+        assert_ne!(second, report["motion"]["bodies"][1]);
+        assert!(
+            f.assets[1]
+                .ship_state
+                .native_rig
+                .as_ref()
+                .unwrap()
+                .sails
+                .values()
+                .all(|v| *v == 1.0)
+        );
+        assert!(
+            f.drive.as_ref().unwrap().groups[1]
+                .sails
+                .iter()
+                .all(|s| !s.rolling && s.rolling_delta.is_none())
         );
     }
     #[test]

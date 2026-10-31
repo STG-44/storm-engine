@@ -520,5 +520,8 @@ The fleet viewer now enables [native sail drive](../docs/SAIL_DRIVE.md). W/S cho
 the first ship's three sail sets; wind direction and holes affect actual motion.
 Batch mode opts in with --native-sail-drive after --native-ship-parameters. Use
 --fleet-sail-setting 0/0.5/1 and --fleet-wind-direction DEGREES for initial inputs.
-This uses static node frames and immediate settled geometry; original rolling
-animation and weather providers remain pending.
+The viewer also enables [native rolling timing and unconstrained yard decisions](../docs/SAIL_MOTION.md).
+Batch mode adds --native-sail-motion; --fleet-sail-target 0/0.5/1 changes the first
+ship after initialization. Cloth and rope endpoints follow partial deployment
+and inherited yard transforms. Native cloth construction, rope-constrained
+turning and weather providers remain pending.

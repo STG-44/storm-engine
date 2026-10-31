@@ -1,5 +1,6 @@
 //! Explicit fleet adapter: static node frames and settled sail sets, native drive.
 use super::*;
+mod motion;
 use storm_sim::{
     RigState, SailMode,
     sail_drive::{self, Coefficients, Group, RollRequest, SailOutput},
@@ -68,6 +69,7 @@ pub(super) struct Drive {
     meshes: Vec<Vec<usize>>,
     outputs: Vec<Vec<SailOutput>>,
     pub direction: f32,
+    animation: Option<Vec<motion::Motion>>,
 }
 impl Drive {
     pub fn new(assets: &[ModelAsset], request: f32, direction: f32) -> Result<Self> {
@@ -115,6 +117,7 @@ impl Drive {
             requests,
             meshes,
             direction,
+            animation: None,
         };
         // Initialization uses the same selection case; the geometry port settles
         // immediately. Runtime queries still return the preceding sail-set speed.
@@ -142,6 +145,26 @@ impl Drive {
         let request = (self.requests[index].get() + delta).clamp(0.0, 1.0);
         self.requests[index].set(request);
     }
+    pub fn enable_motion(&mut self, assets: &mut [ModelAsset]) -> Result<()> {
+        if self.animation.is_none() {
+            self.animation = Some(
+                assets
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| motion::Motion::new(a, &self.meshes[i], &self.groups[i]))
+                    .collect(),
+            );
+            for (i, a) in assets.iter_mut().enumerate() {
+                self.animation.as_ref().unwrap()[i].publish(a, &self.meshes[i])?;
+            }
+        }
+        Ok(())
+    }
+    pub fn set_target(&mut self, index: usize, request: f32) -> Result<()> {
+        SailMode::from_setting(f64::from(request))?;
+        self.requests[index].set(request);
+        Ok(())
+    }
     pub fn rig(&self, index: usize) -> RigState {
         RigState::for_mode(match self.groups[index].current_set {
             0 => SailMode::Furled,
@@ -157,10 +180,11 @@ impl Drive {
     }
     pub fn step(
         &mut self,
-        assets: &[ModelAsset],
+        assets: &mut [ModelAsset],
         poses: &[ModelPose],
         visible: [bool; 2],
         seconds: f32,
+        delta_ms: u32,
         bodies: &mut [storm_sim::ship_motion::ShipMotion],
     ) -> Result<()> {
         let wind = [libm::sinf(self.direction), 0.0, libm::cosf(self.direction)];
@@ -169,6 +193,9 @@ impl Drive {
                 continue;
             }
             let pose = poses[i];
+            if let Some(animation) = &mut self.animation {
+                animation[i].advance(&assets[i], &self.meshes[i], &mut self.groups[i], delta_ms)?;
+            }
             // Invert the viewer's Ry * Rx * Rz orientation with pinned scalar
             // trig. Node axes then enter the retained MulToInvNorm arithmetic.
             let (s, c) = (libm::sinf(pose.yaw), libm::cosf(pose.yaw));
@@ -202,6 +229,9 @@ impl Drive {
                 sail.hole_dependence = if lost { 1.0 } else { input.hole_dependence };
             }
             self.outputs[i] = self.groups[i].evaluate(v, Coefficients::default())?;
+            if let Some(animation) = &mut self.animation {
+                animation[i].turn(&self.outputs[i], delta_ms)?;
+            }
             let mut output = bodies[i].strengths[0].speed[2];
             let calls = sail_drive::request_speed(
                 &mut self.groups,
@@ -210,14 +240,26 @@ impl Drive {
                 self.requests[i].get(),
                 0.0,
             )?;
-            self.settle(calls);
+            if let Some(animation) = &mut self.animation {
+                for c in calls {
+                    animation[c.group].command(c.sail, c.roll_up, &mut self.groups[c.group])?;
+                }
+                animation[i].publish(&mut assets[i], &self.meshes[i])?;
+            } else {
+                self.settle(calls);
+            }
             bodies[i].strengths[0].speed[2] = if bodies[i].dead { 0.0 } else { output };
         }
         Ok(())
     }
     pub fn report(&self) -> Json {
-        json!({"original_weather":false,"rolling_geometry":"settled_adapter","wind_direction_bits":self.direction.to_bits(),"bodies":self.groups.iter().enumerate().map(|(i,g)|json!({
+        let mut report = json!({"original_weather":false,"rolling_geometry":"settled_adapter","wind_direction_bits":self.direction.to_bits(),"bodies":self.groups.iter().enumerate().map(|(i,g)|json!({
             "request_bits":self.requests[i].get().to_bits(),"set":g.current_set,"deleted":g.deleted,"speed_bits":g.speed.to_bits(),"maximum_bits":g.maximum.to_bits(),"reference_bits":g.reference.to_bits(),"multiplier_bits":g.speed_multiplier.to_bits(),
-            "sails":g.sails.iter().zip(&self.outputs[i]).map(|(s,o)|json!({"kind":s.kind as i32,"roll_type":s.roll_type,"rolled":s.rolling,"holes":s.holes,"capacity_bits":s.maximum.to_bits(),"wind_bits":o.wind.map(f32::to_bits),"current_bits":o.current.to_bits(),"maximum_bits":o.maximum.to_bits()})).collect::<Vec<_>>() })).collect::<Vec<_>>()})
+            "sails":g.sails.iter().zip(&self.outputs[i]).map(|(s,o)|json!({"kind":s.kind as i32,"roll_type":s.roll_type,"rolled":s.rolling,"holes":s.holes,"capacity_bits":s.maximum.to_bits(),"wind_bits":o.wind.map(f32::to_bits),"current_bits":o.current.to_bits(),"maximum_bits":o.maximum.to_bits()})).collect::<Vec<_>>() })).collect::<Vec<_>>()});
+        if let Some(animation) = &self.animation {
+            report["rolling_geometry"] = json!("native_timing_with_preview_geometry");
+            report["motion"] = json!({"native_cloth":false,"native_matrix_accumulation":false,"rope_constrained_turning":false,"bodies":animation.iter().map(motion::Motion::report).collect::<Vec<_>>()});
+        }
+        report
     }
 }

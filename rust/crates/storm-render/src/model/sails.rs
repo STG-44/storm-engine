@@ -63,6 +63,7 @@ pub struct SailPatch {
     pub damage_settings: super::sail_damage::SailDamageSettings,
     drive_maximum: f32,
     drive_axes: [[f32; 3]; 3],
+    drive_points: [[f32; 3]; 4],
 }
 
 #[derive(Clone, Debug)]
@@ -119,11 +120,16 @@ impl SailPatch {
             damage_settings: Default::default(),
             drive_maximum,
             drive_axes: [Vec3::X.to_array(), Vec3::Y.to_array(), Vec3::Z.to_array()],
+            drive_points: points.map(|p| p.to_array()),
         })
     }
 
     pub fn is_triangle(&self) -> bool {
         matches!(self.shape, SailShape::Triangle(_))
+    }
+    /// Original local hard-point order for the motion provider.
+    pub fn native_points(&self) -> [[f32; 3]; 4] {
+        self.drive_points
     }
     /// Native scalar drive input. Static node axes and roll geometry are ports;
     /// this does not execute the original turning/rolling cloth processor.
@@ -440,6 +446,7 @@ pub(super) fn from_labels(
             let mut patch = SailPatch::new(world_shape)?;
             patch.weight = weight;
             patch.drive_maximum = local.drive_maximum;
+            patch.drive_points = local.drive_points;
             patch.drive_axes = [
                 world.x_axis.truncate().to_array(),
                 world.y_axis.truncate().to_array(),

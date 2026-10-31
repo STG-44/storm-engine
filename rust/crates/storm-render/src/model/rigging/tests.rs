@@ -4,6 +4,52 @@ use storm_sim::SailTier;
 use storm_sim::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 
 #[test]
+fn native_rope_endpoints_follow_their_own_sail_deployment_and_yard() {
+    let mut sail = SailPatch::new(SailShape::Quad([
+        Vec3::ZERO,
+        Vec3::X * 4.0,
+        Vec3::new(4.0, -4.0, 0.0),
+        Vec3::new(0.0, -4.0, 0.0),
+    ]))
+    .unwrap();
+    sail.origin = Some(SailOrigin {
+        node: "rey_a".into(),
+        parent: "mast".into(),
+        group: "saild1".into(),
+    });
+    let end = RopeEnd {
+        position: Vec3::new(4.0, -4.0, 0.0),
+        node: Some("rey_a".into()),
+        sail: Some(sail.clone()),
+    };
+    let frame = crate::model::NativeRigFrame {
+        origins: BTreeMap::from([("rey_a".into(), BTreeMap::from([("saild1".into(), 0.5)]))]),
+        nodes: BTreeMap::from([(
+            "rey_a".into(),
+            Mat4::from_rotation_y(std::f32::consts::FRAC_PI_2).to_cols_array(),
+        )]),
+        ..Default::default()
+    };
+    let expected = Mat4::from_cols_array(&frame.nodes["rey_a"])
+        .transform_point3(sail.gather_anchor(end.position, 0.5));
+    assert!(
+        end.at_frame(RigState::uniform(0.0), Some(&frame))
+            .distance(expected)
+            < 0.000001
+    );
+    let stationary = RopeEnd {
+        position: Vec3::new(0.0, 0.0, 3.0),
+        node: Some("mast".into()),
+        sail: None,
+    };
+    assert_eq!(
+        stationary.at_frame(RigState::uniform(1.0), Some(&frame)),
+        stationary.position
+    );
+    assert_ne!(end.at_frame(RigState::uniform(1.0), None), expected);
+}
+
+#[test]
 fn named_flags_preserve_special_groups_and_sample_inside_the_selected_cell() {
     let mut asset = crate::model::ModelAsset::rigging_demo().unwrap();
     asset

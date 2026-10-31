@@ -2,6 +2,11 @@
 
 Started: 2026-10-17.
 
+Current increment: [sail rolling state and unconstrained yard turning](SAIL_MOTION.md).
+The viewer uses retained transition timing, reversal and turn decisions with
+per-sail cloth/rope deployment and inherited yard transforms. Original cloth
+generation, rope constraints and complete entity scheduling remain pending.
+
 ## Goal
 
 Gradually replace the C++ engine with Rust while preserving compatibility with Sea Dogs: To Each His Own (Корсары: Каждому своё). Target native desktop builds for macOS, Windows, and Linux.
