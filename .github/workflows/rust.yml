@@ -92,6 +92,7 @@ jobs:
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --fleet-window --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --native-sail-motion --native-sail-rolls --fleet-sail-setting 0.5 --fleet-window --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 1.5 --headless native-ship-rocking-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
@@ -173,6 +174,8 @@ jobs:
           python -c "import json; s=json.load(open('sail-geometry-state.json')); g=s['native_sail_geometry']; assert g['mode']=='static_full_grid' and not g['native_waves'] and not g['native_rolling_vertices']; assert len(g['bodies'])==2; assert all(b['sails'] for b in g['bodies']); assert all(len(v['geometry_bits'])==10 and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and all(len(p)==12 for p in v['vertex_bits']) for b in g['bodies'] for v in b['sails']); assert s['service']['manager']['owners']==[2]"
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-waves --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-waves-state.json
           python -c "import json; s=json.load(open('sail-waves-state.json')); w=s['native_sail_waves']; assert w['mode']=='attached_full_grid' and w['native_attached_waves'] and not w['native_rolled_vertices']; assert len(w['table_bits'])==60 and len(w['bodies'])==2; assert all(b['sails'] for b in w['bodies']); assert all(v['frames']==(121 if i==0 else 181) and len(v['point_bits'])==20 and len(v['rope_bits'])==4 and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and all(len(p)==12 for p in v['vertex_bits']) for i,b in enumerate(w['bodies']) for v in b['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-rolls --fleet-sail-setting 0 --fleet-sail-target 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-rolls-state.json
+          python -c "import json,struct; s=json.load(open('sail-rolls-state.json')); r=s['native_sail_rolls']; assert r['mode']=='attached_and_rolled' and r['native_rolled_vertices']; f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]; assert all(not v['rolled'] and not v['transition']['up'] and abs(f(v['transition']['delta_bits'])-0.6)<0.00001 and v['topology']['grid']==[17,13] for v in r['bodies'][0]['sails']); assert all(v['rolled'] and v['transition'] is None and v['topology']['grid']==[5,13] and v['topology']['normal_count']==(93 if v['kind']==0 else 288) and v['topology']['hole_count']==0 for v in r['bodies'][1]['sails']); assert all(v['frames']==(121 if i==0 else 181) and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and len(v['topology']['indices'])==(768 if v['kind']==0 else 1152) for i,b in enumerate(r['bodies']) for v in b['sails']); assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -213,6 +216,7 @@ jobs:
             sail-motion-state.json
             sail-geometry-state.json
             sail-waves-state.json
+            sail-rolls-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error

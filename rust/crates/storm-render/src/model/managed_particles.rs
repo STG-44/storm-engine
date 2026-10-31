@@ -103,6 +103,7 @@ impl ModelScene {
         for patch in patches {
             self.meshes.push(DrawMesh {
                 damage_mask: 0,
+                native_topology: false,
                 normal_count: 0,
                 ship_node: None,
                 dynamic: Some((DynamicMesh::Particles(patch), Vec::new())),

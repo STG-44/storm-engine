@@ -112,6 +112,9 @@ struct Options {
     /// Inspect original attached full-grid waves with explicit deterministic providers.
     #[arg(long, requires = "native_sail_motion", conflicts_with_all = ["native_sail_geometry", "fleet_window", "fleet_sail_target"])]
     native_sail_waves: bool,
+    /// Inspect native attached/rolled vertices and original index ranges through sail transitions.
+    #[arg(long, requires = "native_sail_motion", conflicts_with_all = ["native_sail_geometry", "native_sail_waves"])]
+    native_sail_rolls: bool,
     /// Change the first ship's sail request after its initial settled state.
     #[arg(long, requires = "native_sail_motion", value_parser = sail_setting)]
     fleet_sail_target: Option<f32>,

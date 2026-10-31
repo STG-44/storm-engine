@@ -111,6 +111,14 @@ impl ShipState {
     pub fn validate(&self, asset: &ShipAsset) -> Result<()> {
         if let Some(frame) = &self.native_rig {
             ensure!(
+                frame.cloth_indices.len() <= 4096
+                    && frame.cloth_indices.iter().all(|(mesh, t)| frame
+                        .cloth
+                        .get(mesh)
+                        .is_some_and(|v| t.validate(v.len()).is_ok())),
+                "invalid native cloth topology"
+            );
+            ensure!(
                 frame.cloth.len() <= 4096
                     && frame
                         .cloth
@@ -348,6 +356,7 @@ impl ShipAsset {
 
 #[derive(Clone, Debug, Default)]
 pub struct NativeRigFrame {
+    pub cloth_indices: BTreeMap<usize, storm_sim::sail_topology::Topology>,
     /// Complete native local grids, before the stored node frame and yard delta.
     pub cloth: BTreeMap<usize, Vec<storm_sim::sail_geometry::Vertex>>,
     pub sails: BTreeMap<usize, f32>,

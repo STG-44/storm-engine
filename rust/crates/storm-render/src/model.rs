@@ -215,6 +215,7 @@ impl From<storm_sim::Waves> for WaveUniform {
 }
 struct DrawMesh {
     damage_mask: u16,
+    native_topology: bool,
     normal_count: u32,
     ship_node: Option<String>,
     dynamic: Option<(DynamicMesh, Vec<ModelVertex>)>,
@@ -706,6 +707,7 @@ impl ModelScene {
             );
             meshes.push(DrawMesh {
                 damage_mask: 0,
+                native_topology: false,
                 normal_count: source.indices.len() as u32,
                 vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                     label: Some("GM vertices"),
@@ -1079,8 +1081,26 @@ impl ModelScene {
         for (index, mesh) in self.meshes.iter_mut().enumerate() {
             if let Some((patch, vertices)) = &mut mesh.sail {
                 let mask = self.ship_state.sail_holes.get(&index).copied().unwrap_or(0);
-                if mask != mesh.damage_mask {
+                if let Some(topology) = self
+                    .ship_state
+                    .native_rig
+                    .as_ref()
+                    .and_then(|r| r.cloth_indices.get(&index))
+                {
+                    let indices = topology.packed()?;
+                    ensure!(
+                        (indices.len() * 4) as u64 <= mesh.indices.size(),
+                        "native topology exceeds persistent index buffer"
+                    );
+                    mesh.normal_count = topology.normal_count;
+                    mesh.count = indices.len() as u32;
+                    mesh.native_topology = true;
+                    gpu.queue
+                        .write_buffer(&mesh.indices, 0, bytemuck::cast_slice(&indices));
+                } else if mask != mesh.damage_mask || mesh.native_topology {
                     let topology = patch.original_indices(mask);
+                    mesh.count = topology.indices.len() as u32;
+                    mesh.native_topology = false;
                     mesh.normal_count = topology.normal_count;
                     mesh.damage_mask = mask;
                     gpu.queue.write_buffer(

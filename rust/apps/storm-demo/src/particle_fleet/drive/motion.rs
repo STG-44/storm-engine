@@ -34,6 +34,35 @@ pub(super) struct Motion {
     yards: BTreeMap<String, Yard>,
 }
 impl Motion {
+    pub fn sync_zero_cloth_geometry(&mut self) -> Result<()> {
+        // A newly issued unroll request has delta zero but still holds the
+        // previous coefficients. Apply the native zero-ms step before drawing.
+        for sail in &mut self.sails {
+            if sail.transition.is_some_and(|t| t.delta == 0.0) {
+                sail.advance(0, ROLL_RATE)?;
+            }
+        }
+        Ok(())
+    }
+    pub fn cloth_state(&self, index: usize) -> Result<SailMotion> {
+        self.sails
+            .get(index)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("unknown native cloth sail"))
+    }
+    pub fn rebuild_cloth(
+        &mut self,
+        index: usize,
+        p: storm_sim::sail_geometry::Parameters,
+    ) -> Result<()> {
+        storm_sim::sail_geometry::rebuild(
+            self.sails
+                .get_mut(index)
+                .ok_or_else(|| anyhow::anyhow!("unknown native cloth sail"))?,
+            p,
+        )?;
+        Ok(())
+    }
     pub fn new(asset: &ModelAsset, meshes: &[usize], group: &Group) -> Result<Self> {
         let mut yards = BTreeMap::new();
         let mut owners = Vec::new();

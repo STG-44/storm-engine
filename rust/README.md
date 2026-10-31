@@ -538,3 +538,11 @@ The batch option `--native-sail-waves` requires `--native-sail-motion`, full
 settled sails (`--fleet-sail-setting 1`) and excludes the window, sail targets
 and static `--native-sail-geometry`. It advances original GoVWave/GoTWave grids
 with explicit deterministic providers. See [scope and command](../docs/SAIL_WAVES.md).
+
+## Native attached and rolled cloth
+
+Add `--native-sail-rolls` to the native fleet command to use original attached /
+rolled vertices and index ranges with native motion. All three initial sets,
+`--fleet-sail-target` and `--fleet-window` are supported; W/S changes the first
+ship's request. The static/attached-only inspection flags are separate modes.
+See [scope and command](../docs/SAIL_ROLLS.md) for providers and remaining work.

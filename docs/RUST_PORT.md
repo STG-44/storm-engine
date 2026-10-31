@@ -2,12 +2,11 @@
 
 Started: 2026-10-17.
 
-Current increment: [original attached sail waves](SAIL_WAVES.md).
-GoVWave/GoTWave and attached goWave phase/flex/bounds updates retain original
-arithmetic, LOD loop behavior, sample and rope outputs. An explicit full-grid
-batch diagnostic renders animated positions with preserved native normals/UVs.
-Initialization and weather remain explicit providers. Rolled/free processors,
-index LOD, rope constraints and complete entity scheduling remain pending.
+Current increment: [original rolled sail cloth and index grids](SAIL_ROLLS.md).
+DoSRollSail/DoTRollSail and FillIndex now follow the actual native motion state,
+including all three sail sets and transitions in an opt-in window mode. Numeric
+GetGrid selection is checked with projected distance as a port. Automatic camera
+LOD, free/falling cloth, rope constraints and full game scheduling remain pending.
 
 ## Goal
 

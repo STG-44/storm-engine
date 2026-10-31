@@ -72,6 +72,33 @@ pub(super) struct Drive {
     animation: Option<Vec<motion::Motion>>,
 }
 impl Drive {
+    pub fn sync_cloth_geometry(&mut self, body: usize) -> Result<()> {
+        self.animation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("cloth requires native motion"))?[body]
+            .sync_zero_cloth_geometry()
+    }
+    pub fn cloth_state(
+        &self,
+        body: usize,
+        sail: usize,
+    ) -> Result<storm_sim::sail_motion::SailMotion> {
+        self.animation
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("cloth requires native motion"))?[body]
+            .cloth_state(sail)
+    }
+    pub fn rebuild_cloth(
+        &mut self,
+        body: usize,
+        sail: usize,
+        p: storm_sim::sail_geometry::Parameters,
+    ) -> Result<()> {
+        self.animation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("cloth requires native motion"))?[body]
+            .rebuild_cloth(sail, p)
+    }
     pub fn new(assets: &[ModelAsset], request: f32, direction: f32) -> Result<Self> {
         ensure!(direction.is_finite(), "invalid fleet wind direction");
         SailMode::from_setting(f64::from(request))?;

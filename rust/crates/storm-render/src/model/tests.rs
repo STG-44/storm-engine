@@ -2,6 +2,105 @@ use super::*;
 
 #[test]
 #[ignore = "requires a native GPU or software Vulkan"]
+fn rolled_native_topology_changes_persistent_ranges_and_restores_full_buffers() {
+    let asset = ModelAsset::sail_demo().unwrap();
+    let frame = |rolled, mask| {
+        let mut frame = NativeRigFrame::default();
+        for (mesh, patch) in asset
+            .meshes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.sail.as_ref().map(|s| (i, s)))
+        {
+            let (mut m, sphere) = patch.native_geometry(0).unwrap();
+            m.rolling = rolled;
+            let mut grid = storm_sim::sail_geometry::fill(&m, sphere, [1.0; 2]).unwrap();
+            if rolled {
+                storm_sim::sail_roll::advance(
+                    &mut Default::default(),
+                    &m,
+                    &mut grid,
+                    storm_sim::sail_roll::Parameters {
+                        height: patch.native_wave_input(0).unwrap().height,
+                        ..Default::default()
+                    },
+                    &[0.0, 1.0, -1.0],
+                    6,
+                )
+                .unwrap();
+            }
+            use storm_sim::sail_topology::{self, Grid};
+            frame.cloth_indices.insert(
+                mesh,
+                sail_topology::fill(
+                    m.kind,
+                    rolled,
+                    if rolled { Grid::ROLLED } else { Grid::NEAR },
+                    mask,
+                )
+                .unwrap(),
+            );
+            frame.sails.insert(mesh, if rolled { 0.0 } else { 1.0 });
+            frame.cloth.insert(mesh, grid);
+        }
+        frame
+    };
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut capture = |frame: Option<NativeRigFrame>| {
+        let mut state = asset.ship_state.clone();
+        state.native_rig = frame.map(std::sync::Arc::new);
+        scene.set_ship_state(state).unwrap();
+        let rgba = crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba;
+        let counts = scene
+            .meshes
+            .iter()
+            .filter(|m| m.sail.is_some())
+            .map(|m| (m.count, m.normal_count))
+            .collect::<Vec<_>>();
+        (rgba, counts)
+    };
+    let ordinary = capture(None);
+    let full = capture(Some(frame(false, 0)));
+    let rolled = capture(Some(frame(true, 0)));
+    assert_ne!(full.0, rolled.0);
+    assert!(
+        rolled
+            .1
+            .iter()
+            .all(|(n, normal)| matches!(n, 93 | 288) && n == normal)
+    );
+    let damaged = capture(Some(frame(true, 4095)));
+    assert!(
+        damaged
+            .1
+            .iter()
+            .any(|(n, normal)| *n == 288 && *normal == 0)
+    );
+    assert_eq!(full, capture(Some(frame(false, 0))));
+    assert_eq!(ordinary, capture(None));
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
 fn attached_native_wave_frames_update_existing_buffers_and_restore_preview() {
     let mut asset = ModelAsset::sail_demo().unwrap();
     let mut frame = NativeRigFrame::default();

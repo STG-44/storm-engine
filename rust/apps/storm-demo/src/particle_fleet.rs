@@ -533,6 +533,9 @@ impl Fleet {
                 .borrow_mut()
                 .set_clock(self.seconds)?;
             if let Some(drive) = &mut self.drive {
+                if let Some(cloth) = &self.cloth {
+                    cloth.prepare(&self.assets, drive, self.visible)?;
+                }
                 drive.step(
                     &mut self.assets,
                     &self.poses,
@@ -720,7 +723,11 @@ impl Fleet {
             report["native_sail_geometry"] = geometry::report(&self.assets)?;
         }
         if let Some(cloth) = &self.cloth {
-            report["native_sail_waves"] = cloth.report();
+            report[if cloth.rolls() {
+                "native_sail_rolls"
+            } else {
+                "native_sail_waves"
+            }] = cloth.report();
         }
         for (i, asset) in self.assets.iter().enumerate() {
             if let Some(frame) = &asset.ship_state.native_rig {
@@ -878,6 +885,9 @@ fn load(options: &Options) -> Result<Fleet> {
         );
         fleet.cloth = Some(waves::ClothFleet::new(&mut fleet.assets)?);
     }
+    if options.native_sail_rolls {
+        fleet.cloth = Some(waves::ClothFleet::with_rolls(&mut fleet.assets)?);
+    }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
     }
@@ -1025,6 +1035,169 @@ mod tests {
             .unwrap();
         f.cloth = Some(waves::ClothFleet::new(&mut f.assets).unwrap());
         f
+    }
+    fn roll_fixture(request: f32, target: Option<f32>) -> Fleet {
+        let mut f = sail_fixture(request, 0.0, false);
+        f.drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut f.assets)
+            .unwrap();
+        f.cloth = Some(waves::ClothFleet::with_rolls(&mut f.assets).unwrap());
+        if let Some(target) = target {
+            f.drive.as_mut().unwrap().set_target(0, target).unwrap();
+        }
+        f
+    }
+    #[test]
+    fn native_rolled_cloth_tracks_three_sets_transitions_and_real_motion_geometry() {
+        for setting in [0.0, 0.5, 1.0] {
+            let mut f = roll_fixture(setting, None);
+            f.advance_frames(1.5).unwrap();
+            let mut base = sail_fixture(setting, 0.0, false);
+            base.drive
+                .as_mut()
+                .unwrap()
+                .enable_motion(&mut base.assets)
+                .unwrap();
+            base.advance_frames(1.5).unwrap();
+            assert_eq!(f.motion_report(), base.motion_report());
+            assert_eq!(
+                f.drive.as_ref().unwrap().report(),
+                base.drive.as_ref().unwrap().report()
+            );
+            let report = f.cloth.as_ref().unwrap().report();
+            for i in 0..2 {
+                for (j, s) in report["bodies"][i]["sails"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                {
+                    let motion = f.drive.as_ref().unwrap().cloth_state(i, j).unwrap();
+                    assert_eq!(s["rolled"], motion.rolling);
+                    assert_eq!(
+                        s["geometry_bits"],
+                        json!(motion.geometry.map(|v| v.map(f32::to_bits)))
+                    );
+                    let topo = &s["topology"];
+                    assert_eq!(
+                        topo["grid"],
+                        if motion.rolling {
+                            json!([5, 13])
+                        } else {
+                            json!([17, 13])
+                        }
+                    );
+                }
+            }
+        }
+        let mut f = roll_fixture(1.0, Some(0.0));
+        f.advance_frames(1.5).unwrap();
+        assert!(
+            f.drive
+                .as_ref()
+                .unwrap()
+                .cloth_state(0, 0)
+                .unwrap()
+                .transition
+                .is_some()
+        );
+        let before = f
+            .drive
+            .as_ref()
+            .unwrap()
+            .cloth_state(0, 0)
+            .unwrap()
+            .transition
+            .unwrap();
+        f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        f.advance_frames(1.6).unwrap();
+        let reversed = f
+            .drive
+            .as_ref()
+            .unwrap()
+            .cloth_state(0, 0)
+            .unwrap()
+            .transition
+            .unwrap();
+        assert!(!reversed.up && reversed.delta > before.delta);
+        assert_eq!(reversed.geometry, before.geometry);
+        f.advance_frames(4.0).unwrap();
+        assert!(
+            f.drive.as_ref().unwrap().groups[0]
+                .sails
+                .iter()
+                .all(|s| !s.rolling && s.rolling_delta.is_none())
+        );
+        f.drive.as_mut().unwrap().set_target(0, 0.0).unwrap();
+        f.advance_frames(8.0).unwrap();
+        assert!(
+            f.drive.as_ref().unwrap().groups[0]
+                .sails
+                .iter()
+                .all(|s| s.rolling)
+        );
+        f.drive.as_mut().unwrap().set_target(0, 0.5).unwrap();
+        f.advance_frames(12.0).unwrap();
+        assert_eq!(f.drive.as_ref().unwrap().groups[0].current_set, 1);
+        for s in &f.drive.as_ref().unwrap().groups[0].sails {
+            assert_eq!(s.rolling, s.roll_type != 1);
+            assert!(s.rolling_delta.is_none());
+        }
+        f.drive.as_mut().unwrap().set_target(0, 1.0).unwrap();
+        f.advance_frames(16.0).unwrap();
+        assert!(
+            f.drive.as_ref().unwrap().groups[0]
+                .sails
+                .iter()
+                .all(|s| !s.rolling && s.rolling_delta.is_none())
+        );
+    }
+    #[test]
+    fn native_roll_hole_rebuild_updates_saved_geometry_and_released_owner_stays_frozen() {
+        let mut f = roll_fixture(0.0, Some(1.0));
+        f.preview = false;
+        f.advance_frames(0.0).unwrap();
+        assert!(
+            f.drive
+                .as_ref()
+                .unwrap()
+                .cloth_state(0, 0)
+                .unwrap()
+                .geometry
+                .iter()
+                .take(9)
+                .flatten()
+                .all(|v| *v == 0.0)
+        );
+        f.advance_frames(0.5).unwrap();
+        let mesh = f.assets[0]
+            .meshes
+            .iter()
+            .position(|m| m.sail.is_some())
+            .unwrap();
+        let old = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        f.assets[0].ship_state.sail_holes.insert(mesh, 3);
+        f.advance_frames(0.6).unwrap();
+        let changed = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        assert_ne!(
+            old.transition.unwrap().geometry,
+            changed.transition.unwrap().geometry
+        );
+        assert_eq!(
+            f.cloth.as_ref().unwrap().report()["bodies"][0]["sails"][0]["geometry_bits"],
+            json!(changed.geometry.map(|v| v.map(f32::to_bits)))
+        );
+        f.advance_frames(2.0).unwrap();
+        let before = f.cloth.as_ref().unwrap().report();
+        let frozen = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        f.assets[0].ship_state.sail_holes.insert(mesh, 7);
+        f.advance_frames(3.0).unwrap();
+        let after = f.cloth.as_ref().unwrap().report();
+        assert_eq!(before["bodies"][0], after["bodies"][0]);
+        assert_ne!(before["bodies"][1], after["bodies"][1]);
+        assert_eq!(frozen, f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap());
     }
     #[test]
     fn attached_wave_grids_are_published_without_changing_motion_and_release_independently() {

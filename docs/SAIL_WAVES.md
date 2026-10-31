@@ -64,8 +64,9 @@ triangular row and four quad column LODs, holes, ties, active transition deltas,
 negative/zero/over-one wind bases and phase wrapping. Table samples, local wind,
 initial states and surrounding services are explicit inputs to this oracle.
 
-The renderer currently uses the full grid. Native index LOD selection,
-DoSRollSail/DoTRollSail, free/falling cloth, constrained yard turning, native RNG,
+The separate [rolled cloth mode](SAIL_ROLLS.md) now retains rolled processors and
+FillIndex, including numeric grid selection. This attached-only mode still uses
+the full grid. Automatic camera LOD, free/falling cloth, constrained yard turning, native RNG,
 weather/INI/limit points, rope outputs and full entity scheduling remain pending.
 Commercial resources, captures and local audit evidence stay outside Git.
 
