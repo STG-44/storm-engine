@@ -835,3 +835,14 @@ original roots / 368 sails pass fixed-grid and finite-value checks. Linux passes
 18 Vulkan tests and three existing motion-viewer frames; Metal passes 18 render
 tests and three static-grid captures. Original waves, rolled geometry/LOD, rope
 constraints and full scheduling remain pending. See [geometry scope](SAIL_GEOMETRY.md).
+
+
+The [attached-wave PR run](https://github.com/STG-44/storm-engine/actions/runs/41229441431)
+passes all four hosts for `eb8bfa52`: 362 CPU tests, 27 scenarios and 108 complete
+JSON reports matching local output with verified archive digests. All preceding
+26 reports remain unchanged. The native reference matches 60 profiles / 180
+complete frames / 37,740 complete vertices. All 40 original roots / 368 sails
+pass attached-grid/finite checks with unchanged native normals and UVs. Linux
+passes 19 Vulkan tests and three existing motion-viewer frames; Metal passes
+19 render tests and four captures. Rolled/free processors, index LOD, rope
+bindings/constraints and full scheduling remain pending. See [wave scope](SAIL_WAVES.md).

@@ -68,3 +68,35 @@ The renderer currently uses the full grid. Native index LOD selection,
 DoSRollSail/DoTRollSail, free/falling cloth, constrained yard turning, native RNG,
 weather/INI/limit points, rope outputs and full entity scheduling remain pending.
 Commercial resources, captures and local audit evidence stay outside Git.
+
+
+## Four-platform evidence, 2026-10-31
+
+Code `eb8bfa52502fb6bc7e472e97c9ac32fc29441e38` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41229441431)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, builds, 362 CPU tests (135 interpreter) and 27 scenarios.
+Four archive digests and all 108 complete JSON reports are verified against
+local output. Every new wave vertex field, phase/flex value, sample/rope point
+and box matches. The preceding 26 reports remain unchanged. Host triples and
+actual test counts are checked from logs.
+
+Linux passes 19 explicit software Vulkan tests and three existing motion-viewer
+frames. Metal passes 19 render tests and four attached-wave captures: generated,
+original at two times, and original after owner release. The original frame was
+visually inspected. This diagnostic excludes interactive windows; local native
+window presentation was not repeated, and hosted macOS/Windows physical GPU and
+window coverage remains open.
+
+All 40 original roots / 368 sails pass attached-grid and finite-value checks;
+normals and every UV channel exactly retain their prior static-grid values.
+Metadata, type/character, motion and independent owner lifetime checks also pass.
+At three seconds, 274 fire locators retain 548 systems / 822 finite world rows /
+12,243 living particles under the surviving owner. Boat has zero sail drive;
+rowing is pending. The native oracle compares 60 profiles / 180 complete frames /
+37,740 complete vertices under UBSan; regeneration is byte-identical.
+
+These results cover attached cloth with the explicit providers above. Native
+rolled/free processors, index LOD selection, rope bindings/constraints, native
+RNG/weather/INI/limit points and full matrix/entity scheduling remain pending.
+Resources, captures and local evidence stay outside Git; earlier whole-profile
+and manual damage audits were not repeated.
