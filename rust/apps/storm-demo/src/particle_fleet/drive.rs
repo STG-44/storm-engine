@@ -67,7 +67,7 @@ pub(super) struct Drive {
     pub groups: Vec<Group>,
     requests: Vec<ShipSailState>,
     meshes: Vec<Vec<usize>>,
-    outputs: Vec<Vec<SailOutput>>,
+    pub(super) outputs: Vec<Vec<SailOutput>>,
     pub direction: f32,
     animation: Option<Vec<motion::Motion>>,
 }

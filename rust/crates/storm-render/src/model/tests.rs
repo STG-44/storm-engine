@@ -2,6 +2,76 @@ use super::*;
 
 #[test]
 #[ignore = "requires a native GPU or software Vulkan"]
+fn attached_native_wave_frames_update_existing_buffers_and_restore_preview() {
+    let mut asset = ModelAsset::sail_demo().unwrap();
+    let mut frame = NativeRigFrame::default();
+    for (i, patch) in asset
+        .meshes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| m.sail.as_ref().map(|s| (i, s)))
+    {
+        let (motion, sphere) = patch.native_geometry(0).unwrap();
+        let mut grid = storm_sim::sail_geometry::fill(&motion, sphere, [1.0; 2]).unwrap();
+        let mut input = patch.native_wave_input(0).unwrap();
+        input.local_wind = [0.7, 0.0, 0.5];
+        storm_sim::sail_wave::advance(
+            &mut Default::default(),
+            &motion,
+            &mut grid,
+            input,
+            &[1.0, 0.0, -1.0],
+            Default::default(),
+            17,
+        )
+        .unwrap();
+        frame.sails.insert(i, 1.0);
+        frame.cloth.insert(i, grid);
+    }
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut capture = |state: ShipState, speed| {
+        scene.set_ship_state(state).unwrap();
+        crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba
+    };
+    let ordinary = capture(asset.ship_state.clone(), 12.0);
+    asset.ship_state.native_rig = Some(std::sync::Arc::new(frame));
+    let native = capture(asset.ship_state.clone(), 0.0);
+    assert_ne!(ordinary, native);
+    assert_eq!(native, capture(asset.ship_state.clone(), 40.0));
+    for grid in std::sync::Arc::make_mut(asset.ship_state.native_rig.as_mut().unwrap())
+        .cloth
+        .values_mut()
+    {
+        for v in grid {
+            v.position[2] += 1.0;
+        }
+    }
+    assert_ne!(native, capture(asset.ship_state.clone(), 0.0));
+    asset.ship_state.native_rig = None;
+    assert_eq!(ordinary, capture(asset.ship_state, 12.0));
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
 fn native_static_geometry_reuses_the_scene_ignores_preview_wind_and_restores() {
     let asset = ModelAsset::sail_demo().unwrap();
     let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();

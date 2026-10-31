@@ -71,7 +71,8 @@ attachment points, hole-dependent geometry, all UV channels and unchanged drive.
 The GPU test switches the persistent scene into/out of static construction and
 checks that preview wind cannot move it, with exact restoration of the old mode.
 
-GoVWave/GoTWave, DoSRollSail/DoTRollSail, native rolling topology/LOD, the original
+[GoVWave/GoTWave](SAIL_WAVES.md) now have an explicit attached-wave diagnostic.
+DoSRollSail/DoTRollSail, native rolling topology/LOD, the original
 wind table/RNG/INI, limit points, rope constraints, native matrix accumulation,
 full entity scheduling and complete gameplay remain pending. Commercial assets,
 captures and audit evidence stay outside Git.

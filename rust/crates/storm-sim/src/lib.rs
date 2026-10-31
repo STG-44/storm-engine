@@ -12,6 +12,7 @@ mod rig;
 pub mod sail_drive;
 pub mod sail_geometry;
 pub mod sail_motion;
+pub mod sail_wave;
 pub mod ship_motion;
 pub mod ship_parameters;
 pub mod ship_placement;

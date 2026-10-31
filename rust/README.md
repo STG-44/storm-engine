@@ -531,3 +531,10 @@ For [original static sail grids](../docs/SAIL_GEOMETRY.md), batch mode can add
 This inspection uses retained SetGeometry/FillVertex/SetTexGrid; it excludes
 interactive sail targets and original per-frame wave/rolling vertex generation.
 The report includes all three local UV sets; the renderer uses the first.
+
+## Attached native sail waves
+
+The batch option `--native-sail-waves` requires `--native-sail-motion`, full
+settled sails (`--fleet-sail-setting 1`) and excludes the window, sail targets
+and static `--native-sail-geometry`. It advances original GoVWave/GoTWave grids
+with explicit deterministic providers. See [scope and command](../docs/SAIL_WAVES.md).

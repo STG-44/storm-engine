@@ -162,6 +162,14 @@ impl SailPatch {
     pub fn deform_native_geometry(&self, out: &mut [ModelVertex], mask: u16) -> Result<()> {
         let (state, sphere) = self.native_geometry(mask)?;
         let vertices = storm_sim::sail_geometry::fill(&state, sphere, [1.0; 2])?;
+        self.deform_native_vertices(out, &vertices)
+    }
+    /// Upload a retained local grid; node/root presentation remains external.
+    pub fn deform_native_vertices(
+        &self,
+        out: &mut [ModelVertex],
+        vertices: &[storm_sim::sail_geometry::Vertex],
+    ) -> Result<()> {
         ensure!(
             out.len() == vertices.len(),
             "invalid native sail vertex count"
@@ -186,6 +194,31 @@ impl SailPatch {
             "native sail world transform overflow"
         );
         Ok(())
+    }
+    /// Explicit full-grid wave provider with no native RNG/INI or rope service.
+    pub fn native_wave_input(&self, mask: u16) -> Result<storm_sim::sail_wave::Input> {
+        use storm_sim::sail_geometry;
+        let (motion, sphere) = self.native_geometry(mask)?;
+        let input = self.native_drive(mask);
+        Ok(storm_sim::sail_wave::Input {
+            parameters: sail_geometry::preview_parameters(
+                input.kind,
+                self.drive_points,
+                self.origin
+                    .as_ref()
+                    .is_some_and(|o| o.node.starts_with("rey_")),
+                input.holes,
+                self.damage_settings.quad_flex,
+            )?,
+            sphere,
+            height: sail_geometry::dimensions(motion.kind, self.drive_points)?.1,
+            local_wind: [0.0; 3],
+            wind_base: 0.4,
+            limit_point: false,
+            rows: 17,
+            columns: 13,
+            ties: [false; 4],
+        })
     }
     /// Native scalar drive input. Static node axes and roll geometry are ports;
     /// this does not execute the original turning/rolling cloth processor.

@@ -111,6 +111,21 @@ impl ShipState {
     pub fn validate(&self, asset: &ShipAsset) -> Result<()> {
         if let Some(frame) = &self.native_rig {
             ensure!(
+                frame.cloth.len() <= 4096
+                    && frame
+                        .cloth
+                        .iter()
+                        .all(|(mesh, grid)| frame.sails.contains_key(mesh)
+                            && matches!(grid.len(), 153 | 221)
+                            && grid.iter().all(|v| v
+                                .position
+                                .into_iter()
+                                .chain(v.normal)
+                                .chain(v.uv.into_iter().flatten())
+                                .all(f32::is_finite))),
+                "invalid native cloth frame"
+            );
+            ensure!(
                 frame.sails.len() <= 4096 && frame.nodes.len() <= 256 && frame.origins.len() <= 256,
                 "rig frame budget exceeded"
             );
@@ -333,6 +348,8 @@ impl ShipAsset {
 
 #[derive(Clone, Debug, Default)]
 pub struct NativeRigFrame {
+    /// Complete native local grids, before the stored node frame and yard delta.
+    pub cloth: BTreeMap<usize, Vec<storm_sim::sail_geometry::Vertex>>,
     pub sails: BTreeMap<usize, f32>,
     pub origins: BTreeMap<String, BTreeMap<String, f32>>,
     /// Model-space deltas including inherited yard motion for each affected node.

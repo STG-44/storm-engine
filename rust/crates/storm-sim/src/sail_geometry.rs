@@ -143,15 +143,8 @@ pub fn rebuild(state: &mut SailMotion, p: Parameters) -> Result<Sphere> {
     Ok(sphere)
 }
 
-/// No-limit-point SetSail depth expressions with explicit unit samples.
-/// This numeric preview provider does not implement native RNG or SetSail lifecycle.
-pub fn preview_parameters(
-    kind: Kind,
-    h: [V; 4],
-    turning: bool,
-    holes: i32,
-    hole_flex: f32,
-) -> Result<Parameters> {
+/// Original no-limit-point SetSail width/height arithmetic.
+pub fn dimensions(kind: Kind, h: [V; 4]) -> Result<(f32, f32)> {
     ensure!(
         h.into_iter().flatten().all(f32::is_finite),
         "non-finite sail hard points"
@@ -173,6 +166,18 @@ pub fn preview_parameters(
             .all(|v| v.is_finite() && v >= 0.1),
         "degenerate sail dimensions"
     );
+    Ok((width, height))
+}
+
+/// Explicit half samples from the no-limit-point SetSail depth expressions.
+pub fn preview_parameters(
+    kind: Kind,
+    h: [V; 4],
+    turning: bool,
+    holes: i32,
+    hole_flex: f32,
+) -> Result<Parameters> {
+    let (width, height) = dimensions(kind, h)?;
     let mut p = Parameters {
         holes,
         hole_flex,

@@ -1089,7 +1089,14 @@ impl ModelScene {
                         bytemuck::cast_slice(&topology.indices),
                     );
                 }
-                if self.native_sail_geometry {
+                if let Some(native) = self
+                    .ship_state
+                    .native_rig
+                    .as_ref()
+                    .and_then(|r| r.cloth.get(&index))
+                {
+                    patch.deform_native_vertices(vertices, native)?;
+                } else if self.native_sail_geometry {
                     patch.deform_native_geometry(vertices, mask)?;
                 } else {
                     patch.deform_with_damage(

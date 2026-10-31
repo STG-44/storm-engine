@@ -2,11 +2,12 @@
 
 Started: 2026-10-17.
 
-Current increment: [original sail geometry and fixed vertex grids](SAIL_GEOMETRY.md).
-SetGeometry, FillVertex and all three SetTexGrid UV channels are retained, with
-an explicit static full-grid inspection. Rolling states initialize nonzero
-native geometry. Original wave/rolling vertex generation, rope constraints and
-complete entity scheduling remain pending.
+Current increment: [original attached sail waves](SAIL_WAVES.md).
+GoVWave/GoTWave and attached goWave phase/flex/bounds updates retain original
+arithmetic, LOD loop behavior, sample and rope outputs. An explicit full-grid
+batch diagnostic renders animated positions with preserved native normals/UVs.
+Initialization and weather remain explicit providers. Rolled/free processors,
+index LOD, rope constraints and complete entity scheduling remain pending.
 
 ## Goal
 

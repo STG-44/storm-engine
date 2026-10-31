@@ -12,6 +12,7 @@ use storm_sim::{ship_placement::RootPose, ship_presentation};
 mod drive;
 mod geometry;
 mod parameters;
+mod waves;
 mod window;
 use storm_render::{
     Gpu,
@@ -108,6 +109,7 @@ pub struct Fleet {
     native_motion: Option<NativeMotion>,
     drive: Option<drive::Drive>,
     geometry_preview: bool,
+    cloth: Option<waves::ClothFleet>,
     assets: Vec<ModelAsset>,
     sessions: Vec<Session>,
     poses: Vec<ModelPose>,
@@ -147,6 +149,7 @@ impl Fleet {
             native_motion: None,
             drive: None,
             geometry_preview: false,
+            cloth: None,
             assets,
             sessions,
             poses: vec![ModelPose::default(); 2],
@@ -539,6 +542,15 @@ impl Fleet {
                         - self.native_motion.as_ref().unwrap().elapsed_ms,
                     &mut self.native_motion.as_mut().unwrap().bodies,
                 )?;
+                if let Some(cloth) = &mut self.cloth {
+                    cloth.advance(
+                        &mut self.assets,
+                        drive,
+                        self.visible,
+                        (f64::from(frame) * 1000.0 / 60.0).round() as u32
+                            - self.native_motion.as_ref().unwrap().elapsed_ms,
+                    )?;
+                }
             }
             if let Some(motion) = &mut self.native_motion {
                 if let Some(binding) = &mut motion.placement {
@@ -707,6 +719,9 @@ impl Fleet {
         if self.geometry_preview {
             report["native_sail_geometry"] = geometry::report(&self.assets)?;
         }
+        if let Some(cloth) = &self.cloth {
+            report["native_sail_waves"] = cloth.report();
+        }
         for (i, asset) in self.assets.iter().enumerate() {
             if let Some(frame) = &asset.ship_state.native_rig {
                 report["ships"][i]["rig_frame"] = json!({"deployment_bits":frame.sails.iter().map(|(mesh,v)|json!({"mesh":mesh,"bits":v.to_bits()})).collect::<Vec<_>>(),"nodes":frame.nodes.iter().map(|(node,m)|json!({"node":node,"matrix_bits":m.map(f32::to_bits)})).collect::<Vec<_>>()});
@@ -856,6 +871,13 @@ fn load(options: &Options) -> Result<Fleet> {
         );
         fleet.geometry_preview = true;
     }
+    if options.native_sail_waves {
+        ensure!(
+            options.fleet_sail_setting == 1.0,
+            "native sail waves inspection requires full sails"
+        );
+        fleet.cloth = Some(waves::ClothFleet::new(&mut fleet.assets)?);
+    }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
     }
@@ -991,6 +1013,122 @@ mod tests {
                         == 12)
                 );
             }
+        }
+    }
+    fn wave_fixture() -> Fleet {
+        let mut f = sail_fixture(1.0, 0.0, false);
+        f.preview = false;
+        f.drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut f.assets)
+            .unwrap();
+        f.cloth = Some(waves::ClothFleet::new(&mut f.assets).unwrap());
+        f
+    }
+    #[test]
+    fn attached_wave_grids_are_published_without_changing_motion_and_release_independently() {
+        let mut f = wave_fixture();
+        f.advance_frames(0.0).unwrap();
+        let start = f.cloth.as_ref().unwrap().report();
+        f.advance_frames(1.5).unwrap();
+        let live = f.cloth.as_ref().unwrap().report();
+        assert_ne!(
+            start["bodies"][0]["sails"][0]["vertex_bits"],
+            live["bodies"][0]["sails"][0]["vertex_bits"]
+        );
+        for (index, asset) in f.assets.iter().enumerate() {
+            for (mesh, grid) in &asset.ship_state.native_rig.as_ref().unwrap().cloth {
+                let initial = storm_sim::sail_geometry::fill(
+                    &asset.meshes[*mesh]
+                        .sail
+                        .as_ref()
+                        .unwrap()
+                        .native_geometry(0)
+                        .unwrap()
+                        .0,
+                    asset.meshes[*mesh]
+                        .sail
+                        .as_ref()
+                        .unwrap()
+                        .native_geometry(0)
+                        .unwrap()
+                        .1,
+                    [1.0; 2],
+                )
+                .unwrap();
+                for (a, b) in grid.iter().zip(initial) {
+                    assert_eq!((a.normal, a.uv), (b.normal, b.uv));
+                }
+                assert!(
+                    live["bodies"][index]["sails"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|s| s["mesh"] == *mesh)
+                );
+            }
+        }
+        let mut baseline = sail_fixture(1.0, 0.0, false);
+        baseline.preview = false;
+        baseline
+            .drive
+            .as_mut()
+            .unwrap()
+            .enable_motion(&mut baseline.assets)
+            .unwrap();
+        baseline.advance_frames(1.5).unwrap();
+        assert_eq!(f.motion_report(), baseline.motion_report());
+        assert_eq!(
+            f.drive.as_ref().unwrap().report(),
+            baseline.drive.as_ref().unwrap().report()
+        );
+        f.advance_frames(2.0).unwrap();
+        let at = f.cloth.as_ref().unwrap().report();
+        let frozen = f.assets[0]
+            .ship_state
+            .native_rig
+            .as_ref()
+            .unwrap()
+            .cloth
+            .clone();
+        f.advance_frames(3.0).unwrap();
+        let after = f.cloth.as_ref().unwrap().report();
+        assert_eq!(at["bodies"][0], after["bodies"][0]);
+        assert_ne!(at["bodies"][1], after["bodies"][1]);
+        assert_eq!(
+            frozen,
+            f.assets[0].ship_state.native_rig.as_ref().unwrap().cloth
+        );
+    }
+    #[test]
+    fn attached_wave_frames_are_independent_of_presentation_partition_and_rebuild_holes() {
+        let mut a = wave_fixture();
+        let mut b = wave_fixture();
+        a.advance_frames(1.5).unwrap();
+        for t in [0.005, 0.2, 0.333, 1.005, 1.5] {
+            b.advance_frames(t).unwrap();
+        }
+        assert_eq!(
+            a.cloth.as_ref().unwrap().report(),
+            b.cloth.as_ref().unwrap().report()
+        );
+        let intact = a.assets[0]
+            .ship_state
+            .native_rig
+            .as_ref()
+            .unwrap()
+            .cloth
+            .clone();
+        let mesh = *intact.keys().next().unwrap();
+        a.assets[0].ship_state.sail_holes.insert(mesh, 3);
+        a.advance_frames(1.6).unwrap();
+        b.advance_frames(1.6).unwrap();
+        let damaged = &a.assets[0].ship_state.native_rig.as_ref().unwrap().cloth[&mesh];
+        let normal = &b.assets[0].ship_state.native_rig.as_ref().unwrap().cloth[&mesh];
+        assert_ne!(damaged, normal);
+        for (v, old) in damaged.iter().zip(&intact[&mesh]) {
+            assert_eq!((v.normal, v.uv), (old.normal, old.uv));
         }
     }
     #[test]
