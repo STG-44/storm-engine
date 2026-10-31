@@ -533,8 +533,8 @@ impl Fleet {
                 .borrow_mut()
                 .set_clock(self.seconds)?;
             if let Some(drive) = &mut self.drive {
-                if let Some(cloth) = &self.cloth {
-                    cloth.prepare(&self.assets, drive, self.visible)?;
+                if let Some(cloth) = &mut self.cloth {
+                    cloth.prepare(&mut self.assets, drive, self.visible, self.seconds)?;
                 }
                 drive.step(
                     &mut self.assets,
@@ -552,6 +552,8 @@ impl Fleet {
                         self.visible,
                         (f64::from(frame) * 1000.0 / 60.0).round() as u32
                             - self.native_motion.as_ref().unwrap().elapsed_ms,
+                        &self.poses,
+                        self.seconds,
                     )?;
                 }
             }
@@ -723,7 +725,9 @@ impl Fleet {
             report["native_sail_geometry"] = geometry::report(&self.assets)?;
         }
         if let Some(cloth) = &self.cloth {
-            report[if cloth.rolls() {
+            report[if cloth.free_enabled() {
+                "native_sail_free"
+            } else if cloth.rolls() {
                 "native_sail_rolls"
             } else {
                 "native_sail_waves"
@@ -888,6 +892,13 @@ fn load(options: &Options) -> Result<Fleet> {
     if options.native_sail_rolls {
         fleet.cloth = Some(waves::ClothFleet::with_rolls(&mut fleet.assets)?);
     }
+    if options.native_sail_free {
+        fleet.cloth.as_mut().unwrap().enable_free(
+            &fleet.assets,
+            options.fleet_free_mast,
+            options.fleet_free_at,
+        )?;
+    }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
     }
@@ -1048,6 +1059,80 @@ mod tests {
             f.drive.as_mut().unwrap().set_target(0, target).unwrap();
         }
         f
+    }
+    fn free_fixture(setting: f32, target: Option<f32>) -> Fleet {
+        let mut f = roll_fixture(setting, target);
+        f.cloth
+            .as_mut()
+            .unwrap()
+            .enable_free(&f.assets, Some(2), 0.75)
+            .unwrap();
+        f
+    }
+    #[test]
+    fn native_free_entry_preserves_samples_freezes_transition_and_retains_rolled_priority() {
+        let mut f = free_fixture(1.0, Some(0.0));
+        f.advance_frames(0.7334).unwrap();
+        let previous = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        let before = f.cloth.as_ref().unwrap().report();
+        assert!(!before["bodies"][0]["sails"][0]["free"].as_bool().unwrap());
+        f.advance_frames(1.5).unwrap();
+        let after = f.cloth.as_ref().unwrap().report();
+        let m = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        assert_eq!(m.transition, previous.transition);
+        assert_eq!(m.geometry, previous.geometry);
+        let sails = after["bodies"][0]["sails"].as_array().unwrap();
+        let free = &sails[0];
+        assert_eq!(free["free"], true);
+        assert_eq!(free["topology"]["grid"], json!([5, 4]));
+        assert_eq!(free["topology"]["normal_count"], 72);
+        assert_eq!(free["held_updates"], 0);
+        assert_eq!(
+            free["random_draws"].as_u64().unwrap(),
+            free["free_updates"].as_u64().unwrap() * 16
+        );
+        assert!(sails.iter().skip(1).all(|v| v["free"] == false));
+        assert!(
+            after["bodies"][1]["sails"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|v| v["free"] == false)
+        );
+        let mut rolled = free_fixture(0.0, None);
+        rolled.advance_frames(1.5).unwrap();
+        let r = rolled.cloth.as_ref().unwrap().report();
+        let s = &r["bodies"][0]["sails"][0];
+        assert_eq!(s["free"], true);
+        assert_eq!(s["rolled"], true);
+        assert_eq!(s["free_updates"], 0);
+        assert_eq!(s["random_draws"], 0);
+        assert_eq!(s["topology"]["grid"], json!([5, 13]));
+    }
+    #[test]
+    fn native_free_partition_presentation_and_owner_release_preserve_independent_state() {
+        let mut a = free_fixture(1.0, None);
+        let mut b = free_fixture(1.0, None);
+        a.advance_frames(1.5).unwrap();
+        for t in [0.005, 0.333, 0.749, 0.75, 1.005, 1.5] {
+            b.advance_frames(t).unwrap();
+            let before = b.cloth.as_ref().unwrap().report();
+            b.present_at(t, true).unwrap();
+            assert_eq!(before, b.cloth.as_ref().unwrap().report());
+        }
+        assert_eq!(
+            a.cloth.as_ref().unwrap().report(),
+            b.cloth.as_ref().unwrap().report()
+        );
+        a.preview = false;
+        a.advance_frames(2.0).unwrap();
+        let frozen = a.cloth.as_ref().unwrap().report();
+        let motion = a.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+        a.advance_frames(3.0).unwrap();
+        let later = a.cloth.as_ref().unwrap().report();
+        assert_eq!(frozen["bodies"][0], later["bodies"][0]);
+        assert_ne!(frozen["bodies"][1], later["bodies"][1]);
+        assert_eq!(motion, a.drive.as_ref().unwrap().cloth_state(0, 0).unwrap());
     }
     #[test]
     fn native_rolled_cloth_tracks_three_sets_transitions_and_real_motion_geometry() {

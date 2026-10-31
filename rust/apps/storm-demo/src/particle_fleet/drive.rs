@@ -72,6 +72,12 @@ pub(super) struct Drive {
     animation: Option<Vec<motion::Motion>>,
 }
 impl Drive {
+    pub fn free_cloth(&mut self, body: usize, sail: usize) -> Result<()> {
+        self.animation
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("free cloth requires native motion"))?[body]
+            .set_free(sail)
+    }
     pub fn sync_cloth_geometry(&mut self, body: usize) -> Result<()> {
         self.animation
             .as_mut()

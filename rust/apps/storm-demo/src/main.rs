@@ -115,6 +115,15 @@ struct Options {
     /// Inspect native attached/rolled vertices and original index ranges through sail transitions.
     #[arg(long, requires = "native_sail_motion", conflicts_with_all = ["native_sail_geometry", "native_sail_waves"])]
     native_sail_rolls: bool,
+    /// Use original free-cloth processors on descendants of the falling diagnostic mast.
+    #[arg(long, requires = "native_sail_rolls")]
+    native_sail_free: bool,
+    /// First ship's mast to drop; defaults to the mast carrying the most sails.
+    #[arg(long, requires = "native_sail_free")]
+    fleet_free_mast: Option<u32>,
+    /// Diagnostic mast drop time in seconds (0..=30).
+    #[arg(long, requires = "native_sail_free", default_value_t = 0.75)]
+    fleet_free_at: f32,
     /// Change the first ship's sail request after its initial settled state.
     #[arg(long, requires = "native_sail_motion", value_parser = sail_setting)]
     fleet_sail_target: Option<f32>,

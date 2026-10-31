@@ -1,6 +1,139 @@
 use super::*;
 
 #[test]
+fn pinned_free_mast_axes_keep_zero_wind_gravity_in_world_space() {
+    let asset = ModelAsset::ship_demo().unwrap();
+    let patch = asset
+        .meshes
+        .iter()
+        .find_map(|m| m.sail.as_ref().filter(|s| !s.is_triangle()))
+        .unwrap();
+    let mut state = asset.ship_state.clone();
+    state.broken_masts.insert(2, 0.75);
+    state.native_rig = Some(std::sync::Arc::new(NativeRigFrame {
+        pinned_cloth_fall: true,
+        ..Default::default()
+    }));
+    for seconds in [0.75, 1.0, 1.75, 3.5] {
+        for yaw in [-1.2, 0.0, 0.75] {
+            let root = ModelPose {
+                yaw,
+                pitch: 0.1,
+                roll: -0.2,
+                ..Default::default()
+            }
+            .matrix()
+            .unwrap();
+            let delta = asset.ship.transform("rey_b2", &state, seconds).unwrap();
+            let transform = root * delta;
+            let axes = ShipAsset::posed_axes(patch.native_drive(0).axes, transform.to_cols_array());
+            let local = storm_sim::sail_free::local_direction(storm_sim::sail_free::Parameters {
+                axes,
+                ..Default::default()
+            })
+            .unwrap();
+            let world = transform.transform_vector3(Vec3::from_array(local));
+            assert!((world - Vec3::NEG_Y).length() < 0.000001);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn free_native_grids_and_coarse_hole_ranges_restore_the_previous_scene() {
+    let asset = ModelAsset::ship_demo().unwrap();
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut state = asset.ship_state.clone();
+    let mut frame = NativeRigFrame {
+        pinned_cloth_fall: true,
+        ..Default::default()
+    };
+    for (mesh, patch) in asset
+        .meshes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| m.sail.as_ref().map(|s| (i, s)))
+    {
+        let (m, sphere) = patch.native_geometry(0).unwrap();
+        let input = patch.native_wave_input(0).unwrap();
+        let mut grid = storm_sim::sail_geometry::fill(&m, sphere, [1.0; 2]).unwrap();
+        let mut points = storm_sim::sail_wave::State {
+            points: [[1.0, -1.0, 0.5]; 20],
+            ..Default::default()
+        };
+        for _ in 0..12 {
+            storm_sim::sail_free::advance(
+                &mut points,
+                &m,
+                &mut grid,
+                storm_sim::sail_free::Parameters {
+                    height: input.height,
+                    ..Default::default()
+                },
+                storm_sim::sail_free::Draws {
+                    values: &[16383; 16],
+                    maximum: 32767,
+                },
+            )
+            .unwrap();
+        }
+        let t = storm_sim::sail_topology::fill(
+            m.kind,
+            false,
+            storm_sim::sail_topology::Grid {
+                rows: 5,
+                columns: 4,
+            },
+            4095,
+        )
+        .unwrap();
+        frame.sails.insert(mesh, 1.0);
+        frame.cloth.insert(mesh, grid);
+        frame.cloth_indices.insert(mesh, t);
+    }
+    let mut capture = |state: ShipState| {
+        scene.set_ship_state(state).unwrap();
+        let rgba = crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba;
+        let counts = scene
+            .meshes
+            .iter()
+            .filter(|m| m.sail.is_some())
+            .map(|m| (m.count, m.normal_count))
+            .collect::<Vec<_>>();
+        (rgba, counts)
+    };
+    let ordinary = capture(state.clone());
+    state.native_rig = Some(std::sync::Arc::new(frame));
+    let free = capture(state.clone());
+    assert_ne!(ordinary.0, free.0);
+    assert!(
+        free.1
+            .iter()
+            .all(|(n, normal)| matches!(n, 48 | 72) && *normal == 0)
+    );
+    assert_eq!(ordinary, capture(asset.ship_state));
+}
+
+#[test]
 #[ignore = "requires a native GPU or software Vulkan"]
 fn rolled_native_topology_changes_persistent_ranges_and_restores_full_buffers() {
     let asset = ModelAsset::sail_demo().unwrap();

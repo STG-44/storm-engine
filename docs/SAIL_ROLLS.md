@@ -56,10 +56,13 @@ and complete original index allocation/ranges.
 Initialization keeps the [attached-wave provider](SAIL_WAVES.md): zero initial
 phase/flex, fixed wind base, pinned sine table, no registered ties, fixed-half
 depth samples and no limit points. Native numeric rolled form tables are used.
-Original weather/RNG/INI, free/falling cloth, constrained yards, rope binding,
+Original weather/RNG/INI, constrained yards, rope binding,
 heraldry's separate material/UV, full matrix accumulation and game scheduling
 remain pending. The default viewer retains its previous cloth unless this
 explicit option is enabled.
+
+The next increment adds [free cloth](SAIL_FREE.md) through a separate opt-in
+flag; the rolled-only diagnostic and its reports retain their previous behavior.
 
 ## Native reference
 

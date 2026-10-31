@@ -30,15 +30,23 @@ impl NodePort for Yard {
 }
 pub(super) struct Motion {
     sails: Vec<SailMotion>,
+    free: Vec<bool>,
     owners: Vec<Option<String>>,
     yards: BTreeMap<String, Yard>,
 }
 impl Motion {
+    pub fn set_free(&mut self, index: usize) -> Result<()> {
+        *self
+            .free
+            .get_mut(index)
+            .ok_or_else(|| anyhow::anyhow!("unknown native free sail"))? = true;
+        Ok(())
+    }
     pub fn sync_zero_cloth_geometry(&mut self) -> Result<()> {
         // A newly issued unroll request has delta zero but still holds the
         // previous coefficients. Apply the native zero-ms step before drawing.
-        for sail in &mut self.sails {
-            if sail.transition.is_some_and(|t| t.delta == 0.0) {
+        for (sail, free) in self.sails.iter_mut().zip(&self.free) {
+            if !free && sail.transition.is_some_and(|t| t.delta == 0.0) {
                 sail.advance(0, ROLL_RATE)?;
             }
         }
@@ -92,6 +100,7 @@ impl Motion {
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(Self {
+            free: vec![false; sails.len()],
             sails,
             owners,
             yards,
@@ -127,8 +136,10 @@ impl Motion {
         for yard in self.yards.values_mut() {
             yard.global = yard.local;
         }
-        for sail in &mut self.sails {
-            sail.advance(delta_ms, ROLL_RATE)?;
+        for (sail, free) in self.sails.iter_mut().zip(&self.free) {
+            if !free {
+                sail.advance(delta_ms, ROLL_RATE)?;
+            }
         }
         self.copy_state(group);
         let nodes = self.nodes(&asset.ship)?;

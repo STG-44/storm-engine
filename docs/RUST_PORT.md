@@ -2,11 +2,11 @@
 
 Started: 2026-10-17.
 
-Current increment: [original rolled sail cloth and index grids](SAIL_ROLLS.md).
-DoSRollSail/DoTRollSail and FillIndex now follow the actual native motion state,
-including all three sail sets and transitions in an opt-in window mode. Numeric
-GetGrid selection is checked with projected distance as a port. Automatic camera
-LOD, free/falling cloth, rope constraints and full game scheduling remain pending.
+Current increment: [original free sail cloth](SAIL_FREE.md).
+DoSFreeSail/DoTFreeSail follow the native free flag and rolled-first dispatch,
+retaining coarse grids and transition state after a diagnostic mast fall.
+Random draws and matrix axes are explicit providers. Native mast physics/group
+migration, camera LOD, rope constraints and full game scheduling remain pending.
 
 ## Goal
 

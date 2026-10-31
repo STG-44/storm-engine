@@ -546,3 +546,9 @@ rolled vertices and index ranges with native motion. All three initial sets,
 `--fleet-sail-target` and `--fleet-window` are supported; W/S changes the first
 ship's request. The static/attached-only inspection flags are separate modes.
 See [scope and command](../docs/SAIL_ROLLS.md) for providers and remaining work.
+
+`--native-sail-free` adds DoSFreeSail/DoTFreeSail after a scheduled diagnostic
+mast fall. Rolled cloth keeps precedence; freed transitions stop without resetting
+samples. Coarse native grids and complete reports use explicit matrix/raw-random
+providers, with last-finite retention for native divide-by-zero outcomes.
+See [scope and command](../docs/SAIL_FREE.md).

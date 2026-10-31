@@ -1,6 +1,7 @@
-//! Full attached-grid diagnostic. Initialization, weather, ties and scheduling
-//! are explicit providers; native free/rolled processors are not selected here.
+//! Native cloth diagnostics. Initialization, weather, ties, falling mast motion
+//! and scheduling remain explicit providers.
 use super::*;
+mod free;
 use storm_sim::{
     sail_geometry::{self, Vertex},
     sail_motion::SailMotion,
@@ -14,12 +15,14 @@ struct Cloth {
     vertices: Vec<Vertex>,
     frames: u32,
     mask: u16,
-    topology: Option<(bool, u16, storm_sim::sail_topology::Topology)>,
+    topology: Option<(bool, bool, u16, storm_sim::sail_topology::Topology)>,
+    free: free::Entry,
 }
 pub(super) struct ClothFleet {
     bodies: Vec<Vec<Cloth>>,
     table: Vec<f32>,
     rolls: bool,
+    free_mode: Option<free::Schedule>,
 }
 impl ClothFleet {
     pub fn with_rolls(assets: &mut [ModelAsset]) -> Result<Self> {
@@ -32,11 +35,13 @@ impl ClothFleet {
     }
     /// Native SetGeometry must update the saved transition before DoRollingStep.
     pub fn prepare(
-        &self,
-        assets: &[ModelAsset],
+        &mut self,
+        assets: &mut [ModelAsset],
         drive: &mut drive::Drive,
         visible: [bool; 2],
+        seconds: f32,
     ) -> Result<()> {
+        self.prepare_free(assets, drive, visible, seconds)?;
         if !self.rolls {
             return Ok(());
         }
@@ -92,6 +97,7 @@ impl ClothFleet {
                     frames: 0,
                     mask,
                     topology: None,
+                    free: Default::default(),
                 });
             }
             bodies.push(cloth);
@@ -99,6 +105,7 @@ impl ClothFleet {
         let result = Self {
             bodies,
             rolls: false,
+            free_mode: None,
             table: (0..60)
                 .map(|i| libm::sinf(i as f32 / 60.0 * 2.0 * std::f32::consts::PI))
                 .collect(),
@@ -112,10 +119,15 @@ impl ClothFleet {
         drive: &mut drive::Drive,
         visible: [bool; 2],
         delta_ms: u32,
+        poses: &[ModelPose],
+        seconds: f32,
     ) -> Result<()> {
         for (i, body) in self.bodies.iter_mut().enumerate() {
             if !visible[i] {
                 continue;
+            }
+            if self.free_mode.is_some() {
+                free::pin(&mut assets[i])?;
             }
             if self.rolls {
                 drive.sync_cloth_geometry(i)?;
@@ -173,6 +185,8 @@ impl ClothFleet {
                             6
                         },
                     )?;
+                } else if cloth.free.released {
+                    free::advance(cloth, &assets[i], poses[i], seconds)?;
                 } else {
                     sail_wave::advance(
                         &mut cloth.state,
@@ -185,18 +199,20 @@ impl ClothFleet {
                     )?;
                 }
                 if self.rolls
-                    && cloth.topology.as_ref().is_none_or(|(rolled, old_mask, _)| {
-                        *rolled != cloth.motion.rolling || *old_mask != mask
-                    })
+                    && cloth
+                        .topology
+                        .as_ref()
+                        .is_none_or(|(rolled, released, old_mask, _)| {
+                            *rolled != cloth.motion.rolling
+                                || *released != cloth.free.released
+                                || *old_mask != mask
+                        })
                 {
                     use storm_sim::sail_topology::{self, Grid};
-                    let grid = if cloth.motion.rolling {
-                        Grid::ROLLED
-                    } else {
-                        Grid::NEAR
-                    };
+                    let grid = Grid::select(0.0, cloth.motion.rolling, cloth.free.released)?;
                     cloth.topology = Some((
                         cloth.motion.rolling,
+                        cloth.free.released,
                         mask,
                         sail_topology::fill(cloth.motion.kind, cloth.motion.rolling, grid, mask)?,
                     ));
@@ -218,8 +234,9 @@ impl ClothFleet {
             frame.cloth = body.iter().map(|c| (c.mesh, c.vertices.clone())).collect();
             frame.cloth_indices = body
                 .iter()
-                .filter_map(|c| c.topology.as_ref().map(|(_, _, t)| (c.mesh, t.clone())))
+                .filter_map(|c| c.topology.as_ref().map(|(_, _, _, t)| (c.mesh, t.clone())))
                 .collect();
+            frame.pinned_cloth_fall = self.free_mode.is_some();
             asset.ship_state.validate(&asset.ship)?;
         }
         Ok(())
@@ -239,10 +256,11 @@ impl ClothFleet {
                     out["rolled"] = json!(c.motion.rolling);
                     out["geometry_bits"] = json!(c.motion.geometry.map(|v| v.map(f32::to_bits)));
                     out["transition"]=json!(c.motion.transition.map(|t|json!({"delta_bits":t.delta.to_bits(),"up":t.up,"geometry_bits":t.geometry.map(|v|v.map(f32::to_bits))})));
-                    out["topology"]=json!(c.topology.as_ref().map(|(rolled,_,t)|json!({"grid":if *rolled {[5,13]}else{[17,13]},"indices":t.indices,"normal_count":t.normal_count,"hole_start":t.hole_start,"hole_count":t.hole_count})));
+                    out["topology"]=json!(c.topology.as_ref().map(|(rolled,released,_,t)|json!({"grid":if *rolled {[5,13]}else if *released {[5,4]}else{[17,13]},"indices":t.indices,"normal_count":t.normal_count,"hole_start":t.hole_start,"hole_count":t.hole_count})));
                 }
             }
         }
+        free::report(self, &mut report);
         report
     }
 }

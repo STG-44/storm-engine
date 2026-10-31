@@ -346,9 +346,18 @@ impl ShipAsset {
         let age = (seconds - start).max(0.0);
         let angle = (age * age * 0.22).min(1.65);
         let sink = (age - 2.5).max(0.0).powi(2) * 1.4;
+        let rotation = if state
+            .native_rig
+            .as_ref()
+            .is_some_and(|r| r.pinned_cloth_fall)
+        {
+            Mat4::from_cols_array(&storm_sim::sail_free::preview_rotation_z(-angle))
+        } else {
+            Mat4::from_rotation_z(-angle)
+        };
         Some(
             Mat4::from_translation(pivot - Vec3::Y * sink)
-                * Mat4::from_rotation_z(-angle)
+                * rotation
                 * Mat4::from_translation(-pivot),
         )
     }
@@ -356,6 +365,8 @@ impl ShipAsset {
 
 #[derive(Clone, Debug, Default)]
 pub struct NativeRigFrame {
+    /// Select the pinned diagnostic mast frame used by free-cloth CPU and draw paths.
+    pub pinned_cloth_fall: bool,
     pub cloth_indices: BTreeMap<usize, storm_sim::sail_topology::Topology>,
     /// Complete native local grids, before the stored node frame and yard delta.
     pub cloth: BTreeMap<usize, Vec<storm_sim::sail_geometry::Vertex>>,
