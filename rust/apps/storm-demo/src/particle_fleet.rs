@@ -1232,6 +1232,32 @@ mod tests {
         );
     }
     #[test]
+    fn free_cloth_retains_the_rope_positions_written_by_the_current_yard_turn() {
+        let mut f = rope_fixture(1.0);
+        f.cloth
+            .as_mut()
+            .unwrap()
+            .enable_free(&f.assets, Some(2), 0.0)
+            .unwrap();
+        for time in [0.0, 0.5, 1.0] {
+            f.advance_frames(time).unwrap();
+            let m = f.drive.as_ref().unwrap().cloth_state(0, 0).unwrap();
+            let c = &f.cloth.as_ref().unwrap().report()["bodies"][0]["sails"][0];
+            assert_eq!(c["free"], true);
+            for slot in [2, 3] {
+                assert_eq!(
+                    m.ties[slot],
+                    Some(m.hard_points[slot]),
+                    "free rope slot {slot} at {time}"
+                );
+                assert_eq!(
+                    c["rope_bits"][slot],
+                    json!(m.hard_points[slot].map(f32::to_bits))
+                );
+            }
+        }
+    }
+    #[test]
     fn native_free_entry_preserves_samples_freezes_transition_and_retains_rolled_priority() {
         let mut f = free_fixture(1.0, Some(0.0));
         f.advance_frames(0.7334).unwrap();

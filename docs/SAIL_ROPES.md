@@ -33,6 +33,10 @@ furled sets, requests/reversals, damage rebuilding, pause, fractional
 presentation and independent owner release use the existing fixed-step fleet.
 The default viewer and the preceding diagnostic reports retain their behavior.
 
+With `--native-sail-free`, unwritten free-cloth rope outputs retain the points
+from the current TurnSail, including a release at time zero. Shared pPos storage
+is synchronized before dispatch; the previous cloth frame cannot overwrite it.
+
 ~~~sh
 cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion \
   --native-ship-rocking --native-ship-placement --native-ship-presentation \

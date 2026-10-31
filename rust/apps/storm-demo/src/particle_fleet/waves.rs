@@ -179,6 +179,13 @@ impl ClothFleet {
                     cloth.input.parameters = p;
                     cloth.input.sphere = s;
                     cloth.input.ties = cloth.motion.ties.map(|p| p.is_some());
+                    // pPos is shared storage in C++: processors that do not write
+                    // a tied endpoint retain the value from this frame's TurnSail.
+                    for (slot, point) in cloth.motion.ties.into_iter().enumerate() {
+                        if let Some(point) = point {
+                            cloth.state.rope_points[slot] = point;
+                        }
+                    }
                 }
                 cloth.input.local_wind = output.wind;
                 if self.rolls && cloth.motion.rolling {
