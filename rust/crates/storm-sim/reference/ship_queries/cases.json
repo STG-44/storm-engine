@@ -1,0 +1,1863 @@
+{
+  "scope": "Check retained SHIP query cases, GetIndex, ATTRIBUTES and DATA under UBSan.\n\nThe two switch cases, GetIndex, GetAttributeAsDword and DATA::Set(int32_t)\nare compiled verbatim. Character/tree lookup, MESSAGE transport, DATA storage\nand assertion-to-error handling are adapters. All numeric strings fit signed\n32-bit C long; out-of-range atol behavior and full SHIP initialization are excluded.\n",
+  "constants": {
+    "MSG_SHIP_GET_CHARACTER_INDEX": 50307,
+    "MSG_SHIP_GET_NUM_FIRE_PLACES": 50306
+  },
+  "retained_sha256": {
+    "cases": "fb4bad3d6c0481155daee328f5a02423586a5d29d272c2704eac64587167bccb",
+    "index": "07ed8df347247bdf40360287d4399296a65289c8ef8e436afc5ebc820b3701df",
+    "dword": "43ebaf47f68ca7dd50a9afa3d8e5e22c4fc999fca8d2ff2e19961beffe904a36",
+    "integer": "02eff32f714ba5ce6c2186d6623e62578c017c48cd797be24cf1b39d3ebc620d"
+  },
+  "cases": [
+    {
+      "bound": false,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": false,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": false,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": false,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": false,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": true,
+          "result": 0,
+          "type": "float",
+          "value": 1048576000
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": null,
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "19",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "19",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "19",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "19",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": " -7tail",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": " -7tail",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": " -7tail",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": " -7tail",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "\t+42end",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 42
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "\t+42end",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 42
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "\t+42end",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 42
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "\t+42end",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 42
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "2147483647",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 2147483647
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "2147483647",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 2147483647
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "2147483647",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 2147483647
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "2147483647",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 2147483647
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "-2147483648",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -2147483648
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "-2147483648",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -2147483648
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "-2147483648",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -2147483648
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "-2147483648",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -2147483648
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "oops",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "oops",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "oops",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "oops",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0x13",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0x13",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0x13",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0x13",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "3.5",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "3.5",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "3.5",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "3.5",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0019",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0019",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0019",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "0019",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 19
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "+27",
+      "fire_places": 0,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 27
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "+27",
+      "fire_places": 1,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 27
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 1
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "+27",
+      "fire_places": 7,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 27
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 7
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "bound": true,
+      "index_exists": true,
+      "index_name": "InDeX",
+      "index_text": "+27",
+      "fire_places": 256,
+      "expected": [
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 27
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 256
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": -9
+        },
+        {
+          "error": false,
+          "result": 0,
+          "type": "int",
+          "value": 0
+        }
+      ]
+    }
+  ]
+}

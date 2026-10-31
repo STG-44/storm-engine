@@ -1,0 +1,1820 @@
+{
+  "scope": "Exercise e bindings and native DATA setters with unedited retained bodies.\n\nThe stack, MESSAGE storage, lookup and native diagnostic are adapters. By-value\nstack DATA is explicitly prepared; original compiler/object copying is outside\nthis oracle. Scalar getters/setters, entity IDs, GetVarPointer, CreateMessage\nand the live SendMessage case are compiled verbatim under UBSan.\n",
+  "retained_sha256": {
+    "DATA *DATA::GetVarPointer()": "099c9560ef36f69753d11e210128c2e456a8c699c25ffbd43c73ab22e62f3dc2",
+    "void DATA::Set(int32_t value)": "02eff32f714ba5ce6c2186d6623e62578c017c48cd797be24cf1b39d3ebc620d",
+    "void DATA::Set(float value)": "81c729f1045e6bea9a6ae15344cd9d55a7b955c507275d078096e586814a9437",
+    "void DATA::Set(std::string value)": "d56ca5fe0f7fa298fd97202f13d937fd508b94c5aac9947868d5f068f4cf5736",
+    "void DATA::SetPtr(uintptr_t value)": "852fe1b00a9ccf2427831e427797ca0ec799243a67be7b22d423b93085ec536b",
+    "void DATA::Set(entid_t eid)": "22675d5a44924202a994842c072794c29527cc183eb5f7de91a0ec981e614b53",
+    "bool DATA::Get(int32_t &value)": "07085b6660b410478a7937be2c8360d204782912adad84218a9945a68f4998ba",
+    "bool DATA::Get(float &value)": "e4f76f783534a0b8be3d9f19776ab205a306d0d3a1990e6b07a411b7a6e5a6de",
+    "bool DATA::Get(const char *&value)": "515be2490257d1bdf36bf712c2885f6e0971fa8df7e350a65f7dc36fe652da71",
+    "bool DATA::GetPtr(uintptr_t &value)": "3938ff545a14d63b2e053b64af22a8ff5deedd899ea5e2dd72a2384a5169200c",
+    "void DATA::Get(entid_t &eid)": "ae0d6413cc781ae9d4785fc1b8f562ddd286ae4c885636180535602933abb465",
+    "CreateMessage": "a10b459382ffa9032f00e2098b61b46e9a12f7c37c9e4a7d2a0abd090a0e63e4",
+    "SendMessage": "0ab727939b45e6d527e7f1c18fae4fd9cd028b9ab8676e7250303678cf2bcd07"
+  },
+  "cases": [
+    {
+      "initial": "i",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "i:7",
+        "first": "i:-19",
+        "second": "i:7",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "i:7",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "i:7",
+        "first": "f:1078984704",
+        "second": "i:7",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "i:7",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "i:7",
+        "first": "s:after",
+        "second": "i:7",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "i:7",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "i:7",
+        "first": "p:18446744073709551615",
+        "second": "i:7",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "i:7",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "i:7",
+        "first": "o:18364758544493064720",
+        "second": "i:7",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "i:7"
+      }
+    },
+    {
+      "initial": "i",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "i:7",
+        "first": "o:18364758544493064720",
+        "second": "o:18364758544493064720",
+        "caller": "o:18364758544493064720"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "f:1088946176",
+        "first": "i:-19",
+        "second": "f:1088946176",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "f:1088946176",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "f:1088946176",
+        "first": "f:1078984704",
+        "second": "f:1088946176",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "f:1088946176",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "f:1088946176",
+        "first": "s:after",
+        "second": "f:1088946176",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "f:1088946176",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "f:1088946176",
+        "first": "p:18446744073709551615",
+        "second": "f:1088946176",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "f:1088946176",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "f:1088946176",
+        "first": "o:18364758544493064720",
+        "second": "f:1088946176",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "f:1088946176"
+      }
+    },
+    {
+      "initial": "f",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "f:1088946176",
+        "first": "o:18364758544493064720",
+        "second": "o:18364758544493064720",
+        "caller": "o:18364758544493064720"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "s:before",
+        "first": "i:-19",
+        "second": "s:before",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "s:before",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "s:before",
+        "first": "f:1078984704",
+        "second": "s:before",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "s:before",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "s:before",
+        "first": "s:after",
+        "second": "s:before",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "s:before",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "s:before",
+        "first": "p:18446744073709551615",
+        "second": "s:before",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "s:before",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "s:before",
+        "first": "o:18364758544493064720",
+        "second": "s:before",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "s:before"
+      }
+    },
+    {
+      "initial": "s",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "s:before",
+        "first": "o:18364758544493064720",
+        "second": "o:18364758544493064720",
+        "caller": "o:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "p:18364758544493064720",
+        "first": "i:-19",
+        "second": "p:18364758544493064720",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "p:18364758544493064720",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "p:18364758544493064720",
+        "first": "f:1078984704",
+        "second": "p:18364758544493064720",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "p:18364758544493064720",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "p:18364758544493064720",
+        "first": "s:after",
+        "second": "p:18364758544493064720",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "p:18364758544493064720",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "p:18364758544493064720",
+        "first": "p:18446744073709551615",
+        "second": "p:18364758544493064720",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "p:18364758544493064720",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "p:18364758544493064720",
+        "first": "o:18364758544493064720",
+        "second": "p:18364758544493064720",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "p:18364758544493064720"
+      }
+    },
+    {
+      "initial": "p",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "p:18364758544493064720",
+        "first": "o:18364758544493064720",
+        "second": "o:18364758544493064720",
+        "caller": "o:18364758544493064720"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "o:9920249030594524246",
+        "first": "i:-19",
+        "second": "o:9920249030594524246",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "o:9920249030594524246",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "o:9920249030594524246",
+        "first": "f:1078984704",
+        "second": "o:9920249030594524246",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "o:9920249030594524246",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "o:9920249030594524246",
+        "first": "s:after",
+        "second": "o:9920249030594524246",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "o:9920249030594524246",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "o:9920249030594524246",
+        "first": "p:18446744073709551615",
+        "second": "o:9920249030594524246",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "o:9920249030594524246",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "o:9920249030594524246",
+        "first": "o:18364758544493064720",
+        "second": "o:9920249030594524246",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "o:9920249030594524246"
+      }
+    },
+    {
+      "initial": "o",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "o:9920249030594524246",
+        "first": "o:18364758544493064720",
+        "second": "o:18364758544493064720",
+        "caller": "o:18364758544493064720"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "i",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "i",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "a:9920249030594524246",
+        "first": "i:-19",
+        "second": "a:9920249030594524246",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "i",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "i",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "a:9920249030594524246",
+        "first": "i:-19",
+        "second": "i:-19",
+        "caller": "i:-19"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "f",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "f",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "a:9920249030594524246",
+        "first": "f:1078984704",
+        "second": "a:9920249030594524246",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "f",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "f",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "a:9920249030594524246",
+        "first": "f:1078984704",
+        "second": "f:1078984704",
+        "caller": "f:1078984704"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "s",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "s",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "a:9920249030594524246",
+        "first": "s:after",
+        "second": "a:9920249030594524246",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "s",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "s",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "a:9920249030594524246",
+        "first": "s:after",
+        "second": "s:after",
+        "caller": "s:after"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "p",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "p",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "a:9920249030594524246",
+        "first": "p:18446744073709551615",
+        "second": "a:9920249030594524246",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "p",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "p",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "a:9920249030594524246",
+        "first": "p:18446744073709551615",
+        "second": "p:18446744073709551615",
+        "caller": "p:18446744073709551615"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "o",
+      "ref": false,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "o",
+      "ref": false,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": false,
+        "before": "a:9920249030594524246",
+        "first": "a:18364758544493064720",
+        "second": "a:9920249030594524246",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "o",
+      "ref": true,
+      "valid": false,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "same": false,
+        "before": "-",
+        "first": "-",
+        "second": "-",
+        "caller": "a:9920249030594524246"
+      }
+    },
+    {
+      "initial": "a",
+      "write": "o",
+      "ref": true,
+      "valid": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "same": true,
+        "before": "a:9920249030594524246",
+        "first": "a:18364758544493064720",
+        "second": "a:18364758544493064720",
+        "caller": "a:18364758544493064720"
+      }
+    }
+  ]
+}

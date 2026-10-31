@@ -1,0 +1,2311 @@
+{
+  "retained_sha256": {
+    "void DATA::Set(int32_t value)": "02eff32f714ba5ce6c2186d6623e62578c017c48cd797be24cf1b39d3ebc620d",
+    "void DATA::Set(float value)": "81c729f1045e6bea9a6ae15344cd9d55a7b955c507275d078096e586814a9437",
+    "void DATA::Set(std::string value)": "d56ca5fe0f7fa298fd97202f13d937fd508b94c5aac9947868d5f068f4cf5736",
+    "void DATA::Set(const char *value)": "a489da21f225257f60ed2d722c429448d5fe9a48a37792b721fc49f9c06d5c30",
+    "bool DATA::Convert(S_TOKEN_TYPE type)": "4c66a5f3e6cf17df0bdcba208bbac7e1b465e17eb181f42412e52f799b2fdea0",
+    "bool DATA::Neg()": "4b848e6d592a1ec0cbfb126fce8294678c23661b1bf54783838aa54f65c03c10",
+    "bool DATA::Inverse()": "3ac5cda85f6f1505c00d33e585e86a9bb1b3d5530834e77bd3797747a62d3487",
+    "bool DATA::Power(DATA *pV)": "861d69bbb74a5349f5d346f81ec84dbb7d5a5fe77efc39ffdf32f4ca20bd7b5f",
+    "bool DATA::Power(int32_t Deg)": "e25d1212de42bd9f0b2c52a867a914e8e578b3b9e9fa823e305ac8d1ce5136c4",
+    "bool DATA::Multiply(DATA *pV)": "f1ee9d305c1777a9733488b072434c14a982226b85bbf4a89a7f82b1a266df26",
+    "bool DATA::Divide(DATA *pV)": "6e0af96a7b7571313fb02566047b9d8db5711ea4954d73aa2e470c54413cf902",
+    "bool DATA::Modul(DATA *pV)": "7c3b05d7879083e0f093d5f7b40ed1e73f8beafada2785fdf50214d02c97212f",
+    "bool DATA::Plus(DATA *pV)": "46ade1236d37360de4fb11dc666a2918f63cfa0b862e22bea18ee4e40d909767",
+    "bool DATA::Minus(DATA *pV)": "1693c948bfcb97b7d0638cf933eef61438da849c92e256ec23ccf30db68dafc7",
+    "bool DATA::CompareAndSetResult(DATA *pV, S_TOKEN_TYPE op)": "9dd51a57d551cbdf2978bcd5f746d3d6bca7b2ee2abb5e998261641694cd0b2e",
+    "bool DATA::BoolConvert()": "63a33eb0a132961e89e632a8fb24dc75d9855bc5e6fd25d5527d927d3760ca11",
+    "DATA *DATA::GetVarPointer()": "099c9560ef36f69753d11e210128c2e456a8c699c25ffbd43c73ab22e62f3dc2"
+  },
+  "cases": [
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 0,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 1,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": -2147483648
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": -2147483648
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 2147483648
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 2147483648
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483648,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 4294967296
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 4294967296
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967296,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 4294967297
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 4294967297
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 4294967297,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 9223372036854775808
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 9223372036854775808
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 9223372036854775808,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1985229328
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1985229328
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18364758544493064720
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18364758544493064720
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18364758544493064720,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "int",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": -1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "int",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": -1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "bool",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "bool",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "!",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "neg",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744073709551615
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "neg",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744073709551615
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "==",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "!=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": "<=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": -1,
+      "expected": {
+        "kind": "i",
+        "value": 1
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": false,
+      "op": ">=",
+      "ref": false,
+      "right": 19,
+      "expected": {
+        "kind": "i",
+        "value": 0
+      }
+    },
+    {
+      "bits": 18446744071562067968,
+      "integer": true,
+      "op": "ptr",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744071562067968
+      }
+    },
+    {
+      "bits": 18446744071562067968,
+      "integer": true,
+      "op": "ptr",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744071562067968
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": true,
+      "op": "ptr",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744073709551615
+      }
+    },
+    {
+      "bits": 18446744073709551615,
+      "integer": true,
+      "op": "ptr",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 18446744073709551615
+      }
+    },
+    {
+      "bits": 0,
+      "integer": true,
+      "op": "ptr",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 0
+      }
+    },
+    {
+      "bits": 0,
+      "integer": true,
+      "op": "ptr",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 0
+      }
+    },
+    {
+      "bits": 2147483647,
+      "integer": true,
+      "op": "ptr",
+      "ref": false,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 2147483647
+      }
+    },
+    {
+      "bits": 2147483647,
+      "integer": true,
+      "op": "ptr",
+      "ref": true,
+      "right": 0,
+      "expected": {
+        "kind": "p",
+        "value": 2147483647
+      }
+    }
+  ]
+}
