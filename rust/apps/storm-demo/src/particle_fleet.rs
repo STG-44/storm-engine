@@ -10,6 +10,7 @@ use storm_core::{AttributeId, AttributeStore, Entity, EntityId, Message, Value};
 use storm_sim::ship_placement::ShipPlacement;
 use storm_sim::{ship_placement::RootPose, ship_presentation};
 mod drive;
+mod geometry;
 mod parameters;
 mod window;
 use storm_render::{
@@ -106,6 +107,7 @@ pub struct Fleet {
     preview: bool,
     native_motion: Option<NativeMotion>,
     drive: Option<drive::Drive>,
+    geometry_preview: bool,
     assets: Vec<ModelAsset>,
     sessions: Vec<Session>,
     poses: Vec<ModelPose>,
@@ -144,6 +146,7 @@ impl Fleet {
             preview: false,
             native_motion: None,
             drive: None,
+            geometry_preview: false,
             assets,
             sessions,
             poses: vec![ModelPose::default(); 2],
@@ -701,6 +704,9 @@ impl Fleet {
         if let Some(drive) = &self.drive {
             report["native_sail_drive"] = drive.report();
         }
+        if self.geometry_preview {
+            report["native_sail_geometry"] = geometry::report(&self.assets)?;
+        }
         for (i, asset) in self.assets.iter().enumerate() {
             if let Some(frame) = &asset.ship_state.native_rig {
                 report["ships"][i]["rig_frame"] = json!({"deployment_bits":frame.sails.iter().map(|(mesh,v)|json!({"mesh":mesh,"bits":v.to_bits()})).collect::<Vec<_>>(),"nodes":frame.nodes.iter().map(|(node,m)|json!({"node":node,"matrix_bits":m.map(f32::to_bits)})).collect::<Vec<_>>()});
@@ -744,6 +750,7 @@ impl Fleet {
             .map(|(i, a)| {
                 let mut scene = ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, a)?;
                 scene.set_pose(self.poses[i])?;
+                scene.set_native_sail_geometry(self.geometry_preview);
                 if let Some(drive) = &self.drive {
                     scene.set_rig_state(drive.rig(i))?;
                 }
@@ -841,6 +848,13 @@ fn load(options: &Options) -> Result<Fleet> {
             .as_mut()
             .unwrap()
             .enable_motion(&mut fleet.assets)?;
+    }
+    if options.native_sail_geometry {
+        ensure!(
+            options.fleet_sail_setting == 1.0,
+            "native sail geometry inspection requires full sails"
+        );
+        fleet.geometry_preview = true;
     }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
@@ -951,6 +965,33 @@ mod tests {
             furled.drive.as_ref().unwrap().rig(0),
             storm_sim::RigState::uniform(0.0)
         );
+    }
+    #[test]
+    fn native_geometry_report_contains_complete_local_grids_without_changing_drive() {
+        let mut inspected = sail_fixture(1.0, 0.0, false);
+        inspected.geometry_preview = true;
+        let inspected = inspected.advance(1.5).unwrap();
+        let baseline = sail_fixture(1.0, 0.0, false).advance(1.5).unwrap();
+        let report = inspected.report().unwrap();
+        let ordinary = baseline.report().unwrap();
+        assert_eq!(report["native_sail_drive"], ordinary["native_sail_drive"]);
+        assert_eq!(report["native_motion"], ordinary["native_motion"]);
+        assert!(ordinary.get("native_sail_geometry").is_none());
+        let bodies = report["native_sail_geometry"]["bodies"].as_array().unwrap();
+        for b in bodies {
+            for s in b["sails"].as_array().unwrap() {
+                assert_eq!(s["geometry_bits"].as_array().unwrap().len(), 10);
+                let n = if s["kind"] == 0 { 153 } else { 221 };
+                assert_eq!(s["vertex_bits"].as_array().unwrap().len(), n);
+                assert!(
+                    s["vertex_bits"].as_array().unwrap().iter().all(|v| v
+                        .as_array()
+                        .unwrap()
+                        .len()
+                        == 12)
+                );
+            }
+        }
     }
     #[test]
     fn native_sail_motion_keeps_partial_geometry_drive_and_reversal_in_sync() {

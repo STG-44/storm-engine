@@ -2,10 +2,11 @@
 
 Started: 2026-10-17.
 
-Current increment: [sail rolling state and unconstrained yard turning](SAIL_MOTION.md).
-The viewer uses retained transition timing, reversal and turn decisions with
-per-sail cloth/rope deployment and inherited yard transforms. Original cloth
-generation, rope constraints and complete entity scheduling remain pending.
+Current increment: [original sail geometry and fixed vertex grids](SAIL_GEOMETRY.md).
+SetGeometry, FillVertex and all three SetTexGrid UV channels are retained, with
+an explicit static full-grid inspection. Rolling states initialize nonzero
+native geometry. Original wave/rolling vertex generation, rope constraints and
+complete entity scheduling remain pending.
 
 ## Goal
 

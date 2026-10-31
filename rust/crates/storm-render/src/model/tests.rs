@@ -2,6 +2,41 @@ use super::*;
 
 #[test]
 #[ignore = "requires a native GPU or software Vulkan"]
+fn native_static_geometry_reuses_the_scene_ignores_preview_wind_and_restores() {
+    let asset = ModelAsset::sail_demo().unwrap();
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let mut capture = |native, speed| {
+        scene.set_native_sail_geometry(native);
+        crate::render_offscreen_with(&gpu, 321, 181, 0.0, |encoder, target| {
+            scene.draw(
+                &gpu,
+                encoder,
+                target,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba
+    };
+    let ordinary = capture(false, 12.0);
+    let native = capture(true, 0.0);
+    assert_eq!(native, capture(true, 40.0));
+    assert_ne!(native, ordinary);
+    assert_eq!(ordinary, capture(false, 12.0));
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
 fn flags_wave_in_persistent_buffers_and_stay_visible_when_sails_are_furled() {
     let mut asset = ModelAsset::rigging_demo().unwrap();
     asset.meshes.retain(|m| m.sail.is_none());

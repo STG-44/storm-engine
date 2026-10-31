@@ -64,6 +64,7 @@ pub struct SailPatch {
     drive_maximum: f32,
     drive_axes: [[f32; 3]; 3],
     drive_points: [[f32; 3]; 4],
+    native_frame: [f32; 16],
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +122,7 @@ impl SailPatch {
             drive_maximum,
             drive_axes: [Vec3::X.to_array(), Vec3::Y.to_array(), Vec3::Z.to_array()],
             drive_points: points.map(|p| p.to_array()),
+            native_frame: Mat4::IDENTITY.to_cols_array(),
         })
     }
 
@@ -130,6 +132,60 @@ impl SailPatch {
     /// Original local hard-point order for the motion provider.
     pub fn native_points(&self) -> [[f32; 3]; 4] {
         self.drive_points
+    }
+    /// Native fixed-grid construction. Depths use explicit half samples from
+    /// SetSail's no-limit-point expressions; RNG and original waves are pending.
+    pub fn native_geometry(
+        &self,
+        mask: u16,
+    ) -> Result<(
+        storm_sim::sail_motion::SailMotion,
+        storm_sim::sail_geometry::Sphere,
+    )> {
+        use storm_sim::{sail_geometry, sail_motion::SailMotion};
+        let input = self.native_drive(mask);
+        let mut state = SailMotion::new(input.kind, false);
+        state.hard_points = self.drive_points;
+        let parameters = sail_geometry::preview_parameters(
+            input.kind,
+            state.hard_points,
+            self.origin
+                .as_ref()
+                .is_some_and(|o| o.node.starts_with("rey_")),
+            input.holes,
+            self.damage_settings.quad_flex,
+        )?;
+        let sphere = sail_geometry::rebuild(&mut state, parameters)?;
+        Ok((state, sphere))
+    }
+    /// Static full-grid inspection, preserving the existing buffers and damage UVs.
+    pub fn deform_native_geometry(&self, out: &mut [ModelVertex], mask: u16) -> Result<()> {
+        let (state, sphere) = self.native_geometry(mask)?;
+        let vertices = storm_sim::sail_geometry::fill(&state, sphere, [1.0; 2])?;
+        ensure!(
+            out.len() == vertices.len(),
+            "invalid native sail vertex count"
+        );
+        let frame = Mat4::from_cols_array(&self.native_frame);
+        let normals = frame.inverse().transpose();
+        for (v, native) in out.iter_mut().zip(vertices) {
+            *v = ModelVertex {
+                position: frame
+                    .transform_point3(Vec3::from_array(native.position))
+                    .to_array(),
+                normal: normals
+                    .transform_vector3(Vec3::from_array(native.normal))
+                    .to_array(),
+                uv: native.uv[0],
+                color: [1.0, 0.97, 0.88, 1.0],
+            };
+        }
+        ensure!(
+            out.iter()
+                .all(|v| v.position.into_iter().chain(v.normal).all(f32::is_finite)),
+            "native sail world transform overflow"
+        );
+        Ok(())
     }
     /// Native scalar drive input. Static node axes and roll geometry are ports;
     /// this does not execute the original turning/rolling cloth processor.
@@ -447,6 +503,7 @@ pub(super) fn from_labels(
             patch.weight = weight;
             patch.drive_maximum = local.drive_maximum;
             patch.drive_points = local.drive_points;
+            patch.native_frame = world.to_cols_array();
             patch.drive_axes = [
                 world.x_axis.truncate().to_array(),
                 world.y_axis.truncate().to_array(),
@@ -700,6 +757,62 @@ mod tests {
         assert_eq!(world.roll_type, 2);
         assert_eq!(world.holes, 2);
         assert_eq!(world.axes[0], transform.x_axis.truncate().to_array());
+    }
+    #[test]
+    fn native_geometry_preserves_local_calculation_parent_transform_and_damage_uvs() {
+        let points = [
+            Vec3::ZERO,
+            Vec3::X * 4.0,
+            Vec3::new(4.0, 3.0, 0.0),
+            Vec3::Y * 3.0,
+        ];
+        let labels = points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Label {
+                group: "saild1".into(),
+                name: format!("sail{}", i + 1),
+                matrix: Mat4::from_translation(*p).to_cols_array(),
+            })
+            .collect::<Vec<_>>();
+        let world = Mat4::from_translation(Vec3::new(3.0, 2.0, 5.0)) * Mat4::from_rotation_y(0.5);
+        let local = from_labels(&labels, Mat4::IDENTITY, "rey_a", "mast1")
+            .unwrap()
+            .remove(0);
+        let transformed = from_labels(&labels, world, "rey_a", "mast1")
+            .unwrap()
+            .remove(0);
+        let mut a = vec![ModelVertex::zeroed(); local.vertex_count()];
+        let mut b = a.clone();
+        local.deform_native_geometry(&mut a, 3).unwrap();
+        transformed.deform_native_geometry(&mut b, 3).unwrap();
+        assert_eq!(
+            local.native_geometry(3).unwrap().0.geometry,
+            transformed.native_geometry(3).unwrap().0.geometry
+        );
+        for (a, b) in a.iter().zip(&b) {
+            assert!(
+                world
+                    .transform_point3(Vec3::from_array(a.position))
+                    .distance(Vec3::from_array(b.position))
+                    < 0.00001
+            );
+            assert_eq!(a.uv, b.uv);
+        }
+        let mut intact = a.clone();
+        local.deform_native_geometry(&mut intact, 0).unwrap();
+        assert!(intact.iter().zip(a).any(|(a, b)| a.position != b.position));
+        for (index, point) in [
+            (0, points[0]),
+            (204, points[1]),
+            (16, points[3]),
+            (220, points[2]),
+        ] {
+            assert!(
+                Vec3::from_array(b[index].position).distance(world.transform_point3(point))
+                    < 0.00001
+            );
+        }
     }
     #[test]
     fn original_locator_types_corner_order_uvs_and_parent_transform_are_preserved() {

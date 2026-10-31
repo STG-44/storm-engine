@@ -525,3 +525,9 @@ Batch mode adds --native-sail-motion; --fleet-sail-target 0/0.5/1 changes the fi
 ship after initialization. Cloth and rope endpoints follow partial deployment
 and inherited yard transforms. Native cloth construction, rope-constrained
 turning and weather providers remain pending.
+
+For [original static sail grids](../docs/SAIL_GEOMETRY.md), batch mode can add
+--native-sail-motion --native-sail-geometry with --fleet-sail-setting 1.
+This inspection uses retained SetGeometry/FillVertex/SetTexGrid; it excludes
+interactive sail targets and original per-frame wave/rolling vertex generation.
+The report includes all three local UV sets; the renderer uses the first.

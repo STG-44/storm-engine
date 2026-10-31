@@ -48,10 +48,11 @@ meshes, flags, and rope endpoints use the same node transforms; falling-mast
 transforms apply once afterwards. Damage masks continue to select original sail
 topology. Releasing a ship freezes its rig and drive while the other keeps running.
 
-The current cloth renderer remains kinematic. It does not use original
-SetGeometry/GoVWave/GoTWave/DoSRollSail/DoTRollSail vertex generation or native
-rolling LOD/topology. The fleet's SAILGEOMETRY vectors are zero-valued ports;
-the core geometry arithmetic is separately tested on nonzero native fixtures.
+The normal animated cloth renderer remains kinematic. It does not use original
+GoVWave/GoTWave/DoSRollSail/DoTRollSail vertex generation or native rolling
+LOD/topology. The fleet's initial SAILGEOMETRY now comes from the
+[geometry port](SAIL_GEOMETRY.md). An explicit batch-only inspection can draw
+native SetGeometry/FillVertex/SetTexGrid output for full static sails.
 Rope-constrained turning, SetTurnLimits, original INI overrides, native rope
 simulation, detached-sail rehosting, weather, sound and full gameplay scheduling
 remain pending. Rendered rig transforms are adapters, not full rigging parity.

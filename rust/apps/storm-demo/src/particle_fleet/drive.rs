@@ -152,7 +152,7 @@ impl Drive {
                     .iter()
                     .enumerate()
                     .map(|(i, a)| motion::Motion::new(a, &self.meshes[i], &self.groups[i]))
-                    .collect(),
+                    .collect::<Result<Vec<_>>>()?,
             );
             for (i, a) in assets.iter_mut().enumerate() {
                 self.animation.as_ref().unwrap()[i].publish(a, &self.meshes[i])?;

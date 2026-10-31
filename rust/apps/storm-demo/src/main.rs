@@ -106,6 +106,9 @@ struct Options {
     /// Retain native rolling timing and unconstrained yard-turn decisions.
     #[arg(long, requires = "native_sail_drive")]
     native_sail_motion: bool,
+    /// Inspect original static full sail grids; native wave/rolling vertices are pending.
+    #[arg(long, requires = "native_sail_motion", conflicts_with_all = ["fleet_window", "fleet_sail_target"])]
+    native_sail_geometry: bool,
     /// Change the first ship's sail request after its initial settled state.
     #[arg(long, requires = "native_sail_motion", value_parser = sail_setting)]
     fleet_sail_target: Option<f32>,

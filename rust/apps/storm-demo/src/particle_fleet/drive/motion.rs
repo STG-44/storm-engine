@@ -34,7 +34,7 @@ pub(super) struct Motion {
     yards: BTreeMap<String, Yard>,
 }
 impl Motion {
-    pub fn new(asset: &ModelAsset, meshes: &[usize], group: &Group) -> Self {
+    pub fn new(asset: &ModelAsset, meshes: &[usize], group: &Group) -> Result<Self> {
         let mut yards = BTreeMap::new();
         let mut owners = Vec::new();
         let sails = meshes
@@ -55,18 +55,18 @@ impl Motion {
                     });
                 }
                 owners.push(owner);
-                let mut motion = SailMotion::new(input.kind, input.rolling);
-                motion.hard_points = patch.native_points();
-                // The preview cloth does not consume SAILGEOMETRY's polynomial vectors.
-                // Their original construction and oscillation remain separate work.
-                motion
+                let (mut motion, _sphere) = patch.native_geometry(
+                    asset.ship_state.sail_holes.get(&mesh).copied().unwrap_or(0),
+                )?;
+                motion.rolling = input.rolling;
+                Ok(motion)
             })
-            .collect();
-        Self {
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Self {
             sails,
             owners,
             yards,
-        }
+        })
     }
     fn copy_state(&self, group: &mut Group) {
         for (s, m) in group.sails.iter_mut().zip(&self.sails) {

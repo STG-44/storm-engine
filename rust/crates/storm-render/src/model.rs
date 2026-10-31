@@ -241,6 +241,7 @@ pub struct ModelScene {
     pose: ModelPose,
     waves: storm_sim::Waves,
     rig: storm_sim::RigState,
+    native_sail_geometry: bool,
     wave_buffer: wgpu::Buffer,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
@@ -752,6 +753,7 @@ impl ModelScene {
             pose: ModelPose::default(),
             waves: storm_sim::Waves::default(),
             rig: storm_sim::RigState::uniform(1.0),
+            native_sail_geometry: false,
             wave_buffer,
             camera_group,
             textures,
@@ -795,6 +797,10 @@ impl ModelScene {
         rig.validate()?;
         self.rig = rig;
         Ok(())
+    }
+    /// Inspect the static original full grid; this does not execute goWave or rolling LOD.
+    pub fn set_native_sail_geometry(&mut self, enabled: bool) {
+        self.native_sail_geometry = enabled;
     }
     #[allow(clippy::too_many_arguments)]
     pub fn draw(
@@ -1083,17 +1089,21 @@ impl ModelScene {
                         bytemuck::cast_slice(&topology.indices),
                     );
                 }
-                patch.deform_with_damage(
-                    vertices,
-                    local_wind,
-                    seconds,
-                    self.ship_state
-                        .native_rig
-                        .as_ref()
-                        .and_then(|r| r.sails.get(&index).copied())
-                        .unwrap_or(self.rig.deployed(patch.tier) as f32),
-                    mask,
-                )?;
+                if self.native_sail_geometry {
+                    patch.deform_native_geometry(vertices, mask)?;
+                } else {
+                    patch.deform_with_damage(
+                        vertices,
+                        local_wind,
+                        seconds,
+                        self.ship_state
+                            .native_rig
+                            .as_ref()
+                            .and_then(|r| r.sails.get(&index).copied())
+                            .unwrap_or(self.rig.deployed(patch.tier) as f32),
+                        mask,
+                    )?;
+                }
                 gpu.queue
                     .write_buffer(&mesh.vertices, 0, bytemuck::cast_slice(vertices));
             }

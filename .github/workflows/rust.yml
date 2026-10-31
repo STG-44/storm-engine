@@ -169,6 +169,8 @@ jobs:
           python -c "import json; s=json.load(open('sail-drive-state.json')); d=s['native_sail_drive']; assert d['original_weather'] is False and d['rolling_geometry']=='settled_adapter'; assert [g['set'] for g in d['bodies']]==[1,1]; assert [g['deleted'] for g in d['bodies']]==[True,False]; assert all(g['sails'] for g in d['bodies']); a=json.load(open('ship-parameters-state.json')); assert s['native_motion']['bodies']!=a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --fleet-sail-setting 1 --fleet-sail-target 0 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-motion-state.json
           python -c "import json,struct; s=json.load(open('sail-motion-state.json')); d=s['native_sail_drive']; assert d['rolling_geometry']=='native_timing_with_preview_geometry'; assert [g['set'] for g in d['bodies']]==[0,2]; assert [g['deleted'] for g in d['bodies']]==[True,False]; m=d['motion']; assert not m['native_cloth'] and not m['rope_constrained_turning']; f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]; assert all(abs(f(v['deployment_bits'])-0.4)<0.00001 for v in m['bodies'][0]['sails']); assert all(v['deployment_bits']==1065353216 and v['transition'] is None for v in m['bodies'][1]['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-geometry --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-geometry-state.json
+          python -c "import json; s=json.load(open('sail-geometry-state.json')); g=s['native_sail_geometry']; assert g['mode']=='static_full_grid' and not g['native_waves'] and not g['native_rolling_vertices']; assert len(g['bodies'])==2; assert all(b['sails'] for b in g['bodies']); assert all(len(v['geometry_bits'])==10 and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and all(len(p)==12 for p in v['vertex_bits']) for b in g['bodies'] for v in b['sails']); assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -207,6 +209,7 @@ jobs:
             ship-parameters-state.json
             sail-drive-state.json
             sail-motion-state.json
+            sail-geometry-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
