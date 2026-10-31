@@ -74,3 +74,34 @@ atomic retention, rather than comparing NaN payloads. Integration checks entry,
 transition freeze, rolled priority, partitioned stepping, presentation, independent
 owner release and held-frame accounting. GPU checks cover coarse hole ranges and
 exact restoration. Resources, captures and local evidence remain outside Git.
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `97cc7ed4af5cad600f832e007dfc71a68bc20c20` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41251687807)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, builds, 374 CPU tests (135 interpreter) and 29 scenarios.
+Four archive digests and all 116 complete JSON reports match local output,
+including free flags, axes, sample/vertex fields, saved motion and index ranges.
+All preceding 28 reports remain unchanged; host triples/counts are checked in logs.
+
+Linux passes 21 software Vulkan tests and nine fleet-window frames, including
+three paused free-cloth frames. Local Metal passes 21 render tests and three
+paused new-mode window frames. Six generated/original captures cover entry,
+falling cloth and owner release; original before/falling frames were visually
+inspected. Three-frame presentation does not establish manual keyboard testing.
+Hosted Windows/macOS physical GPU/window coverage remains open.
+
+All 40 original roots / 368 sails pass, with 132 sails entering free
+mode on the selected first-ship masts and 0 held non-finite attempts.
+Active free indices reference only written vertices; normals and all UVs retain
+their preceding static values. Metadata, parameters, motion and owner routing
+also pass. At three seconds, 274 fire locators retain 548 systems / 822 finite
+world rows / 12,243 living particles under the surviving owner. Boat has zero
+sail drive; rowing remains pending. The UBSan oracle regenerates byte-identically:
+72 profiles, 180 finite frames / 37,740 complete vertices, 36 non-finite outcomes.
+
+Native mast physics/group ownership migration, RNG/weather/INI, camera LOD,
+rope binding/constraints and full matrix/entity scheduling remain pending.
+Commercial resources, captures and local evidence stay outside Git. Earlier
+whole-profile and manual damage audits were not repeated.

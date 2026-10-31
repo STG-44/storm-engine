@@ -857,3 +857,15 @@ tests and six fleet-window frames (three using new cloth). Metal passes 20 rende
 tests, three paused native window frames and seven captures. Automatic camera
 LOD, free/falling cloth, rope binding/constraints and full scheduling remain
 pending. See [rolled cloth scope](SAIL_ROLLS.md).
+
+
+The [free-cloth PR run](https://github.com/STG-44/storm-engine/actions/runs/41251687807)
+passes all four hosts for `97cc7ed4`: 374 CPU tests, 29 scenarios and 116 complete
+JSON reports matching local output with verified archive digests. All preceding
+28 reports remain unchanged. The native oracle covers 72 profiles / 180 finite
+frames / 37,740 vertices and 36 non-finite outcomes. All 40 original roots /
+368 sails pass, including 132 released sails. Linux passes 21 Vulkan
+tests and nine fleet-window frames; Metal passes 21 render tests, three paused
+new-mode window frames and six captures. Native mast physics/group migration,
+RNG, camera LOD, rope constraints and full scheduling remain pending.
+See [free cloth scope](SAIL_FREE.md).
