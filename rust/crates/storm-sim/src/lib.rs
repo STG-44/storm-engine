@@ -12,6 +12,7 @@ mod rig;
 pub mod sail_drive;
 pub mod sail_free;
 pub mod sail_geometry;
+pub mod sail_lod;
 pub mod sail_motion;
 pub mod sail_roll;
 pub mod sail_rope;

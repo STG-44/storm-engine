@@ -47,6 +47,9 @@ fn prepare(
     camera.radius *= 3.0;
     camera.pitch = 0.3;
     camera.yaw = 0.2;
+    if let Some(cloth) = &fleet.cloth {
+        cloth.configure_camera(&mut camera);
+    }
     let scenes = fleet
         .assets
         .iter()
@@ -219,6 +222,11 @@ impl State {
         }
         self.fleet.advance_frames(seconds)?;
         self.fleet.present_at(seconds, false)?;
+        self.camera.target.x =
+            (self.fleet.poses[0].translation[0] + self.fleet.poses[1].translation[0]) * 0.5;
+        self.camera.target.z =
+            (self.fleet.poses[0].translation[2] + self.fleet.poses[1].translation[2]) * 0.5;
+        self.fleet.present_lod(&self.camera)?;
         for i in 0..2 {
             self.scenes[i].set_pose(self.fleet.poses[i])?;
             self.scenes[i].set_ship_state(self.fleet.assets[i].ship_state.clone())?;
@@ -234,10 +242,6 @@ impl State {
                 .waves;
             self.scenes[i].set_waves(waves)?;
         }
-        self.camera.target.x =
-            (self.fleet.poses[0].translation[0] + self.fleet.poses[1].translation[0]) * 0.5;
-        self.camera.target.z =
-            (self.fleet.poses[0].translation[2] + self.fleet.poses[1].translation[2]) * 0.5;
         let immersion = self
             .fleet
             .native_motion

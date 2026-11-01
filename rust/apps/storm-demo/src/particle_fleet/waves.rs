@@ -2,6 +2,7 @@
 //! and scheduling remain explicit providers.
 use super::*;
 mod free;
+mod lod;
 use storm_sim::{
     sail_geometry::{self, Vertex},
     sail_motion::SailMotion,
@@ -17,12 +18,14 @@ struct Cloth {
     mask: u16,
     topology: Option<(bool, bool, u16, storm_sim::sail_topology::Topology)>,
     free: free::Entry,
+    lod: lod::Entry,
 }
 pub(super) struct ClothFleet {
     bodies: Vec<Vec<Cloth>>,
     table: Vec<f32>,
     rolls: bool,
     free_mode: Option<free::Schedule>,
+    lod_distance: Option<Option<f32>>,
 }
 impl ClothFleet {
     pub fn with_rolls(assets: &mut [ModelAsset]) -> Result<Self> {
@@ -110,6 +113,7 @@ impl ClothFleet {
                     mask,
                     topology: None,
                     free: Default::default(),
+                    lod: Default::default(),
                 });
             }
             bodies.push(cloth);
@@ -118,6 +122,7 @@ impl ClothFleet {
             bodies,
             rolls: false,
             free_mode: None,
+            lod_distance: None,
             table: (0..60)
                 .map(|i| libm::sinf(i as f32 / 60.0 * 2.0 * std::f32::consts::PI))
                 .collect(),
@@ -188,6 +193,15 @@ impl ClothFleet {
                     }
                 }
                 cloth.input.local_wind = output.wind;
+                if self.lod_distance.is_some() {
+                    cloth.lod.save(
+                        cloth.motion.rolling,
+                        cloth.free.released,
+                        &cloth.state,
+                        &cloth.vertices,
+                        delta_ms,
+                    );
+                }
                 if self.rolls && cloth.motion.rolling {
                     let patch = assets[i].meshes[cloth.mesh].sail.as_ref().unwrap();
                     storm_sim::sail_roll::advance(
@@ -304,6 +318,7 @@ impl ClothFleet {
             }
         }
         free::report(self, &mut report);
+        lod::report(self, &mut report);
         report
     }
 }

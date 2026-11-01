@@ -2,11 +2,11 @@
 
 Started: 2026-10-17.
 
-Current increment: [original sail rope constraints](SAIL_ROPES.md).
-SetTurnLimits, constrained TurnSail, numeric tie registration and endpoint queries
-now feed changed geometry and visible rope endpoints in an opt-in fleet mode.
-Label order/matrix construction remain adapters; native service registration,
-camera LOD, mast physics/group migration and full scheduling remain pending.
+Current increment: [camera-driven sail detail](SAIL_LOD.md).
+Complete GetGrid arithmetic now selects native grids from the displayed camera.
+Immutable attached-wave replay changes visible detail on pause while preserving
+canonical near-grid simulation and rope outputs. Camera/matrix construction and
+presentation scheduling are adapters; full native entity integration is pending.
 
 ## Goal
 

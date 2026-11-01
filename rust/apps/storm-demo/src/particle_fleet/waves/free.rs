@@ -233,6 +233,7 @@ mod tests {
             frames: 0,
             mask: 0,
             topology: None,
+            lod: Default::default(),
             free: Entry {
                 released: true,
                 ..Default::default()

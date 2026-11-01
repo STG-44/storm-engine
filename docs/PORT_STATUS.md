@@ -24,8 +24,9 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest code validation](SAIL_ROPES.md#four-platform-evidence-2026-11-01)
-checks 380 CPU tests per host, 30 scenarios and 120 matching complete reports.
+limited. The [preceding code validation](SAIL_ROPES.md#four-platform-evidence-2026-11-01)
+checks 380 CPU tests per host, 30 scenarios and 120 matching complete reports;
+the next [camera-detail increment](SAIL_LOD.md) adds presentation LOD.
 These establish the documented implementations, not a percentage of the engine.
 
 ## Scope still to cover

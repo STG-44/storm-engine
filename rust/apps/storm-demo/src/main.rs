@@ -121,6 +121,12 @@ struct Options {
     /// Use retained rope limits/turning with paired locator and matrix providers.
     #[arg(long, requires = "native_sail_rolls")]
     native_sail_ropes: bool,
+    /// Select native sail detail from the actual camera without advancing physics.
+    #[arg(long, requires = "native_sail_rolls")]
+    native_sail_lod: bool,
+    /// Override the initial LOD camera distance in world units (0.1..=1000000).
+    #[arg(long, requires = "native_sail_lod", value_parser = finite)]
+    sail_lod_distance: Option<f32>,
     /// First ship's mast to drop; defaults to the mast carrying the most sails.
     #[arg(long, requires = "native_sail_free")]
     fleet_free_mast: Option<u32>,

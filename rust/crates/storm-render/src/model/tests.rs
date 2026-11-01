@@ -1,6 +1,112 @@
 use super::*;
 
 #[test]
+fn native_lod_camera_uses_exactly_the_eye_and_fov_of_the_gpu_view() {
+    let a = ModelAsset::ship_demo().unwrap();
+    let mut c = OrbitCamera::new(&a);
+    c.set_native_sail_math(true);
+    for yaw in [-2.5, 0.0, 1.2] {
+        for pitch in [-0.1, 0.4, 1.4] {
+            c.yaw = yaw;
+            c.pitch = pitch;
+            let v = c.sail_view().unwrap();
+            let u = c.uniform(641, 361, 1.5).unwrap();
+            assert_eq!(
+                v.eye.map(f32::to_bits),
+                std::array::from_fn::<_, 3, _>(|i| u.eye_time[i].to_bits())
+            );
+            assert_eq!(v.perspective.to_bits(), 45_f32.to_radians().to_bits());
+        }
+    }
+    c.distance = f32::NAN;
+    assert!(c.sail_view().is_err());
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
+fn camera_selected_sail_grids_update_live_index_ranges_and_restore_near_buffers() {
+    let asset = ModelAsset::ship_demo().unwrap();
+    let instance = crate::create_instance(wgpu::Backends::PRIMARY).unwrap();
+    let gpu = pollster::block_on(Gpu::request(&instance, None)).unwrap();
+    let camera = OrbitCamera::new(&asset);
+    let mut scene = ModelScene::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &asset).unwrap();
+    let frame = |rows, columns| {
+        let mut frame = NativeRigFrame::default();
+        for (i, p) in asset
+            .meshes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.sail.as_ref().map(|p| (i, p)))
+        {
+            let (m, s) = p.native_geometry(0).unwrap();
+            let mut v = storm_sim::sail_geometry::fill(&m, s, [1.0; 2]).unwrap();
+            let mut input = p.native_wave_input(0).unwrap();
+            input.rows = rows;
+            input.columns = columns;
+            storm_sim::sail_wave::advance(
+                &mut Default::default(),
+                &m,
+                &mut v,
+                input,
+                &[0.0, 1.0, -1.0],
+                Default::default(),
+                17,
+            )
+            .unwrap();
+            frame.sails.insert(i, 1.0);
+            frame.cloth.insert(i, v);
+            frame.cloth_indices.insert(
+                i,
+                storm_sim::sail_topology::fill(
+                    m.kind,
+                    false,
+                    storm_sim::sail_topology::Grid { rows, columns },
+                    341,
+                )
+                .unwrap(),
+            );
+        }
+        frame
+    };
+    let mut capture = |frame: Option<NativeRigFrame>| {
+        let mut state = asset.ship_state.clone();
+        state.native_rig = frame.map(std::sync::Arc::new);
+        scene.set_ship_state(state).unwrap();
+        let image = crate::render_offscreen_with(&gpu, 321, 181, 0.0, |e, t| {
+            scene.draw(
+                &gpu,
+                e,
+                t,
+                321,
+                181,
+                0.0,
+                &camera,
+                SailWind {
+                    speed: 0.0,
+                    direction: 0.0,
+                },
+            )
+        })
+        .unwrap()
+        .rgba;
+        let counts = scene
+            .meshes
+            .iter()
+            .filter(|m| m.sail.is_some())
+            .map(|m| (m.count, m.normal_count))
+            .collect::<Vec<_>>();
+        (image, counts)
+    };
+    let ordinary = capture(None);
+    let near = capture(Some(frame(17, 13)));
+    let far = capture(Some(frame(5, 4)));
+    assert_ne!(near.0, far.0);
+    assert!(far.1.iter().all(|(n, _)| matches!(n, 48 | 72)));
+    assert_eq!(near, capture(Some(frame(17, 13))));
+    assert_eq!(ordinary, capture(None));
+}
+
+#[test]
 #[ignore = "requires a native GPU or software Vulkan"]
 fn native_rope_output_frames_change_live_lines_and_restore_previous_buffers() {
     let mut asset = ModelAsset::ship_demo().unwrap();

@@ -557,3 +557,9 @@ See [scope and command](../docs/SAIL_FREE.md).
 feedback to cloth and visible ropes. Paired locator ordering, node matrices
 and per-ship endpoint registries are explicit adapters; native entity lifetime
 is pending. See [scope and command](../docs/SAIL_ROPES.md).
+
+`--native-sail-lod` selects visible sail grids from the actual camera eye/FOV.
+Immutable replay of the last attached-wave step supports zoom/orbit on pause;
+canonical near-grid motion and rope outputs are unchanged. An optional
+`--sail-lod-distance` sets the initial distance. See [scope and command](../docs/SAIL_LOD.md)
+for the presentation adapter and remaining native scheduling work.

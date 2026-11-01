@@ -84,6 +84,7 @@ impl ModelPose {
 
 #[derive(Clone)]
 pub struct OrbitCamera {
+    native_sail_math: bool,
     pub target: Vec3,
     pub yaw: f32,
     pub pitch: f32,
@@ -93,6 +94,7 @@ pub struct OrbitCamera {
 impl OrbitCamera {
     pub fn new(asset: &ModelAsset) -> Self {
         Self {
+            native_sail_math: false,
             target: asset.center,
             yaw: 0.85,
             pitch: 0.27,
@@ -120,6 +122,42 @@ impl OrbitCamera {
         self.distance =
             (self.distance * (-delta * 0.12).exp()).clamp(self.radius * 0.25, self.radius * 12.0);
     }
+    pub fn set_native_sail_math(&mut self, enabled: bool) {
+        self.native_sail_math = enabled;
+    }
+    fn eye(&self) -> Result<Vec3> {
+        ensure!(
+            self.target.is_finite()
+                && self.yaw.is_finite()
+                && self.pitch.is_finite()
+                && self.distance.is_finite()
+                && self.distance > 0.0
+                && self.radius.is_finite()
+                && self.radius > 0.0,
+            "invalid orbit camera"
+        );
+        if self.native_sail_math {
+            return Ok(Vec3::from_array(storm_sim::sail_lod::orbit_eye(
+                self.target.to_array(),
+                self.yaw,
+                self.pitch,
+                self.distance,
+            )?));
+        }
+        let direction = Vec3::new(
+            self.yaw.sin() * self.pitch.cos(),
+            self.pitch.sin(),
+            self.yaw.cos() * self.pitch.cos(),
+        );
+        Ok(self.target + direction * self.distance)
+    }
+    /// The eye and vertical field of view used by the actual GPU camera.
+    pub fn sail_view(&self) -> Result<storm_sim::sail_lod::Camera> {
+        Ok(storm_sim::sail_lod::Camera {
+            eye: self.eye()?.to_array(),
+            perspective: storm_sim::sail_lod::VERTICAL_FOV,
+        })
+    }
     fn uniform(&self, width: u32, height: u32, seconds: f32) -> Result<CameraUniform> {
         ensure!(
             width > 0 && height > 0 && seconds.is_finite(),
@@ -135,15 +173,10 @@ impl OrbitCamera {
                 && self.radius > 0.0,
             "invalid orbit camera"
         );
-        let direction = Vec3::new(
-            self.yaw.sin() * self.pitch.cos(),
-            self.pitch.sin(),
-            self.yaw.cos() * self.pitch.cos(),
-        );
-        let eye = self.target + direction * self.distance;
+        let eye = self.eye()?;
         let view = glam::camera::rh::view::look_at_mat4(eye, self.target, Vec3::Y);
         let projection = glam::camera::rh::proj::directx::perspective(
-            45_f32.to_radians(),
+            storm_sim::sail_lod::VERTICAL_FOV,
             width as f32 / height as f32,
             (self.radius * 0.002).max(0.01),
             self.radius * 100.0,

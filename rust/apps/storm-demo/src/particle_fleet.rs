@@ -725,7 +725,9 @@ impl Fleet {
             report["native_sail_geometry"] = geometry::report(&self.assets)?;
         }
         if let Some(cloth) = &self.cloth {
-            report[if cloth.free_enabled() {
+            report[if cloth.lod_enabled() {
+                "native_sail_lod"
+            } else if cloth.free_enabled() {
                 "native_sail_free"
             } else if self.drive.as_ref().is_some_and(|d| d.ropes_enabled()) {
                 "native_sail_ropes"
@@ -742,13 +744,7 @@ impl Fleet {
         }
         Ok(report)
     }
-    pub fn render(
-        &self,
-        gpu: &Gpu,
-        width: u32,
-        height: u32,
-        wind: super::SailWind,
-    ) -> Result<storm_render::Frame> {
+    fn camera(&self) -> OrbitCamera {
         let mut camera = OrbitCamera::new(&self.assets[0]);
         camera.target.x = 0.0;
         camera.target.z = self.seconds;
@@ -770,6 +766,31 @@ impl Fleet {
         camera.radius *= 3.0;
         camera.pitch = 0.4;
         camera.yaw = 0.2;
+        if let Some(cloth) = &self.cloth {
+            cloth.configure_camera(&mut camera);
+        }
+        camera
+    }
+    fn present_lod(&mut self, camera: &OrbitCamera) -> Result<()> {
+        if let Some(cloth) = &mut self.cloth {
+            cloth.present_lod(
+                &mut self.assets,
+                &self.poses,
+                self.visible,
+                self.seconds,
+                camera.sail_view()?,
+            )?;
+        }
+        Ok(())
+    }
+    pub fn render(
+        &self,
+        gpu: &Gpu,
+        width: u32,
+        height: u32,
+        wind: super::SailWind,
+    ) -> Result<storm_render::Frame> {
+        let camera = self.camera();
         let mut scenes = self
             .assets
             .iter()
@@ -913,6 +934,13 @@ fn load(options: &Options) -> Result<Fleet> {
             options.fleet_free_at,
         )?;
     }
+    if options.native_sail_lod {
+        fleet
+            .cloth
+            .as_mut()
+            .unwrap()
+            .enable_lod(options.sail_lod_distance)?;
+    }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
     }
@@ -930,7 +958,11 @@ pub fn run(options: &Options) -> Result<()> {
         options.headless.is_some() || options.particle_fleet_report.is_some(),
         "select --fleet-window, --headless or --particle-fleet-report"
     );
-    let fleet = load(options)?.advance(options.time)?;
+    let mut fleet = load(options)?.advance(options.time)?;
+    if options.native_sail_lod {
+        let camera = fleet.camera();
+        fleet.present_lod(&camera)?;
+    }
     if let Some(path) = &options.particle_fleet_report {
         std::fs::write(path, serde_json::to_vec_pretty(&fleet.report()?)?)?;
     }
@@ -1096,6 +1128,158 @@ mod tests {
         d.enable_ropes(&mut f.assets).unwrap();
         f.cloth = Some(waves::ClothFleet::with_rolls(&mut f.assets).unwrap());
         f
+    }
+    fn canonical_cloth(f: &Fleet) -> Json {
+        let mut r = f.cloth.as_ref().unwrap().report();
+        r.as_object_mut().unwrap().remove("presentation_lod");
+        r
+    }
+    #[test]
+    fn camera_lod_replays_immutable_cloth_without_changing_physics_ropes_or_owner_release() {
+        let mut f = rope_fixture(1.0);
+        f.cloth.as_mut().unwrap().enable_lod(None).unwrap();
+        f.advance_frames(1.5).unwrap();
+        f.present_at(1.5, true).unwrap();
+        let before = (
+            f.motion_report(),
+            f.drive.as_ref().unwrap().report(),
+            canonical_cloth(&f),
+        );
+        let points = f
+            .assets
+            .iter()
+            .map(|a| {
+                a.ship_state
+                    .native_rig
+                    .as_ref()
+                    .unwrap()
+                    .rope_points
+                    .clone()
+            })
+            .collect::<Vec<_>>();
+        let mut camera = f.camera();
+        camera.distance = 2.0;
+        f.present_lod(&camera).unwrap();
+        let near = f.cloth.as_ref().unwrap().report()["presentation_lod"].clone();
+        camera.distance = 800.0;
+        f.present_lod(&camera).unwrap();
+        let far = f.cloth.as_ref().unwrap().report()["presentation_lod"].clone();
+        for (i, b) in far["bodies"].as_array().unwrap().iter().enumerate() {
+            for (j, s) in b["sails"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(s["grid"], json!([5, 4]));
+                assert_ne!(s["grid"], near["bodies"][i]["sails"][j]["grid"]);
+                let canonical = &before.2["bodies"][i]["sails"][j]["vertex_bits"];
+                for (a, b) in s["sampled"]["vertex_bits"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .zip(canonical.as_array().unwrap())
+                {
+                    assert_eq!(&a.as_array().unwrap()[3..], &b.as_array().unwrap()[3..]);
+                }
+            }
+        }
+        f.present_lod(&camera).unwrap();
+        assert_eq!(far, f.cloth.as_ref().unwrap().report()["presentation_lod"]);
+        camera.distance = 2.0;
+        f.present_lod(&camera).unwrap();
+        let again = f.cloth.as_ref().unwrap().report();
+        for (i, b) in near["bodies"].as_array().unwrap().iter().enumerate() {
+            for (j, s) in b["sails"].as_array().unwrap().iter().enumerate() {
+                assert_eq!(
+                    s["sampled"],
+                    again["presentation_lod"]["bodies"][i]["sails"][j]["sampled"]
+                );
+            }
+        }
+        assert_eq!(
+            before,
+            (
+                f.motion_report(),
+                f.drive.as_ref().unwrap().report(),
+                canonical_cloth(&f)
+            )
+        );
+        assert_eq!(
+            points,
+            f.assets
+                .iter()
+                .map(|a| a
+                    .ship_state
+                    .native_rig
+                    .as_ref()
+                    .unwrap()
+                    .rope_points
+                    .clone())
+                .collect::<Vec<_>>()
+        );
+        f.preview = false;
+        f.advance_frames(2.0).unwrap();
+        f.present_lod(&camera).unwrap();
+        let frozen = f.cloth.as_ref().unwrap().report();
+        f.advance_frames(3.0).unwrap();
+        camera.distance = 800.0;
+        f.present_lod(&camera).unwrap();
+        let later = f.cloth.as_ref().unwrap().report();
+        assert_eq!(frozen["bodies"][0], later["bodies"][0]);
+        assert_eq!(
+            frozen["presentation_lod"]["bodies"][0],
+            later["presentation_lod"]["bodies"][0]
+        );
+        assert_ne!(frozen["bodies"][1], later["bodies"][1]);
+    }
+    #[test]
+    fn camera_lod_preserves_rolled_free_priority_and_fixed_step_partition() {
+        for setting in [0.0, 0.5, 1.0] {
+            let mut a = rope_fixture(setting);
+            let mut b = rope_fixture(setting);
+            for f in [&mut a, &mut b] {
+                f.cloth.as_mut().unwrap().enable_lod(Some(800.0)).unwrap();
+                if setting == 1.0 {
+                    f.cloth
+                        .as_mut()
+                        .unwrap()
+                        .enable_free(&f.assets, Some(2), 0.75)
+                        .unwrap();
+                }
+            }
+            a.advance_frames(1.0).unwrap();
+            for t in [0.005, 0.333, 0.749, 0.75, 1.0] {
+                b.advance_frames(t).unwrap();
+                let mut camera = b.camera();
+                camera.distance = if t < 0.5 { 2.0 } else { 800.0 };
+                b.present_lod(&camera).unwrap();
+                b.present_at(t, true).unwrap();
+            }
+            let camera = a.camera();
+            a.present_lod(&camera).unwrap();
+            b.present_lod(&camera).unwrap();
+            assert_eq!(a.motion_report(), b.motion_report());
+            assert_eq!(
+                a.drive.as_ref().unwrap().report(),
+                b.drive.as_ref().unwrap().report()
+            );
+            assert_eq!(canonical_cloth(&a), canonical_cloth(&b));
+            let ra = a.cloth.as_ref().unwrap().report();
+            let rb = b.cloth.as_ref().unwrap().report();
+            for (i, body) in ra["bodies"].as_array().unwrap().iter().enumerate() {
+                for (j, c) in body["sails"].as_array().unwrap().iter().enumerate() {
+                    let pa = &ra["presentation_lod"]["bodies"][i]["sails"][j];
+                    let pb = &rb["presentation_lod"]["bodies"][i]["sails"][j];
+                    assert_eq!(pa["sampled"], pb["sampled"]);
+                    if c["rolled"] == true {
+                        assert_eq!(pa["grid"], json!([5, 13]));
+                        assert!(pa["distance_bits"].is_null());
+                    } else if c["free"] == true {
+                        assert_eq!(pa["grid"], json!([5, 4]));
+                        assert!(pa["distance_bits"].is_null());
+                    } else {
+                        assert_eq!(pa["grid"], json!([5, 4]));
+                        assert!(!pa["distance_bits"].is_null());
+                    }
+                }
+            }
+        }
     }
     #[test]
     fn native_rope_turns_rebuild_geometry_publish_cloth_endpoints_and_release_independently() {

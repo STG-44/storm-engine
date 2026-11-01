@@ -70,6 +70,10 @@ mast physics/group migration and full Mount/Execute are separate work.
 
 ## Native reference
 
+The next increment adds [camera-driven presentation LOD](SAIL_LOD.md). Canonical
+rope/cloth simulation remains independent of the camera and these prior reports
+retain their behavior. Full native camera/entity scheduling is separate work.
+
 `reference/sail_rope/generate.py` compiles unedited SetTurnLimits, TurnSail,
 SetGeometry, DoRollingStep, GetEndPoint and its CMatrix point/MulToInv methods,
 plus the retained MSG_SAIL_ROPE_TIE loop. UBSan and disabled contraction are used.
