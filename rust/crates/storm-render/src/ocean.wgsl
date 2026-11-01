@@ -1,4 +1,4 @@
-// Preview water only: the original Storm sea simulation has not been ported.
+// Preview water shading/ray intersection; optionally samples retained scalar SEA.
 struct Camera {
     view_projection: mat4x4<f32>,
     inverse_view_projection: mat4x4<f32>,
@@ -42,14 +42,17 @@ struct Pixel {
     if ray.y < -0.0001 && eye.y > 0.0 {
         // Bracket the ray in the full crest/trough envelope, then bisect the
         // actual height field. This also supplies water depth for hull occlusion.
-        let amplitude = waves.components[0].w + waves.components[1].w;
+        let amplitude = select(waves.components[0].w + waves.components[1].w, native_sea.bounds.x, native_sea.camera.w != 0.0);
         var near = max(0.0, (amplitude - eye.y) / ray.y);
         var far_distance = (-amplitude - eye.y) / ray.y;
         if amplitude > 0.0 {
             for (var i = 0u; i < 18u; i += 1u) {
                 let middle = (near + far_distance) * 0.5;
                 let point = eye + ray * middle;
-                if point.y > wave_surface(point.xz, camera.eye_time.w).x {
+                var height = 0.0;
+                if native_sea.camera.w != 0.0 { height = native_sea_surface(point.xz, false).x; }
+                else { height = wave_surface(point.xz, camera.eye_time.w).x; }
+                if point.y > height {
                     near = middle;
                 } else {
                     far_distance = middle;
@@ -61,12 +64,13 @@ struct Pixel {
         let time = camera.eye_time.w;
         let fade = 1.0 - smoothstep(camera.light.w * 3.0, camera.light.w * 12.0, distance);
         let surface = wave_surface(p.xz, time);
-        let normal = normalize(vec3(
+        var normal = normalize(vec3(
             fade * (-surface.y + 0.055 * cos(p.x * 0.6 + p.z * 0.28 - time * 1.1)
                 + 0.025 * sin(p.z * 1.9 + time)),
             1.0,
             fade * (-surface.z + 0.06 * cos(p.z * 0.7 + p.x * 0.18 - time * 0.8)),
         ));
+        if native_sea.camera.w != 0.0 { normal = native_sea_surface(p.xz, true).yzw; }
         let fresnel = 0.025 + 0.975 * pow(1.0 - max(dot(-ray, normal), 0.0), 5.0);
         let reflection = sky(reflect(ray, normal));
         let specular = pow(max(dot(reflect(-normalize(camera.light.xyz), normal), -ray), 0.0), 120.0);

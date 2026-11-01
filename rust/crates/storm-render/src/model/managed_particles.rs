@@ -139,6 +139,8 @@ impl ModelScene {
             &self.camera_buffer,
             &self.pose_buffer,
             &self.wave_buffer,
+            &self.sea_map_buffer,
+            &self.sea_uniform_buffer,
         );
         Ok(())
     }

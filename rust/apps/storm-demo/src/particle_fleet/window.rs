@@ -231,16 +231,19 @@ impl State {
             self.scenes[i].set_pose(self.fleet.poses[i])?;
             self.scenes[i].set_ship_state(self.fleet.assets[i].ship_state.clone())?;
             self.scenes[i].set_rig_state(self.fleet.drive.as_ref().unwrap().rig(i))?;
-            let waves = self
+            let rocking = self
                 .fleet
                 .native_motion
                 .as_ref()
                 .unwrap()
                 .rocking
                 .as_ref()
-                .unwrap()
-                .waves;
-            self.scenes[i].set_waves(waves)?;
+                .unwrap();
+            if let Some(native) = &rocking.native {
+                self.scenes[i].set_native_sea(native.sea.surface().clone())?;
+            } else {
+                self.scenes[i].set_waves(rocking.waves)?;
+            }
         }
         let immersion = self
             .fleet

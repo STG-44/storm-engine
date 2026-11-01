@@ -88,6 +88,12 @@ struct Options {
     /// Add retained 36-point ShipRocking over the diagnostic wave surface.
     #[arg(long, requires = "native_ship_motion")]
     native_ship_rocking: bool,
+    /// Use retained SEA maps/queries for both ship rocking and water sampling.
+    #[arg(long, requires = "native_ship_rocking")]
+    native_sea: bool,
+    /// External folder containing sea0000.tga..sea0063.tga; otherwise synthetic input.
+    #[arg(long, requires = "native_sea")]
+    sea_frames_dir: Option<PathBuf>,
     /// Apply native character immersion and mounted waterline to the model root.
     #[arg(long, requires = "native_ship_motion")]
     native_ship_placement: bool,

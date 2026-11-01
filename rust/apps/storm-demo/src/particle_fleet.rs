@@ -12,6 +12,7 @@ use storm_sim::{ship_placement::RootPose, ship_presentation};
 mod drive;
 mod geometry;
 mod parameters;
+mod sea;
 mod waves;
 mod window;
 use storm_render::{
@@ -64,13 +65,15 @@ struct NativeRocking {
     bodies: Vec<ShipRocking>,
     waves: storm_sim::Waves,
     sea: DiagnosticSea,
+    native: Option<sea::State>,
 }
 struct RockingMovement<'a> {
     limits: &'a FlatMovement,
     rocking: &'a mut ShipRocking,
-    sea: &'a mut DiagnosticSea,
+    sea: &'a mut dyn SeaSurface,
+    reflect: bool,
 }
-struct ReflectedSea<'a>(&'a mut DiagnosticSea);
+struct ReflectedSea<'a>(&'a mut dyn SeaSurface);
 impl SeaSurface for ReflectedSea<'_> {
     fn wave_xz(&mut self, x: f32, z: f32) -> Result<f32> {
         self.0.wave_xz(x, -z)
@@ -98,7 +101,7 @@ impl MovementPort for RockingMovement<'_> {
                 previous_angles: angles,
             },
             delta,
-            Some(&mut sea),
+            Some(if self.reflect { &mut sea } else { sea.0 }),
         )?;
         Ok((result.height, result.angles))
     }
@@ -398,7 +401,12 @@ impl Fleet {
         self.native_motion
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("rocking requires native ship movement"))?
-            .rocking = Some(NativeRocking { bodies, waves, sea });
+            .rocking = Some(NativeRocking {
+            bodies,
+            waves,
+            sea,
+            native: None,
+        });
         Ok(())
     }
     fn motion_report(&self) -> Option<Json> {
@@ -413,6 +421,14 @@ impl Fleet {
                         "size_bits":r.parameters.size.map(f32::to_bits),"offset_bits":r.parameters.offsets.map(f32::to_bits),
                         "height_factor_bits":r.parameters.height_factor.to_bits(),"angle_factor_bits":r.parameters.angle_factor.to_bits(),
                         "height_bits":r.heights.map(|row|row.map(f32::to_bits))})).collect::<Vec<_>>()});
+            }
+            if let Some(native) = m.rocking.as_ref().and_then(|r|r.native.as_ref()) {
+                report["rocking"]["surface"] = json!("native_scalar_sea");
+                report["rocking"]["original_sea"] = json!(true);
+                report["rocking"]["full_sea_entity"] = json!(false);
+                report["rocking"]["native_to_surface_z"] = json!(1);
+                report["rocking"].as_object_mut().unwrap().remove("coefficient_bits");
+                report["rocking"]["sea"] = native.report();
             }
             if let Some(binding)=&m.placement {
                 report["placement"]=json!({"original_ship_parameters":false,"bodies":binding.states.iter().map(|s|json!({"immersion_bits":s.immersion.to_bits(),"waterline_bits":s.waterline.to_bits()})).collect::<Vec<_>>()});
@@ -576,6 +592,9 @@ impl Fleet {
                 }
                 let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
                 let delta = elapsed - motion.elapsed_ms;
+                if let Some(native) = motion.rocking.as_mut().and_then(|r| r.native.as_mut()) {
+                    native.sea.advance(delta)?;
+                }
                 for index in 0..2 {
                     if self.visible[index] {
                         let presented = motion.presentation.as_mut().map(|p| &mut p[index]);
@@ -585,7 +604,12 @@ impl Fleet {
                             let mut port = RockingMovement {
                                 limits: &motion.inputs[index],
                                 rocking: &mut rocking.bodies[index],
-                                sea: &mut rocking.sea,
+                                reflect: rocking.native.is_none(),
+                                sea: if let Some(native) = &rocking.native {
+                                    &mut native.sea.surface().clone()
+                                } else {
+                                    &mut rocking.sea
+                                },
                             };
                             step_body(&mut motion.bodies[index], presented, delta, &mut port)?;
                         } else {
@@ -805,7 +829,11 @@ impl Fleet {
                 }
                 if let Some(rocking) = self.native_motion.as_ref().and_then(|m| m.rocking.as_ref())
                 {
-                    scene.set_waves(rocking.waves)?;
+                    if let Some(native) = &rocking.native {
+                        scene.set_native_sea(native.sea.surface().clone())?;
+                    } else {
+                        scene.set_waves(rocking.waves)?;
+                    }
                 }
                 Ok(scene)
             })
@@ -870,6 +898,9 @@ fn load(options: &Options) -> Result<Fleet> {
     }
     if options.native_ship_rocking {
         fleet.enable_native_rocking()?;
+    }
+    if options.native_sea {
+        fleet.enable_native_sea(options.sea_frames_dir.as_deref())?;
     }
     if options.native_ship_placement {
         fleet.enable_native_placement(options.ship_immersion, options.ship_waterline)?;

@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after camera-detail validation:
+Planning snapshot, 2026-11-01, after the first scalar-sea increment:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -28,6 +28,10 @@ limited. The [latest code validation](SAIL_LOD.md#four-platform-evidence-2026-11
 checks 385 CPU tests per host, 31 scenarios and 124 matching complete reports,
 including camera-selected presentation detail.
 These establish the documented implementations, not a percentage of the engine.
+The new [scalar SEA increment](SEA_SURFACE.md) adds original bump-frame/normal
+preparation and WaveXZ sampling shared with ship rocking and the GPU preview.
+Local native reference, CPU and Metal checks pass; four-host validation of this
+increment is tracked separately from the preceding camera-detail evidence.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the
@@ -51,8 +55,9 @@ the sequencing goal. This plan update does not change the coverage estimate.
 The largest remaining blocks are complete source/module loading and language
 support, the original native game API and handlers, locations and their collision,
 interface, sea/land gameplay and AI, complete animation/audio, save/load and
-representative end-to-end gameplay on all target platforms. The diagnostic sea
-is a prototype, while selected ship physics now follows retained native numeric
-behavior through explicit providers. The full original game cannot yet be
+representative end-to-end gameplay on all target platforms. The default diagnostic sea is a prototype;
+the opt-in scalar SEA pipeline retains original numeric behavior through
+explicit frame, weather/camera and scheduling providers. Complete original sea
+rendering and service integration remain pending. The full original game cannot yet be
 launched through the Rust implementation. The ship-demo estimate must not be
 used as the completion estimate for naval gameplay, land gameplay or the engine.

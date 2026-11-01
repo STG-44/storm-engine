@@ -2,14 +2,15 @@
 
 Started: 2026-10-17.
 
-Current increment: [camera-driven sail detail](SAIL_LOD.md).
-Complete GetGrid arithmetic now selects native grids from the displayed camera.
-Immutable attached-wave replay changes visible detail on pause while preserving
-canonical near-grid simulation and rope outputs. Camera/matrix construction and
-presentation scheduling are adapters; full native entity integration is pending.
+Current increment: [native scalar sea surface](SEA_SURFACE.md).
+Original bump-frame preparation, normal packing, temporal interpolation and
+WaveXZ queries now feed retained ship rocking and the preview water sampler.
+The input maps can come from external original TGA files. Weather/camera
+providers and scheduling remain explicit; full SEA and original rendering are
+pending. The preceding [camera-driven sail detail](SAIL_LOD.md) is retained.
 
-Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), starting
-with original SEA and its connection to ship motion. Complete one repeatable
+Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), continuing
+from the retained scalar SEA pipeline toward weather/service integration. Complete one repeatable
 naval encounter before the first playable land location. Shared character/deck /
 boarding, interface, audio and persistence systems will span both environments;
 full marine feature completion is not a prerequisite for starting land.

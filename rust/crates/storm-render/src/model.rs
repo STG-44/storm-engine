@@ -3,6 +3,7 @@ mod assets;
 mod crew;
 mod effects;
 mod managed_particles;
+mod native_sea;
 mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
@@ -39,8 +40,13 @@ pub use sails::{SailOrigin, SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
 pub const MODEL_SHADER: &str = include_str!("model.wgsl");
-pub const OCEAN_SHADER: &str =
-    concat!(include_str!("waves.wgsl"), "\n", include_str!("ocean.wgsl"));
+pub const OCEAN_SHADER: &str = concat!(
+    include_str!("waves.wgsl"),
+    "\n",
+    include_str!("native_sea.wgsl"),
+    "\n",
+    include_str!("ocean.wgsl")
+);
 
 const MODEL_ATTRIBUTES: [wgpu::VertexAttribute; 4] =
     wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Float32x4];
@@ -279,6 +285,9 @@ pub struct ModelScene {
     rig: storm_sim::RigState,
     native_sail_geometry: bool,
     wave_buffer: wgpu::Buffer,
+    sea_map_buffer: wgpu::Buffer,
+    sea_uniform_buffer: wgpu::Buffer,
+    native_sea: Option<storm_sim::sea::Surface>,
     camera_group: wgpu::BindGroup,
     textures: Vec<wgpu::BindGroup>,
     meshes: Vec<DrawMesh>,
@@ -360,6 +369,8 @@ fn model_camera_group(
     camera_buffer: &wgpu::Buffer,
     pose_buffer: &wgpu::Buffer,
     wave_buffer: &wgpu::Buffer,
+    sea_map_buffer: &wgpu::Buffer,
+    sea_uniform_buffer: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("Model camera"),
@@ -380,6 +391,14 @@ fn model_camera_group(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wave_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: sea_map_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: sea_uniform_buffer.as_entire_binding(),
             },
         ],
     })
@@ -427,6 +446,26 @@ impl ModelScene {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -497,12 +536,25 @@ impl ModelScene {
             contents: bytemuck::bytes_of(&WaveUniform::from(storm_sim::Waves::default())),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        let sea_map_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Native SEA prepared maps"),
+            size: (6 * storm_sim::sea::CELLS * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let sea_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Native SEA parameters"),
+            contents: bytemuck::bytes_of(&native_sea::Uniform::default()),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
         let camera_group = model_camera_group(
             device,
             &camera_layout,
             &camera_buffer,
             &pose_buffer,
             &wave_buffer,
+            &sea_map_buffer,
+            &sea_uniform_buffer,
         );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Original texture sampler"),
@@ -792,6 +844,9 @@ impl ModelScene {
             rig: storm_sim::RigState::uniform(1.0),
             native_sail_geometry: false,
             wave_buffer,
+            sea_map_buffer,
+            sea_uniform_buffer,
+            native_sea: None,
             camera_group,
             textures,
             meshes,
@@ -820,6 +875,12 @@ impl ModelScene {
     pub fn set_waves(&mut self, waves: storm_sim::Waves) -> Result<()> {
         waves.validate()?;
         self.waves = waves;
+        self.native_sea = None;
+        Ok(())
+    }
+    pub fn set_native_sea(&mut self, surface: storm_sim::sea::Surface) -> Result<()> {
+        surface.validate()?;
+        self.native_sea = Some(surface);
         Ok(())
     }
     pub fn set_flags(&mut self, selection: storm_sim::FlagSelection) -> Result<()> {
@@ -1194,6 +1255,21 @@ impl ModelScene {
             &self.wave_buffer,
             0,
             bytemuck::bytes_of(&WaveUniform::from(self.waves)),
+        );
+        let sea_uniform = if let Some(surface) = &self.native_sea {
+            gpu.queue.write_buffer(
+                &self.sea_map_buffer,
+                0,
+                bytemuck::cast_slice(surface.maps()),
+            );
+            native_sea::Uniform::from(surface)
+        } else {
+            native_sea::Uniform::default()
+        };
+        gpu.queue.write_buffer(
+            &self.sea_uniform_buffer,
+            0,
+            bytemuck::bytes_of(&sea_uniform),
         );
         let base = self.pose.matrix()?;
         self.pose_bytes[..OBJECT_BYTES]
