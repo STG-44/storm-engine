@@ -8,6 +8,12 @@ Immutable attached-wave replay changes visible detail on pause while preserving
 canonical near-grid simulation and rope outputs. Camera/matrix construction and
 presentation scheduling are adapters; full native entity integration is pending.
 
+Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), starting
+with original SEA and its connection to ship motion. Complete one repeatable
+naval encounter before the first playable land location. Shared character/deck /
+boarding, interface, audio and persistence systems will span both environments;
+full marine feature completion is not a prerequisite for starting land.
+
 ## Goal
 
 Gradually replace the C++ engine with Rust while preserving compatibility with Sea Dogs: To Each His Own (Корсары: Каждому своё). Target native desktop builds for macOS, Windows, and Linux.
@@ -67,6 +73,9 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
   - [x] Add [nested calls and the original frame-driven event queue](SCHEDULED_EVENTS.md).
   - [ ] Port remaining attribute encodings/conversions, cached script programs, complete script compilation/execution and game handlers.
 - [ ] Integrate locations, interface, sea combat, land combat, and persistence.
+  - [ ] Complete the [marine checkpoint](MARINE_INTEGRATION.md): original sea /
+    coupled simulation, one projectile-to-damage/sinking encounter, basic contacts
+    and one opponent, with repeatable state/effect cleanup and platform checks.
   - [ ] Load land locations and implement player movement/collision.
   - [ ] Support player movement on ship decks and boarding transitions.
   - [ ] Port character combat, enemies and encounter logic.

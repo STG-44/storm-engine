@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after the sail rope-constraint increment:
+Planning snapshot, 2026-11-01, after camera-detail validation:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -28,6 +28,12 @@ limited. The [latest code validation](SAIL_LOD.md#four-platform-evidence-2026-11
 checks 385 CPU tests per host, 31 scenarios and 124 matching complete reports,
 including camera-selected presentation detail.
 These establish the documented implementations, not a percentage of the engine.
+
+The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
+original sea/coupled simulation and one playable naval encounter before the
+first land location. Shared character/deck/boarding, interface, audio and save
+systems span both environments; completing every marine feature first is not
+the sequencing goal. This plan update does not change the coverage estimate.
 
 ## Scope still to cover
 
