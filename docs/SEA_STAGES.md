@@ -78,3 +78,36 @@ Realize path, with a 0.0001 component tolerance. Original scalar and weather
 oracles remain in the suite. Full land/gameplay/weather/rendering work remains
 on the [marine checkpoint](MARINE_INTEGRATION.md); the whole-engine estimate
 remains about 20% (15–25%).
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `8286bc2c064446a6f8f5c3f3b7afefb77e5c8d49` passes [PR run 41323306651](https://github.com/STG-44/storm-engine/actions/runs/41323306651)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Each host
+passes formatting, warnings-denied Clippy, native builds and 399 CPU tests
+(135 interpreter). Target triples and counts are checked from complete job logs.
+Four original ZIP SHA256 digests are verified; all 136 complete JSON reports
+over 34 scenarios match local values exactly, without rounding or tolerances.
+All 33 preceding complete reports remain unchanged.
+
+Linux passes 24 software Vulkan tests and 24 fleet-window frames, including
+three paused staged-camera frames. Local Metal passes 24 GPU tests and three
+paused staged-camera window frames. The existing 192-query GPU surface probe
+now obtains its camera through native view construction and zero-time Realize;
+the existing 0.0001 component tolerance remains a GPU-specific check.
+
+Both native fixtures regenerate byte-identically: 64 complete view/transpose
+profiles and 32 stage sequences / 512 complete query-time and realized-state
+snapshots. Tests also check an actual rocking sample against the preceding
+surface, fixed-step partitioning, paused camera refresh without ship movement,
+Stop/resume camera retention, and common GPU/LOD eye inputs. Original sea-frame
+and ArabellaShip1 captures exercise rough and stopped states; the rough frame
+was visually inspected. The earlier 40-root resource audit was not repeated
+for this camera/scheduling increment.
+
+These checks establish the retained numeric camera/order behavior and bounded
+preview dispatch described above. Full global native entity/camera integration,
+sea rendering and gameplay remain pending. Hosted Windows/macOS physical GPUs
+and manual keyboard/restart actions remain untested. Game resources, captures
+and local reports stay outside Git. The whole-engine estimate remains about
+20% (15–25%).

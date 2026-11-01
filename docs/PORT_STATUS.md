@@ -24,12 +24,12 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest weather-attribute validation](SEA_WEATHER.md#four-platform-evidence-2026-11-01)
-checks 393 CPU tests per host, 33 scenarios and 132 matching complete reports.
-Original scalar SEA maps and numeric weather controls now feed rocking and the
-preview GPU sampler through an explicit script/entity adapter. Full native
-weather/camera/entity scheduling and original rendering remain pending. These
-checks establish the documented scope, not a percentage of the engine.
+limited. The [latest camera/stage validation](SEA_STAGES.md#four-platform-evidence-2026-11-01)
+checks 399 CPU tests per host, 34 scenarios and 136 matching complete reports.
+Original scalar SEA maps, numeric weather and native view extraction now feed
+rocking and the preview GPU sampler through explicit script/entity boundaries.
+Full native global entity/camera scheduling and original rendering remain pending.
+These checks establish the documented scope, not a percentage of the engine.
 
 The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
 amplitude/animation/movement controls and stop/resume through a script/entity

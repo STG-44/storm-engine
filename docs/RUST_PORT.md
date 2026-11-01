@@ -931,3 +931,13 @@ fleet-window frames; Metal passes 24 GPU tests and three paused weather frames.
 Original-resource captures cover calm/rough/stopped states. The numeric weather
 handler matches 1056 complete native snapshots; full weather, query camera and
 native global scheduling remain pending. See [weather evidence](SEA_WEATHER.md#four-platform-evidence-2026-11-01).
+
+
+The [camera/stage PR run](https://github.com/STG-44/storm-engine/actions/runs/41323306651)
+passes all four desktop hosts for `8286bc2c`: 399 CPU tests per host and 136
+complete matching reports over 34 scenarios, with four verified archive digests.
+All 33 preceding reports remain unchanged. Linux passes 24 Vulkan tests and 24
+fleet-window frames; Metal passes 24 GPU tests and three paused stage frames.
+Native camera helpers match 64 profiles and bounded stage dispatch matches 512
+snapshots. Full global entity/camera integration and sea rendering remain pending.
+See [camera/stage evidence](SEA_STAGES.md#four-platform-evidence-2026-11-01).
