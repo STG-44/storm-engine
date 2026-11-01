@@ -91,6 +91,8 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --time 1.25 --headless ship-stages-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --fleet-window --time 1.75 --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 1.25 --headless sea-stages-vulkan.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --fleet-window --time 1.75 --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --time 1.25 --headless sea-weather-vulkan.png --width 641 --height 361
@@ -203,6 +205,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 3 --particle-fleet-report sea-stages-state.json
           python -c "import json; s=json.load(open('sea-stages-state.json')); w=s['native_motion']['rocking']['sea']; t=w['stages']; assert w['camera_provider']=='actual_gpu_native_build_view_transposition' and t['order']=='script_execute_realize' and not t['full_sea_entity']; assert t['sea']['dispatcher']=='storm_core_entity_manager_realize_layer' and not t['sea']['full_global_layers']; assert len(t['trace'])==181; assert all(v['realize_revision']==v['execute_revision']+int(v['applied']) for v in t['trace']); assert s['pose_math']=='pinned_TRyRxRz_adapter'; assert w['weather']['delivered_events']==6 and w['weather']['pending_events']==0; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise shared ship and sea entity dispatch
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --time 3 --particle-fleet-report ship-stages-state.json
+          python -c "import json; s=json.load(open('ship-stages-state.json')); t=s['native_motion']['rocking']['sea']['stages']; r=t['ship_entities']; a,b=r['bodies']; assert t['ships']=='core_entity_execute_numeric_body' and r['dispatcher']=='shared_core_entity_manager'; assert [r['priority_execute'],r['priority_realize']]==[2,31]; assert [a['execute_calls'],a['realize_calls'],b['execute_calls'],b['realize_calls']]==[121,121,181,181]; assert not a['valid'] and not a['lookup'] and a['destroyed'] and b['valid'] and b['lookup'] and not b['destroyed']; assert not r['full_ship_entity'] and not r['original_model_draw']; assert s['service']['manager']['owners']==[2]; assert all(v['sea_revision']==t['trace'][v['frame']]['execute_revision' if v['stage']=='execute' else 'realize_revision'] for body in [a,b] for v in body['trace'])"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -250,6 +256,7 @@ jobs:
             native-sea-state.json
             sea-weather-state.json
             sea-stages-state.json
+            ship-stages-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
@@ -366,4 +373,5 @@ jobs:
             native-sea-vulkan.png
             sea-weather-vulkan.png
             sea-stages-vulkan.png
+            ship-stages-vulkan.png
           if-no-files-found: error

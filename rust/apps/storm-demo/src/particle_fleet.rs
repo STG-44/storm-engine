@@ -13,6 +13,7 @@ mod drive;
 mod geometry;
 mod parameters;
 mod sea;
+mod ship_stages;
 mod waves;
 mod window;
 use storm_render::{
@@ -550,6 +551,7 @@ impl Fleet {
         );
         let frames = (f64::from(through) * 60.0).floor() as u32;
         for frame in self.next_frame..=frames {
+            let ship_staged = self.ship_staged();
             self.seconds = (f64::from(frame) / 60.0) as f32;
             self.sessions[0]
                 .world
@@ -618,7 +620,7 @@ impl Fleet {
                     native.advance(delta)?;
                 }
                 for index in 0..2 {
-                    if self.visible[index] {
+                    if self.visible[index] && !ship_staged {
                         let presented = motion.presentation.as_mut().map(|p| &mut p[index]);
                         if let Some(rocking) = &mut motion.rocking {
                             rocking.sea.seconds = self.seconds;
@@ -653,6 +655,15 @@ impl Fleet {
                     }
                 }
                 motion.elapsed_ms = elapsed;
+            }
+            if ship_staged {
+                let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
+                let previous = if frame == 0 {
+                    0
+                } else {
+                    (f64::from(frame - 1) * 1000.0 / 60.0).round() as u32
+                };
+                self.execute_ship_stages(frame, elapsed - previous)?;
             }
             for index in 0..2 {
                 self.poses[index] = self.placed_pose(index, self.seconds)?;
@@ -733,6 +744,18 @@ impl Fleet {
                         self.snapshot("first_impulse_queued");
                     }
                     120 => {
+                        if ship_staged {
+                            self.native_motion
+                                .as_mut()
+                                .unwrap()
+                                .rocking
+                                .as_mut()
+                                .unwrap()
+                                .native
+                                .as_mut()
+                                .unwrap()
+                                .erase_ship(0)?;
+                        }
                         self.sessions[0].controller.take();
                         self.sessions[0]
                             .world
@@ -746,6 +769,18 @@ impl Fleet {
                     }
                     _ => {}
                 }
+            }
+            if ship_staged {
+                self.native_motion
+                    .as_mut()
+                    .unwrap()
+                    .rocking
+                    .as_mut()
+                    .unwrap()
+                    .native
+                    .as_mut()
+                    .unwrap()
+                    .finish_lifecycle();
             }
             self.next_frame = frame + 1;
         }
@@ -1035,6 +1070,9 @@ fn load(options: &Options) -> Result<Fleet> {
     }
     if options.native_sea_stages {
         fleet.enable_native_sea_stages()?;
+    }
+    if options.native_ship_stages {
+        fleet.enable_native_ship_stages()?;
     }
     Ok(fleet)
 }

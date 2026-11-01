@@ -2,11 +2,13 @@
 
 Started: 2026-10-17.
 
-Current increment: [SEA camera and frame boundaries](SEA_STAGES.md).
-Native view construction/rigid camera extraction now feeds the staged GPU view
-and scalar sea cutoff. The new mode delivers weather events, retained ship
-queries and sea Realize in that order; Stop holds the prepared camera/surface.
-Full native global layers, camera entities and sea rendering remain pending.
+Current increment: [shared ship and sea entity dispatch](SHIP_STAGES.md).
+Retained ship movement/rocking now runs in Execute callbacks on the same
+manager that dispatches sea Realize, with native priority defaults and deferred
+entity cleanup. Model presentation and input/output copies remain explicit
+bridges. Full native mount/destructor services and global layers remain pending.
+Preceding [SEA camera/frame boundaries](SEA_STAGES.md) continue to supply the
+native view and query-before-preparation behavior.
 Preceding [surface](SEA_SURFACE.md) and [weather controls](SEA_WEATHER.md) remain
 validated in their original diagnostic modes.
 

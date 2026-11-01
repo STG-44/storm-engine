@@ -29,7 +29,9 @@ impl State {
         self.bind_view(view);
         let session = self.weather.as_mut().unwrap();
         session.advance(delta)?;
-        session.execute_boundary(delta)?;
+        if !session.ship_staged() {
+            session.execute_boundary(delta)?;
+        }
         let sea = self.sea.borrow();
         self.stages.as_mut().unwrap().execute = Some((frame, sea.revision(), sea.surface().camera));
         Ok(())
@@ -66,9 +68,38 @@ impl State {
     pub fn stages_report(&self) -> Json {
         let sea = self.sea.borrow();
         let camera = sea.realized_camera();
-        json!({"order":"script_execute_realize","ships":"retained_numeric_body_calls_inside_execute_boundary","sea":self.weather.as_ref().unwrap().stages_report(),
+        let mut report = json!({"order":"script_execute_realize","ships":"retained_numeric_body_calls_inside_execute_boundary","sea":self.weather.as_ref().unwrap().stages_report(),
             "revision":sea.revision(),"view_bits":camera.map(|c|c.view.map(f32::to_bits)),"eye_bits":camera.map(|c|c.eye.map(f32::to_bits)),"world_offset_bits":camera.map(|c|c.world_offset.map(f32::to_bits)),
-            "trace":self.stages.as_ref().unwrap().trace,"full_sea_entity":false})
+            "trace":self.stages.as_ref().unwrap().trace,"full_sea_entity":false});
+        if let Some(ships) = self.weather.as_ref().unwrap().ships_report() {
+            report["ships"] = json!("core_entity_execute_numeric_body");
+            report["ship_entities"] = ships;
+        }
+        report
+    }
+    pub fn ship_staged(&self) -> bool {
+        self.weather
+            .as_ref()
+            .is_some_and(weather::Session::ship_staged)
+    }
+    pub fn enable_ship_stages(&mut self, frames: Vec<ship_stages::Frame>) -> Result<()> {
+        self.weather
+            .as_mut()
+            .unwrap()
+            .enable_ship_stages(self.sea.clone(), frames)
+    }
+    pub fn execute_ships(
+        &mut self,
+        delta: u32,
+        frames: Vec<Option<ship_stages::Frame>>,
+    ) -> Result<Vec<Option<ship_stages::Frame>>> {
+        self.weather.as_mut().unwrap().execute_ships(delta, frames)
+    }
+    pub fn erase_ship(&mut self, index: usize) -> Result<()> {
+        self.weather.as_mut().unwrap().erase_ship(index)
+    }
+    pub fn finish_lifecycle(&mut self) {
+        self.weather.as_mut().unwrap().finish_lifecycle();
     }
 }
 impl Fleet {

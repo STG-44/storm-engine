@@ -75,6 +75,7 @@ pub(super) struct Session {
     records: Records,
     delivered: usize,
     stage: Rc<RefCell<StageState>>,
+    ships: Option<ship_stages::Ships>,
 }
 impl Session {
     pub fn new(sea: Rc<RefCell<Sea>>) -> Result<Self> {
@@ -117,6 +118,7 @@ impl Session {
             records,
             delivered: 0,
             stage,
+            ships: None,
         })
     }
     pub fn advance(&mut self, delta_ms: u32) -> Result<()> {
@@ -138,11 +140,57 @@ impl Session {
             .entities
             .process_stage(storm_core::Stage::Execute, delta_ms)
     }
+    pub fn ship_staged(&self) -> bool {
+        self.ships.is_some()
+    }
+    pub fn enable_ship_stages(
+        &mut self,
+        sea: Rc<RefCell<Sea>>,
+        frames: Vec<ship_stages::Frame>,
+    ) -> Result<()> {
+        ensure!(
+            self.stage.borrow().enabled && self.ships.is_none(),
+            "ship stages require sea dispatcher"
+        );
+        self.ships = Some(ship_stages::Ships::new(
+            &mut self.host.entities,
+            sea,
+            frames,
+        )?);
+        Ok(())
+    }
+    pub fn execute_ships(
+        &mut self,
+        delta: u32,
+        frames: Vec<Option<ship_stages::Frame>>,
+    ) -> Result<Vec<Option<ship_stages::Frame>>> {
+        self.ships
+            .as_mut()
+            .unwrap()
+            .prepare(&self.host.entities, frames)?;
+        self.execute_boundary(delta)?;
+        self.ships.as_mut().unwrap().outputs(&self.host.entities)
+    }
+    pub fn erase_ship(&mut self, index: usize) -> Result<()> {
+        self.ships
+            .as_mut()
+            .unwrap()
+            .erase(&mut self.host.entities, index)
+    }
+    pub fn finish_lifecycle(&mut self) {
+        self.host.entities.new_lifecycle();
+    }
+    pub fn ships_report(&self) -> Option<Json> {
+        self.ships.as_ref().map(|s| s.report(&self.host.entities))
+    }
     pub fn realize(&mut self, delta_ms: u32) -> Result<bool> {
         let before = self.stage.borrow().applied;
         self.host
             .entities
             .process_stage(storm_core::Stage::Realize, delta_ms)?;
+        if let Some(ships) = &mut self.ships {
+            ships.check_errors()?;
+        }
         let mut state = self.stage.borrow_mut();
         if let Some(error) = state.error.take() {
             anyhow::bail!(error);

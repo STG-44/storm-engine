@@ -97,6 +97,9 @@ struct Options {
     /// Use native view-camera extraction and Execute-before-Realize sea scheduling.
     #[arg(long, requires = "native_sea_weather")]
     native_sea_stages: bool,
+    /// Dispatch retained ship movement/rocking through the sea's entity manager.
+    #[arg(long, requires = "native_sea_stages")]
+    native_ship_stages: bool,
     /// External folder containing sea0000.tga..sea0063.tga; otherwise synthetic input.
     #[arg(long, requires = "native_sea")]
     sea_frames_dir: Option<PathBuf>,

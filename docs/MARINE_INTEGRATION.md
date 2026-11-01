@@ -19,7 +19,10 @@ preparation, frame interpolation and WaveXZ, coupled to ship rocking and the
 preview sampler. The [weather-attribute increment](SEA_WEATHER.md) adds numeric attribute changes
 and script/entity notification dispatch. The [camera/stage increment](SEA_STAGES.md)
 adds native view extraction and query-before-preparation timing in the fleet
-fixture. The remaining items below include full weather,
+fixture. [Shared ship dispatch](SHIP_STAGES.md) now moves the retained numeric
+bodies inside ship Execute callbacks on that same manager. Full mount/destructor
+services, SAIL/ROPE entity scheduling and original model drawing remain pending.
+The remaining items below include full weather,
 service/camera scheduling and original rendering integration.
 
 - Port original SEA height/normal sampling and its prepared wave-frame inputs.

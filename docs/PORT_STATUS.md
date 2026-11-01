@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after scalar-sea camera/stage integration:
+Planning snapshot, 2026-11-01, after shared ship/sea entity dispatch:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -39,6 +39,11 @@ entity/camera scheduling remain pending.
 The [camera/stage increment](SEA_STAGES.md) adds native view extraction and
 Execute-before-Realize numerical timing through a bounded entity adapter.
 Original global entity/camera integration and sea rendering remain pending.
+
+The [shared ship-dispatch increment](SHIP_STAGES.md) runs retained movement and
+rocking inside actual ship Execute callbacks, with native priorities and deferred
+registry cleanup. Numeric input/output and model presentation remain preview
+bridges; full mount/destructor services and global entity integration are pending.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the
