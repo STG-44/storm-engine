@@ -90,3 +90,36 @@ Full weather/day-night visuals, camera/entity integration, foam/reflection and
 playable naval combat remain on the [marine checkpoint](MARINE_INTEGRATION.md)
 and [weather roadmap](WEATHER_ROADMAP.md). This increment does not change the
 whole-engine estimate of about 20% (15–25%).
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `2a49e717a1cfae5f76b76de0cdf3fcb053d636fb` passes [PR run 41313148151](https://github.com/STG-44/storm-engine/actions/runs/41313148151)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Each host
+passes formatting, warnings-denied Clippy, native builds and 393 CPU tests
+(135 interpreter). Four archive SHA256 digests and all 132 complete JSON reports
+(33 scenarios per host) match local output. All 32 preceding reports remain
+unchanged. Target triples and test counts are checked from complete job logs.
+
+Linux passes 24 software Vulkan tests and 21 fleet-window frames, including
+three paused weather-mode frames. Local Metal passes 24 GPU tests and three
+paused weather-mode window frames. The 192-query GPU agreement probe applies
+amplitudes and signed distance through attribute callbacks before comparison.
+The weather C++ oracle regenerates byte-identically: 32 sequences and 1056
+complete numeric snapshots. The preceding scalar map/query reference is retained.
+
+The new script fixture delivers six events and 24 attribute callbacks. Five
+parent-isDone callbacks request Realize(0); four apply, while Stop blocks one.
+Tests check a calm live surface, unchanged prepared maps while stopped, continued
+ship movement, phase-preserving resume, pending amplitudes, partition-independent
+state, repeated presentation and fresh-session initialization. Rendering is
+also exercised with original sea frames and ArabellaShip1 in calm, rough and
+stopped states; calm/rough captures were visually inspected. The preceding
+40-root surface/bounds audit was not repeated for this attribute-only increment.
+
+This validates the numeric controller, notification adapter and stated preview
+schedule. It does not establish original weather program startup, complete
+native entity/camera scheduling, visual/fog/resource callbacks, complete sea
+rendering or naval combat. Hosted Windows/macOS physical GPUs and manual
+keyboard/restart actions remain untested. Game resources, captures and local
+reports stay outside Git. The whole-engine estimate remains about 20% (15–25%).

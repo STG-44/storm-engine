@@ -921,3 +921,13 @@ three paused native-sea frames. A short original-resource check covers all 40
 ship roots and 20,160 sea queries. Scalar SEA shares prepared maps with rocking
 and preview water; original weather/camera/entity scheduling and water rendering
 remain pending. See [surface evidence](SEA_SURFACE.md#four-platform-evidence-2026-11-01).
+
+
+The [sea-weather PR run](https://github.com/STG-44/storm-engine/actions/runs/41313148151)
+passes all four desktop hosts for `2a49e717`: 393 CPU tests per host and 132
+complete matching reports over 33 scenarios, with four verified archive digests.
+All 32 preceding reports remain unchanged. Linux passes 24 Vulkan tests and 21
+fleet-window frames; Metal passes 24 GPU tests and three paused weather frames.
+Original-resource captures cover calm/rough/stopped states. The numeric weather
+handler matches 1056 complete native snapshots; full weather, query camera and
+native global scheduling remain pending. See [weather evidence](SEA_WEATHER.md#four-platform-evidence-2026-11-01).
