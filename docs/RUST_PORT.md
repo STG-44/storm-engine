@@ -885,3 +885,17 @@ render tests, three paused new-mode window frames and seven captures. Current-tu
 rope outputs are retained by free cloth, including release at time zero. Native
 registration/pointer ownership, deletion, full matrix/entity scheduling and
 camera LOD remain pending. See [rope scope](SAIL_ROPES.md).
+
+
+The [camera-detail PR run](https://github.com/STG-44/storm-engine/actions/runs/41292490310)
+passes all four hosts for `46764b02`: 385 CPU tests, 31 scenarios and 124 complete
+JSON reports matching local output with verified archive digests. All preceding
+30 reports remain unchanged. Complete native GetGrid covers 96 profiles / 1,536
+snapshots. All 40 original roots / 368 sails pass camera-selected live-owner grids,
+normal/UV retention and unchanged canonical motion/rope routing. Linux passes 23
+Vulkan tests and fifteen fleet-window frames; Metal passes 23 render tests,
+three paused new-mode window frames and seven captures. Canonical simulation
+uses the near grid; immutable presentation replay supplies camera detail without
+advancing physics or phases. Full native camera/entity scheduling remains pending.
+See [camera-detail scope](SAIL_LOD.md). The whole-engine planning estimate remains
+about 20%, including the substantial unfinished land/gameplay work.

@@ -78,3 +78,36 @@ Commercial assets, captures and local audit data remain outside Git.
 
 Native RNG/INI/weather, limit points, heraldry, sea, mast physics/group migration,
 complete rope service and full entity/camera scheduling remain separate work.
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `46764b02844f430d07448b4d18b82bc52787aad1` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41292490310)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, builds, 385 CPU tests (135 interpreter) and 31 scenarios.
+Four ZIP digests and all 124 complete JSON reports match local output, including
+camera/matrix/distance bits, selected grids, sampled vertices/state and complete
+index allocations/ranges. All preceding 30 reports remain unchanged. Actual
+host triples and counts are checked from logs.
+
+Linux passes 23 software Vulkan tests and fifteen fleet-window frames, including
+three paused camera-detail frames. Local Metal passes 23 render tests and three
+paused new-mode window frames. Seven generated/original captures cover close /
+far, normal/furled and owner release; original close/far frames were visually
+inspected. Three-frame presentation does not establish manual scroll/keyboard
+testing. Hosted Windows/macOS physical GPU/window coverage remains open.
+
+All 40 original roots / 368 sails pass camera-selected live-owner grids and
+normal/UV retention, while hidden owners remain unselected. Canonical geometry,
+rope feedback, parameters, metadata and motion/owner routing also pass. Across
+274 fire locators the survivor retains 548 systems / 822 finite world rows /
+12,243 living particles. 271 sails retain rotation records and 714 tied slots;
+no held turns. Boat has zero sail drive; rowing remains pending. The complete
+GetGrid oracle regenerates byte-identically: 96 profiles / 1,536 snapshots.
+
+Pause/partition tests preserve canonical motion, phase/flex and rope points;
+near/far/near replay reproduces identical local vertices and persistent buffers.
+This validates the numeric methods and presentation adapter. Canonical near-grid
+simulation remains independent of camera movement; native Execute/camera/entity
+integration is still pending. Commercial resources, captures and local evidence
+remain outside Git; earlier whole-profile and manual damage audits were not repeated.
