@@ -74,8 +74,11 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [ ] Verify representative gameplay and publish platform builds.
 
 A rough functional coverage estimate is recorded in [port status](PORT_STATUS.md):
-15–20% toward original-game compatibility, and about 70% for the ship demo
-including remaining polish and platform verification. These are planning estimates.
+about 20% toward complete original-game compatibility (rough range 15–25%),
+including land gameplay, and about 70% for the ship demo including remaining
+polish and platform verification. Updated 2026-11-01; these are subjective
+functional-scope estimates. Playable land locations, characters/combat, deck
+movement/boarding, weather, interface and save/load remain substantial work.
 
 ## Current evidence and prerequisites
 
