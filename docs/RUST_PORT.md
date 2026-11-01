@@ -946,9 +946,10 @@ See [camera/stage evidence](SEA_STAGES.md#four-platform-evidence-2026-11-01).
 
 
 The [shared ship-dispatch PR run](https://github.com/STG-44/storm-engine/actions/runs/41339626007)
-passes Windows, Linux and macOS Intel for `7ebac6eb`: 404 CPU tests per host
-and 105 complete matching reports over 35 scenarios, with three verified ZIP
-digests. All 34 preceding reports remain unchanged. Apple Silicon is still
-queued and is not yet validated. Linux passes 24 Vulkan tests and 27 fleet-window
-frames; local Metal passes 24 GPU tests and three paused dispatch frames on retry.
-See [dispatch evidence](SHIP_STAGES.md#platform-evidence-2026-11-01).
+passes all four desktop hosts for `7ebac6eb`: 404 CPU tests per host and 140
+complete matching reports over 35 scenarios, with four verified archive digests.
+All 34 preceding reports remain unchanged. Linux passes 24 Vulkan tests and 27
+fleet-window frames; Metal passes 24 GPU tests and three paused dispatch frames.
+The native priority/dispatch/registry reference matches 512 complete snapshots.
+Full mount/destructor services, original drawing and global scheduling remain
+pending. See [dispatch evidence](SHIP_STAGES.md#four-platform-evidence-2026-11-01).

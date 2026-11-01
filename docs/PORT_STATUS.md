@@ -24,14 +24,13 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest shared ship-dispatch validation](SHIP_STAGES.md#platform-evidence-2026-11-01)
-checks 404 CPU tests on Windows, Linux and macOS Intel, with 35 scenarios and
-105 matching complete reports. Apple Silicon remains queued and is not yet
-validated for this increment. Retained movement/rocking now runs in ship Execute
-callbacks on the manager that prepares SEA in Realize, with native priorities
-and deferred registry cleanup. Full mount/destructor services, global entity /
-camera integration and original rendering remain pending. These checks establish
-the documented scope, not a percentage of the engine.
+limited. The [latest shared ship-dispatch validation](SHIP_STAGES.md#four-platform-evidence-2026-11-01)
+checks 404 CPU tests per host, 35 scenarios and 140 matching complete reports.
+Retained ship movement/rocking runs in Execute callbacks on the manager that
+prepares the numeric SEA surface in Realize, with native priority defaults and
+deferred registry cleanup. Full mount/destructor services, global entity/camera
+integration and original rendering remain pending. These checks establish the
+documented scope, not a percentage of the engine.
 
 The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
 amplitude/animation/movement controls and stop/resume through a script/entity

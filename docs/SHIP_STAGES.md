@@ -66,31 +66,34 @@ sea rendering and naval gameplay remain pending. The whole-engine estimate
 remains about 20% (roughly 15–25%); land gameplay is included in that scope.
 
 
-## Platform evidence, 2026-11-01
+## Four-platform evidence, 2026-11-01
 
-Code `7ebac6eb90c579d2c4d3737d8e5639dcfde2e6df` passes Windows x86_64, Linux x86_64 and macOS Intel in
-[PR run 41339626007](https://github.com/STG-44/storm-engine/actions/runs/41339626007). Complete job logs
-confirm formatting, warnings-denied Clippy, native builds and 404 CPU tests
-(135 interpreter) on each of these three hosts. All 105 complete JSON reports
-over 35 scenarios match local values without rounding or tolerances, and three
-original ZIP SHA256 digests are verified. All 34 preceding reports are unchanged.
-
-The macOS Apple Silicon job is still queued with no assigned runner at this
-checkpoint. It has not been validated for this code commit. Four-host completion
-and 140 matching reports must not be inferred from the three completed jobs.
-The existing run remains queued; no duplicate run was started.
+Code `7ebac6eb90c579d2c4d3737d8e5639dcfde2e6df` passes [PR run 41339626007](https://github.com/STG-44/storm-engine/actions/runs/41339626007)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Each host
+passes formatting, warnings-denied Clippy, native builds and 404 CPU tests
+(135 interpreter). Complete logs confirm target triples, individual new tests
+and counts. Four original ZIP SHA256 digests are verified; all 140 complete JSON
+reports over 35 scenarios match local values without rounding or tolerances.
+All 34 preceding reports remain unchanged.
 
 Linux additionally passes 24 software Vulkan tests and 27 fleet-window frames,
 including three paused shared-dispatch frames. Local Metal passes 24 GPU tests
-and three paused shared-dispatch frames on a bounded retry. An initial window
-attempt started without completing presentation; the unchanged baseline and
-the retry both completed. Manual input/restart and hosted Windows/macOS physical
-GPU coverage remain untested.
+and three paused shared-dispatch window frames. Original ArabellaShip1 and sea
+frames are exercised with the existing placement, parameters, sail drive,
+rolling, rope and LOD adapters in rough and stopped captures; the rough frame
+was visually inspected. The preceding 40-root audit was not repeated here.
 
-The native 32-profile / 512-snapshot fixture regenerates byte-identically.
-Original-resource rough/stopped captures with ArabellaShip1, native sea frames,
-placement, parameters, sail drive, rolling, ropes and LOD match the preceding
-mode pixel for pixel; the rough capture was visually inspected. The earlier
-40-root audit was not repeated. Resources, captures and local reports remain
-outside Git. The integration limitations above and the whole-engine estimate
-of about 20% (roughly 15–25%) remain unchanged.
+The 32-profile / 512-snapshot native fixture regenerates byte-identically.
+Integration tests preserve actual movement/rocking/living-pose output, fixed-step
+partitioning and query-before-preparation revisions. In the three-second fixture,
+the retired ship receives 121 Execute and 121 Realize callbacks; the survivor
+receives 181 of each. End-of-frame cleanup removes the retired registry entry
+and both layer memberships while preserving its last diagnostic body values.
+Paused zero-time Realize and checked numeric callback errors are also exercised.
+
+This validates the retained priority/dispatch/registry contract and numeric
+input/output bridge. Original SHIP mount/destructor services, full model drawing,
+global class/layer scheduling, native sea rendering and naval gameplay remain
+pending. Physical Windows/macOS GPU and manual input/restart coverage remain
+untested. Resources, captures and local reports stay outside Git. Whole-engine
+coverage remains about 20% (roughly 15–25%).
