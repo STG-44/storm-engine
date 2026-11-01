@@ -2,6 +2,7 @@
 //! Texture loading, weather attributes and native entity scheduling are providers.
 use anyhow::{Result, ensure};
 use std::sync::Arc;
+pub mod camera;
 pub mod weather;
 
 pub const SIDE: usize = 128;
@@ -258,6 +259,9 @@ pub struct Sea {
     frames: Arc<Frames>,
     surface: Surface,
     weather: Option<weather::Weather>,
+    realize_view: Option<camera::Matrix>,
+    realized_camera: Option<camera::Camera>,
+    revision: u64,
 }
 impl Sea {
     pub fn new(frames: Arc<Frames>, parameters: Parameters) -> Result<Self> {
@@ -265,6 +269,9 @@ impl Sea {
         let mut sea = Self {
             frames,
             weather: None,
+            realize_view: None,
+            realized_camera: None,
+            revision: 0,
             surface: Surface {
                 parameters,
                 animation: Animation::default(),
@@ -278,6 +285,26 @@ impl Sea {
     pub fn surface(&self) -> &Surface {
         &self.surface
     }
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub fn realized_camera(&self) -> Option<camera::Camera> {
+        self.realized_camera
+    }
+    pub fn set_realize_view(&mut self, view: camera::Matrix) {
+        self.realize_view = Some(view);
+    }
+    /// Native Stop gate precedes camera access, including zero-time callbacks.
+    pub fn realize(&mut self, delta_ms: u32) -> Result<bool> {
+        if self.weather.as_ref().is_some_and(|w| w.stopped) {
+            return Ok(false);
+        }
+        let view = self
+            .realize_view
+            .ok_or_else(|| anyhow::anyhow!("SEA view provider is unbound"))?;
+        self.prepare_step(delta_ms, Some(view))?;
+        Ok(true)
+    }
     pub fn set_camera(&mut self, camera: [f32; 2]) -> Result<()> {
         ensure!(camera.into_iter().all(f32::is_finite), "invalid SEA camera");
         self.surface.camera = camera;
@@ -286,12 +313,19 @@ impl Sea {
     /// Retained Realize animation arithmetic, bounded to one second per call.
     /// Failed updates leave the published surface unchanged; pausing calls no step.
     pub fn advance(&mut self, delta_ms: u32) -> Result<()> {
+        self.prepare_step(delta_ms, None)
+    }
+    fn prepare_step(&mut self, delta_ms: u32, view: Option<camera::Matrix>) -> Result<()> {
         if self.weather.as_ref().is_some_and(|w| w.stopped) {
             return Ok(());
         }
         ensure!(delta_ms <= 1000, "SEA update exceeds one second");
         let p = self.surface.parameters;
         p.validate()?;
+        let revision = self
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("SEA revision overflow"))?;
         let delta = delta_ms as f32 * 0.001;
         let movement_y = self
             .weather
@@ -317,6 +351,9 @@ impl Sea {
                 a.frame[l] -= FRAMES as f32;
             }
         }
+        // Original numeric order: animation, inverse-view camera, map preparation.
+        // Underwater/reflection callbacks between these blocks are not run here.
+        let camera = view.map(camera::Camera::from_view).transpose()?;
         let mut maps = vec![0.0; 6 * CELLS];
         for l in 0..2 {
             let first = a.frame[l] as usize % FRAMES;
@@ -337,6 +374,11 @@ impl Sea {
         }
         self.surface.animation = a;
         self.surface.maps = Arc::new(maps);
+        self.revision = revision;
+        if let Some(camera) = camera {
+            self.surface.camera = [camera.eye[0], camera.eye[2]];
+            self.realized_camera = Some(camera);
+        }
         if let Some(weather) = &mut self.weather {
             weather.movement_y = movement_y.unwrap();
         }

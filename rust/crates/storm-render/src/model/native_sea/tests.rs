@@ -55,7 +55,16 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             attributes.set_value(changed, Some(&value)).unwrap();
             sea.attribute_changed(&attributes, root, changed).unwrap();
         }
-        sea.set_camera([7.0, -9.0]).unwrap();
+        sea.set_realize_view(
+            storm_sim::sea::camera::build_view(
+                [7.0, 123.0, -9.0],
+                [7.0, 123.0, 1.0],
+                [0.0, 1.0, 0.0],
+            )
+            .unwrap()
+            .0,
+        );
+        sea.realize(0).unwrap();
         for _ in 0..11 {
             sea.advance(1000).unwrap();
         }

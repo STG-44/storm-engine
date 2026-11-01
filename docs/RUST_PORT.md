@@ -2,13 +2,13 @@
 
 Started: 2026-10-17.
 
-Current increment: [scalar SEA weather attributes](SEA_WEATHER.md).
-Original pending/effective amplitude ordering, layer animation/movement controls,
-stop/resume and zero-time preparation now receive script/entity notifications.
-The diagnostic weather fixture drives the same surface used by ship rocking
-and water sampling. The preceding [scalar surface](SEA_SURFACE.md) remains
-validated; full weather/camera/entity and original rendering integration remain
-pending.
+Current increment: [SEA camera and frame boundaries](SEA_STAGES.md).
+Native view construction/rigid camera extraction now feeds the staged GPU view
+and scalar sea cutoff. The new mode delivers weather events, retained ship
+queries and sea Realize in that order; Stop holds the prepared camera/surface.
+Full native global layers, camera entities and sea rendering remain pending.
+Preceding [surface](SEA_SURFACE.md) and [weather controls](SEA_WEATHER.md) remain
+validated in their original diagnostic modes.
 
 Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), continuing
 from the retained scalar SEA pipeline toward weather/service integration. Complete one repeatable

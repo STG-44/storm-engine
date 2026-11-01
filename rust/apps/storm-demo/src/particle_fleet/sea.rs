@@ -1,5 +1,6 @@
 //! Original frame bytes are external; generated fixtures keep CI asset-free.
 use super::*;
+mod stages;
 mod weather;
 use std::path::Path;
 use storm_sim::sea::{CELLS, FRAMES, Frames, Parameters, Sea};
@@ -8,6 +9,7 @@ pub(super) struct State {
     pub sea: Rc<RefCell<Sea>>,
     weather: Option<weather::Session>,
     external: bool,
+    stages: Option<stages::Stages>,
 }
 
 fn blue_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
@@ -53,6 +55,7 @@ impl State {
                 Parameters::default(),
             )?)),
             weather: None,
+            stages: None,
             external: folder.is_some(),
         })
     }
@@ -85,6 +88,10 @@ impl State {
         if let Some(weather) = &self.weather {
             report["weather_provider"] = json!("script_attribute_callbacks");
             report["weather"] = weather.report(&sea);
+        }
+        if self.staged() {
+            report["camera_provider"] = json!("actual_gpu_native_build_view_transposition");
+            report["stages"] = self.stages_report();
         }
         report
     }

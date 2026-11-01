@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after scalar-sea weather controls:
+Planning snapshot, 2026-11-01, after scalar-sea camera/stage integration:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -35,6 +35,10 @@ The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
 amplitude/animation/movement controls and stop/resume through a script/entity
 fixture. This is another bounded integration step; full weather and native
 entity/camera scheduling remain pending.
+
+The [camera/stage increment](SEA_STAGES.md) adds native view extraction and
+Execute-before-Realize numerical timing through a bounded entity adapter.
+Original global entity/camera integration and sea rendering remain pending.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the

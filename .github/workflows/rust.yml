@@ -91,6 +91,8 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 1.25 --headless sea-stages-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --fleet-window --time 1.75 --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --time 1.25 --headless sea-weather-vulkan.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --fleet-window --time 1.75 --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --time 1.5 --headless native-sea-vulkan.png --width 641 --height 361
@@ -197,6 +199,10 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --time 3 --particle-fleet-report sea-weather-state.json
           python -c "import json; s=json.load(open('sea-weather-state.json')); w=s['native_motion']['rocking']['sea']; r=w['weather']; assert w['weather_provider']=='script_attribute_callbacks'; assert r['delivered_events']==6 and r['pending_events']==0 and r['attribute_callbacks']==24 and r['native_class']=='sea' and not r['original_game_scripts'] and not r['full_native_entity'] and not r['stopped']; assert w['amplitude_bits']==[1061997773,1045220557]; z=[v for v in r['changes'] if v['realize_zero_requested']]; assert len(z)==5 and sum(v['realize_zero_applied'] for v in z)==4; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise native sea view and Execute-before-Realize boundaries
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 3 --particle-fleet-report sea-stages-state.json
+          python -c "import json; s=json.load(open('sea-stages-state.json')); w=s['native_motion']['rocking']['sea']; t=w['stages']; assert w['camera_provider']=='actual_gpu_native_build_view_transposition' and t['order']=='script_execute_realize' and not t['full_sea_entity']; assert t['sea']['dispatcher']=='storm_core_entity_manager_realize_layer' and not t['sea']['full_global_layers']; assert len(t['trace'])==181; assert all(v['realize_revision']==v['execute_revision']+int(v['applied']) for v in t['trace']); assert s['pose_math']=='pinned_TRyRxRz_adapter'; assert w['weather']['delivered_events']==6 and w['weather']['pending_events']==0; assert s['service']['manager']['owners']==[2]"
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
@@ -243,6 +249,7 @@ jobs:
             sail-lod-state.json
             native-sea-state.json
             sea-weather-state.json
+            sea-stages-state.json
             target/debug/storm-script
             target/debug/storm-script.exe
           if-no-files-found: error
@@ -358,4 +365,5 @@ jobs:
             native-ship-rocking-vulkan.png
             native-sea-vulkan.png
             sea-weather-vulkan.png
+            sea-stages-vulkan.png
           if-no-files-found: error

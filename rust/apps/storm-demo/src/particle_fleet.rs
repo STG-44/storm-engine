@@ -537,6 +537,13 @@ impl Fleet {
         }
     }
     fn advance_frames(&mut self, through: f32) -> Result<()> {
+        self.advance_frames_with_camera(through, None)
+    }
+    fn advance_frames_with_camera(
+        &mut self,
+        through: f32,
+        external: Option<&OrbitCamera>,
+    ) -> Result<()> {
         ensure!(
             through.is_finite() && (self.seconds..=30.0).contains(&through),
             "fleet fixture time must be 0..=30 seconds"
@@ -548,6 +555,19 @@ impl Fleet {
                 .world
                 .borrow_mut()
                 .set_clock(self.seconds)?;
+            if self.sea_staged() {
+                let view = self.stage_camera(external)?.sea_view()?;
+                let motion = self.native_motion.as_mut().unwrap();
+                let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
+                motion
+                    .rocking
+                    .as_mut()
+                    .unwrap()
+                    .native
+                    .as_mut()
+                    .unwrap()
+                    .begin_frame(frame, elapsed - motion.elapsed_ms, view)?;
+            }
             if let Some(drive) = &mut self.drive {
                 if let Some(cloth) = &mut self.cloth {
                     cloth.prepare(&mut self.assets, drive, self.visible, self.seconds)?;
@@ -592,7 +612,9 @@ impl Fleet {
                 }
                 let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
                 let delta = elapsed - motion.elapsed_ms;
-                if let Some(native) = motion.rocking.as_mut().and_then(|r| r.native.as_mut()) {
+                if let Some(native) = motion.rocking.as_mut().and_then(|r| r.native.as_mut())
+                    && !native.staged()
+                {
                     native.advance(delta)?;
                 }
                 for index in 0..2 {
@@ -641,7 +663,7 @@ impl Fleet {
                     .unwrap()
                     .record(self.poses[index].sample(f64::from(self.seconds)))?;
                 if let Some(controller) = &self.sessions[index].controller {
-                    let update = if self.drive.is_some() {
+                    let update = if self.drive.is_some() || self.sea_staged() {
                         drive::update_effects
                     } else {
                         super::ship_fire::update
@@ -652,6 +674,25 @@ impl Fleet {
                         self.poses[index],
                     )?;
                 }
+            }
+            if self.sea_staged() {
+                let view = self.stage_camera(external)?.sea_view()?;
+                let delta = if frame == 0 {
+                    0
+                } else {
+                    (f64::from(frame) * 1000.0 / 60.0).round() as u32
+                        - (f64::from(frame - 1) * 1000.0 / 60.0).round() as u32
+                };
+                self.native_motion
+                    .as_mut()
+                    .unwrap()
+                    .rocking
+                    .as_mut()
+                    .unwrap()
+                    .native
+                    .as_mut()
+                    .unwrap()
+                    .end_frame(delta, view)?;
             }
             if !self.preview {
                 match frame {
@@ -732,6 +773,10 @@ impl Fleet {
     pub fn advance(mut self, through: f32) -> Result<Self> {
         self.advance_frames(through)?;
         self.present_at(through, true)?;
+        if self.sea_staged() {
+            let camera = self.camera();
+            self.refresh_sea_view(&camera)?;
+        }
         self.snapshot("final");
         Ok(self)
     }
@@ -766,6 +811,12 @@ impl Fleet {
                 report["ships"][i]["rig_frame"] = json!({"deployment_bits":frame.sails.iter().map(|(mesh,v)|json!({"mesh":mesh,"bits":v.to_bits()})).collect::<Vec<_>>(),"nodes":frame.nodes.iter().map(|(node,m)|json!({"node":node,"matrix_bits":m.map(f32::to_bits)})).collect::<Vec<_>>()});
             }
         }
+        if self.sea_staged() {
+            for (i, pose) in self.poses.iter().enumerate() {
+                report["ships"][i]["pose"] = json!(pose.pinned_matrix()?);
+            }
+            report["pose_math"] = json!("pinned_TRyRxRz_adapter");
+        }
         Ok(report)
     }
     fn camera(&self) -> OrbitCamera {
@@ -792,6 +843,9 @@ impl Fleet {
         camera.yaw = 0.2;
         if let Some(cloth) = &self.cloth {
             cloth.configure_camera(&mut camera);
+        }
+        if self.sea_staged() {
+            camera.set_native_sea_view(true);
         }
         camera
     }
@@ -824,6 +878,7 @@ impl Fleet {
                 let mut scene = ModelScene::new(gpu, wgpu::TextureFormat::Rgba8UnormSrgb, a)?;
                 scene.set_pose(self.poses[i])?;
                 scene.set_native_sail_geometry(self.geometry_preview);
+                scene.set_native_pose_math(self.sea_staged());
                 if let Some(drive) = &self.drive {
                     scene.set_rig_state(drive.rig(i))?;
                 }
@@ -977,6 +1032,9 @@ fn load(options: &Options) -> Result<Fleet> {
     }
     if let Some(target) = options.fleet_sail_target {
         fleet.drive.as_mut().unwrap().set_target(0, target)?;
+    }
+    if options.native_sea_stages {
+        fleet.enable_native_sea_stages()?;
     }
     Ok(fleet)
 }

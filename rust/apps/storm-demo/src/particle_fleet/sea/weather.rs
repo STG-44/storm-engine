@@ -8,8 +8,29 @@ struct Adapter {
     sea: Rc<RefCell<Sea>>,
     root: Rc<Cell<AttributeId>>,
     records: Records,
+    stage: Rc<RefCell<StageState>>,
+}
+#[derive(Default)]
+struct StageState {
+    enabled: bool,
+    error: Option<String>,
+    calls: u32,
+    applied: u32,
 }
 impl Entity for Adapter {
+    fn process_stage(&mut self, stage: storm_core::Stage, delta_ms: u32) {
+        if stage != storm_core::Stage::Realize || !self.stage.borrow().enabled {
+            return;
+        }
+        let result = self.sea.borrow_mut().realize(delta_ms);
+        let mut state = self.stage.borrow_mut();
+        state.calls += 1;
+        match result {
+            Ok(true) => state.applied += 1,
+            Ok(false) => {}
+            Err(e) => state.error = Some(e.to_string()),
+        }
+    }
     fn attribute_changed(&mut self, store: &AttributeStore, changed: AttributeId) -> Result<u32> {
         let mut sea = self.sea.borrow_mut();
         let stopped = sea.weather().unwrap().stopped;
@@ -53,6 +74,7 @@ pub(super) struct Session {
     host: WeatherHost,
     records: Records,
     delivered: usize,
+    stage: Rc<RefCell<StageState>>,
 }
 impl Session {
     pub fn new(sea: Rc<RefCell<Sea>>) -> Result<Self> {
@@ -60,12 +82,14 @@ impl Session {
         let mut entities = EntityManager::default();
         let root = Rc::new(Cell::new(AttributeId::INVALID));
         let records = Rc::new(RefCell::new(Vec::new()));
+        let stage = Rc::new(RefCell::new(StageState::default()));
         let id = entities.insert(
             "sea",
             Adapter {
                 sea,
                 root: root.clone(),
                 records: records.clone(),
+                stage: stage.clone(),
             },
         )?;
         let object = world.object(id)?;
@@ -92,6 +116,7 @@ impl Session {
             host,
             records,
             delivered: 0,
+            stage,
         })
     }
     pub fn advance(&mut self, delta_ms: u32) -> Result<()> {
@@ -99,6 +124,34 @@ impl Session {
             self.runtime
                 .advance_frame(delta_ms, &mut self.host, Limits::default())?;
         Ok(())
+    }
+    pub fn enable_stages(&mut self) -> Result<()> {
+        self.host
+            .entities
+            .set_layer_type(0, storm_core::LayerType::Realize)?;
+        self.host.entities.add_to_layer(0, self.host.id, 0)?;
+        self.stage.borrow_mut().enabled = true;
+        Ok(())
+    }
+    pub fn execute_boundary(&mut self, delta_ms: u32) -> Result<()> {
+        self.host
+            .entities
+            .process_stage(storm_core::Stage::Execute, delta_ms)
+    }
+    pub fn realize(&mut self, delta_ms: u32) -> Result<bool> {
+        let before = self.stage.borrow().applied;
+        self.host
+            .entities
+            .process_stage(storm_core::Stage::Realize, delta_ms)?;
+        let mut state = self.stage.borrow_mut();
+        if let Some(error) = state.error.take() {
+            anyhow::bail!(error);
+        }
+        Ok(state.applied != before)
+    }
+    pub fn stages_report(&self) -> Json {
+        let s = self.stage.borrow();
+        json!({"dispatcher":"storm_core_entity_manager_realize_layer","layer":0,"priority":0,"calls":s.calls,"applied":s.applied,"full_global_layers":false})
     }
     pub fn report(&self, sea: &Sea) -> Json {
         let w = sea.weather().unwrap();

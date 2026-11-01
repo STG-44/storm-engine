@@ -123,6 +123,7 @@ impl ModelPose {
 #[derive(Clone)]
 pub struct OrbitCamera {
     native_sail_math: bool,
+    native_sea_view: bool,
     pub target: Vec3,
     pub yaw: f32,
     pub pitch: f32,
@@ -133,6 +134,7 @@ impl OrbitCamera {
     pub fn new(asset: &ModelAsset) -> Self {
         Self {
             native_sail_math: false,
+            native_sea_view: false,
             target: asset.center,
             yaw: 0.85,
             pitch: 0.27,
@@ -163,6 +165,22 @@ impl OrbitCamera {
     pub fn set_native_sail_math(&mut self, enabled: bool) {
         self.native_sail_math = enabled;
     }
+    pub fn set_native_sea_view(&mut self, enabled: bool) {
+        self.native_sea_view = enabled;
+        if enabled {
+            self.native_sail_math = true;
+        }
+    }
+    /// Native view derived from the exact orbit used by the staged GPU view.
+    pub fn sea_view(&self) -> Result<storm_sim::sea::camera::Matrix> {
+        let eye = self.eye()?;
+        Ok(storm_sim::sea::camera::build_view(
+            [eye.x, eye.y, -eye.z],
+            [self.target.x, self.target.y, -self.target.z],
+            [0.0, 1.0, 0.0],
+        )?
+        .0)
+    }
     fn eye(&self) -> Result<Vec3> {
         ensure!(
             self.target.is_finite()
@@ -192,7 +210,12 @@ impl OrbitCamera {
     /// The eye and vertical field of view used by the actual GPU camera.
     pub fn sail_view(&self) -> Result<storm_sim::sail_lod::Camera> {
         Ok(storm_sim::sail_lod::Camera {
-            eye: self.eye()?.to_array(),
+            eye: if self.native_sea_view {
+                let p = storm_sim::sea::camera::Camera::from_view(self.sea_view()?)?.eye;
+                [p[0], p[1], -p[2]]
+            } else {
+                self.eye()?.to_array()
+            },
             perspective: storm_sim::sail_lod::VERTICAL_FOV,
         })
     }
@@ -211,8 +234,15 @@ impl OrbitCamera {
                 && self.radius > 0.0,
             "invalid orbit camera"
         );
-        let eye = self.eye()?;
-        let view = glam::camera::rh::view::look_at_mat4(eye, self.target, Vec3::Y);
+        let mut eye = self.eye()?;
+        let view = if self.native_sea_view {
+            let native = self.sea_view()?;
+            let p = storm_sim::sea::camera::Camera::from_view(native)?.eye;
+            eye = Vec3::new(p[0], p[1], -p[2]);
+            Mat4::from_cols_array(&storm_sim::sea::camera::reflect_view(native))
+        } else {
+            glam::camera::rh::view::look_at_mat4(eye, self.target, Vec3::Y)
+        };
         let projection = glam::camera::rh::proj::directx::perspective(
             storm_sim::sail_lod::VERTICAL_FOV,
             width as f32 / height as f32,
@@ -316,6 +346,7 @@ pub struct ModelScene {
     waves: storm_sim::Waves,
     rig: storm_sim::RigState,
     native_sail_geometry: bool,
+    native_pose_math: bool,
     wave_buffer: wgpu::Buffer,
     sea_map_buffer: wgpu::Buffer,
     sea_uniform_buffer: wgpu::Buffer,
@@ -875,6 +906,7 @@ impl ModelScene {
             waves: storm_sim::Waves::default(),
             rig: storm_sim::RigState::uniform(1.0),
             native_sail_geometry: false,
+            native_pose_math: false,
             wave_buffer,
             sea_map_buffer,
             sea_uniform_buffer,
@@ -886,6 +918,16 @@ impl ModelScene {
             size: (1, 1),
             particle_history: Default::default(),
         })
+    }
+    pub fn set_native_pose_math(&mut self, enabled: bool) {
+        self.native_pose_math = enabled;
+    }
+    fn pose_matrix(&self) -> Result<Mat4> {
+        if self.native_pose_math {
+            Ok(Mat4::from_cols_array(&self.pose.pinned_matrix()?))
+        } else {
+            self.pose.matrix()
+        }
     }
     pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
         pose.matrix()?;
@@ -1099,12 +1141,12 @@ impl ModelScene {
         // Cloth currently accepts horizontal wind only: project the inverse rigid
         // rotation into local XZ, including pitch/roll, rather than subtracting yaw.
         let direction = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos());
-        let local = self.pose.matrix()?.inverse().transform_vector3(direction) * wind.speed;
+        let local = self.pose_matrix()?.inverse().transform_vector3(direction) * wind.speed;
         let local_wind = SailWind {
             direction: local.x.atan2(local.z),
             speed: local.x.hypot(local.z).min(40.0),
         };
-        let eye = self.pose.matrix()?.inverse().transform_point3(Vec3::new(
+        let eye = self.pose_matrix()?.inverse().transform_point3(Vec3::new(
             uniform.eye_time[0],
             uniform.eye_time[1],
             uniform.eye_time[2],
@@ -1303,7 +1345,7 @@ impl ModelScene {
             0,
             bytemuck::bytes_of(&sea_uniform),
         );
-        let base = self.pose.matrix()?;
+        let base = self.pose_matrix()?;
         self.pose_bytes[..OBJECT_BYTES]
             .copy_from_slice(bytemuck::bytes_of(&ObjectUniform::new(base, 0, false)));
         for (i, mesh) in self.meshes.iter().enumerate() {

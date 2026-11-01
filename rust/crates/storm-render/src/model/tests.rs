@@ -968,3 +968,30 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         readback.unmap();
     }
 }
+
+#[test]
+fn staged_sea_camera_uses_native_view_and_same_gpu_eye_and_lod_eye() {
+    let asset = ModelAsset::sail_demo().unwrap();
+    let mut camera = OrbitCamera::new(&asset);
+    camera.set_native_sea_view(true);
+    for distance in [20.0, 160.0, 800.0] {
+        camera.distance = distance;
+        let view = camera.sea_view().unwrap();
+        let native = storm_sim::sea::camera::Camera::from_view(view).unwrap();
+        let eye = [native.eye[0], native.eye[1], -native.eye[2]];
+        assert_eq!(
+            camera.sail_view().unwrap().eye.map(f32::to_bits),
+            eye.map(f32::to_bits)
+        );
+        let uniform = camera.uniform(641, 361, 1.5).unwrap();
+        assert_eq!(
+            uniform.eye_time[..3]
+                .iter()
+                .map(|v| v.to_bits())
+                .collect::<Vec<_>>(),
+            eye.map(f32::to_bits)
+        );
+        let m = Mat4::from_cols_array(&storm_sim::sea::camera::reflect_view(view));
+        assert!(m.transform_point3(Vec3::from_array(eye)).length() < 0.001);
+    }
+}

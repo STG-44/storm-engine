@@ -129,7 +129,11 @@ impl Sea {
         let mut candidate = self.clone();
         let mut result = Change::default();
         if parent == "isdone" {
-            candidate.advance(0)?;
+            if candidate.realize_view.is_some() {
+                candidate.realize(0)?;
+            } else {
+                candidate.advance(0)?;
+            }
             result.realize_zero_requested = true;
         }
         let p = &mut candidate.surface.parameters;

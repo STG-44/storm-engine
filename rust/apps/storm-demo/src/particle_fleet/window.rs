@@ -40,8 +40,6 @@ fn prepare(
         .unwrap()
         .enable_motion(&mut fleet.assets)?;
     fleet.native_motion.as_mut().unwrap().bodies[0].strengths[0].rotation[1] = 0.0;
-    fleet.advance_frames(seconds)?;
-    fleet.present_at(seconds, false)?;
     let mut camera = OrbitCamera::new(&fleet.assets[0]);
     camera.distance *= 1.7;
     camera.radius *= 3.0;
@@ -50,6 +48,18 @@ fn prepare(
     if let Some(cloth) = &fleet.cloth {
         cloth.configure_camera(&mut camera);
     }
+    if fleet.sea_staged() {
+        camera.set_native_sea_view(true);
+        fleet.refresh_sea_view(&camera)?;
+        fleet.advance_frames_with_camera(seconds, Some(&camera))?;
+    } else {
+        fleet.advance_frames(seconds)?;
+    }
+    fleet.present_at(seconds, false)?;
+    if fleet.sea_staged() {
+        camera = fleet.stage_camera(Some(&camera))?;
+        fleet.refresh_sea_view(&camera)?;
+    }
     let scenes = fleet
         .assets
         .iter()
@@ -57,6 +67,7 @@ fn prepare(
         .map(|(i, a)| {
             let mut scene = ModelScene::new(gpu, format, a)?;
             scene.set_rig_state(fleet.drive.as_ref().unwrap().rig(i))?;
+            scene.set_native_pose_math(fleet.sea_staged());
             Ok(scene)
         })
         .collect::<Result<Vec<_>>>()?;
@@ -220,12 +231,14 @@ impl State {
         if seconds >= 30.0 {
             self.clock.paused = true;
         }
-        self.fleet.advance_frames(seconds)?;
+        self.fleet
+            .advance_frames_with_camera(seconds, Some(&self.camera))?;
         self.fleet.present_at(seconds, false)?;
         self.camera.target.x =
             (self.fleet.poses[0].translation[0] + self.fleet.poses[1].translation[0]) * 0.5;
         self.camera.target.z =
             (self.fleet.poses[0].translation[2] + self.fleet.poses[1].translation[2]) * 0.5;
+        self.fleet.refresh_sea_view(&self.camera)?;
         self.fleet.present_lod(&self.camera)?;
         for i in 0..2 {
             self.scenes[i].set_pose(self.fleet.poses[i])?;
