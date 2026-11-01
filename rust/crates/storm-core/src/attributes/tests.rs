@@ -290,7 +290,7 @@ fn entity_attributes_are_shared_borrowed_and_notify_only_when_requested() -> Res
     assert_eq!(entities.notify_attribute_changed(a, &store, speed)?, 7);
     entities.erase(a);
     assert_eq!(entities.notify_attribute_changed(a, &store, speed)?, 7);
-    entities.new_lifecycle();
+    entities.new_lifecycle().unwrap();
     assert!(store.get(root).is_some());
     assert_eq!(entities.notify_attribute_changed(a, &store, speed)?, 0);
     store.drop_root(root)?;

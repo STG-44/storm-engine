@@ -22,6 +22,9 @@ adds native view extraction and query-before-preparation timing in the fleet
 fixture. [Shared ship dispatch](SHIP_STAGES.md) now moves the retained numeric
 bodies inside ship Execute callbacks on that same manager. Full mount/destructor
 services, SAIL/ROPE entity scheduling and original model drawing remain pending.
+The [ship-cleanup increment](SHIP_CLEANUP.md) retains destructor request order,
+logical group marks and checked cascading registry release. Original geometry
+destruction, service compaction and complete Mount remain pending.
 The remaining items below include full weather,
 service/camera scheduling and original rendering integration.
 

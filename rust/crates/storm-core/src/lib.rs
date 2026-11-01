@@ -8,7 +8,8 @@ mod script_variable;
 
 pub use attributes::{AttributeId, AttributeNode, AttributeStore, format_float};
 pub use entities::{
-    Entity, EntityId, EntityInit, EntityManager, EntityRef, LayerType, Stage, class_hash,
+    Entity, EntityDestroy, EntityId, EntityInit, EntityManager, EntityRef, LayerType, Stage,
+    class_hash,
 };
 pub use events::EventDispatcher;
 pub use message::{Message, Value};

@@ -13,6 +13,7 @@ mod drive;
 mod geometry;
 mod parameters;
 mod sea;
+mod ship_cleanup;
 mod ship_stages;
 mod waves;
 mod window;
@@ -552,6 +553,7 @@ impl Fleet {
         let frames = (f64::from(through) * 60.0).floor() as u32;
         for frame in self.next_frame..=frames {
             let ship_staged = self.ship_staged();
+            let ship_cleanup = self.ship_cleanup_enabled();
             self.seconds = (f64::from(frame) / 60.0) as f32;
             self.sessions[0]
                 .world
@@ -756,16 +758,20 @@ impl Fleet {
                                 .unwrap()
                                 .erase_ship(0)?;
                         }
-                        self.sessions[0].controller.take();
-                        self.sessions[0]
-                            .world
-                            .borrow_mut()
-                            .release_owner(self.sessions[0].owner);
-                        self.visible[0] = false;
-                        if let Some(drive) = &mut self.drive {
-                            drive.groups[0].deleted = true;
+                        if !ship_cleanup {
+                            self.sessions[0].controller.take();
+                            self.sessions[0]
+                                .world
+                                .borrow_mut()
+                                .release_owner(self.sessions[0].owner);
+                            if let Some(drive) = &mut self.drive {
+                                drive.groups[0].deleted = true;
+                            }
                         }
-                        self.snapshot("first_released");
+                        self.visible[0] = false;
+                        if !ship_cleanup {
+                            self.snapshot("first_released");
+                        }
                     }
                     _ => {}
                 }
@@ -780,7 +786,13 @@ impl Fleet {
                     .native
                     .as_mut()
                     .unwrap()
-                    .finish_lifecycle();
+                    .finish_lifecycle()?;
+            }
+            if ship_cleanup {
+                self.apply_ship_cleanup()?;
+                if !self.preview && frame == 120 {
+                    self.snapshot("first_released");
+                }
             }
             self.next_frame = frame + 1;
         }
@@ -1073,6 +1085,9 @@ fn load(options: &Options) -> Result<Fleet> {
     }
     if options.native_ship_stages {
         fleet.enable_native_ship_stages()?;
+    }
+    if options.native_ship_cleanup {
+        fleet.enable_native_ship_cleanup()?;
     }
     Ok(fleet)
 }

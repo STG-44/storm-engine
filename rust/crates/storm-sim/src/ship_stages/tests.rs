@@ -99,7 +99,7 @@ fn native_ship_priorities_dispatch_registry_and_lifecycle_match_complete_cpp_sna
                 .iter()
                 .map(|&id| json!([id.raw(), manager.is_valid(id), manager.get(id).is_some()]))
                 .collect::<Vec<_>>();
-            manager.new_lifecycle();
+            manager.new_lifecycle().unwrap();
             let after = ids
                 .iter()
                 .map(|&id| json!([id.raw(), manager.is_valid(id), manager.get(id).is_some()]))

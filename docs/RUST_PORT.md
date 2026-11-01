@@ -2,11 +2,13 @@
 
 Started: 2026-10-17.
 
-Current increment: [shared ship and sea entity dispatch](SHIP_STAGES.md).
-Retained ship movement/rocking now runs in Execute callbacks on the same
-manager that dispatches sea Realize, with native priority defaults and deferred
-entity cleanup. Model presentation and input/output copies remain explicit
-bridges. Full native mount/destructor services and global layers remain pending.
+Current increment: [ship destructor and cascading cleanup](SHIP_CLEANUP.md).
+Retained destructor requests now delete logical groups by their original ship /
+model owners through a checked registry teardown boundary. The fleet connects
+that cleanup to its fire/particle owners and sail drive. Geometry proxies,
+presentation, complete Mount and GPU service compaction remain explicit gaps.
+Preceding [shared ship/sea dispatch](SHIP_STAGES.md) retains numeric callbacks,
+native priority defaults and deferred entity release.
 Preceding [SEA camera/frame boundaries](SEA_STAGES.md) continue to supply the
 native view and query-before-preparation behavior.
 Preceding [surface](SEA_SURFACE.md) and [weather controls](SEA_WEATHER.md) remain

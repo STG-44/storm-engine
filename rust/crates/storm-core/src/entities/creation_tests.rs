@@ -117,7 +117,7 @@ fn rejected_and_error_initialization_defer_destruction_without_rolling_back_attr
     assert!(trace.borrow().dropped.is_empty());
     let before_cleanup = manager.create("ok", &mut store, None)?;
     assert_eq!(before_cleanup.raw(), (3_u64 << 32) | 2);
-    manager.new_lifecycle();
+    manager.new_lifecycle().unwrap();
     assert_eq!(trace.borrow().dropped, [ids[1], ids[0]]);
     let reused = manager.create("ok", &mut store, None)?;
     assert_eq!(reused.raw(), 4_u64 << 32);
@@ -191,7 +191,7 @@ fn init_can_create_children_and_parent_failure_keeps_child_side_effects() -> Res
     assert!(manager.ids("parent").is_empty());
     let child = manager.ids("child")[0];
     assert_eq!(child.raw(), (2_u64 << 32) | 1);
-    manager.new_lifecycle();
+    manager.new_lifecycle().unwrap();
     assert!(manager.is_valid(child));
     Ok(())
 }
@@ -227,7 +227,7 @@ fn recursive_init_is_bounded_and_every_failed_instance_remains_queued_for_cleanu
     assert_eq!(manager.deleted.len(), 32);
     assert!(manager.ids("recursive").is_empty());
     assert_eq!(dropped.get(), 0);
-    manager.new_lifecycle();
+    manager.new_lifecycle().unwrap();
     assert_eq!(dropped.get(), 32);
     Ok(())
 }
@@ -244,7 +244,7 @@ fn self_deletion_during_init_defers_cleanup_and_retains_the_original_return_id()
                     .is_err()
             );
             ctx.manager.erase(ctx.id);
-            ctx.manager.new_lifecycle();
+            ctx.manager.new_lifecycle().unwrap();
             assert!(ctx.manager.get(ctx.id).is_some());
             assert!(!self.0.get());
             Ok(true)
@@ -264,7 +264,7 @@ fn self_deletion_during_init_defers_cleanup_and_retains_the_original_return_id()
     assert_ne!(id, EntityId::INVALID);
     assert!(!manager.is_valid(id));
     assert!(!dropped.get());
-    manager.new_lifecycle();
+    manager.new_lifecycle().unwrap();
     assert!(dropped.get());
     Ok(())
 }
@@ -291,7 +291,7 @@ fn registry_and_instance_budgets_recover_after_deferred_deletion() -> Result<()>
     let first = manager.ids("class0")[0];
     manager.erase(first);
     assert!(manager.create("class0", &mut store, None).is_err());
-    manager.new_lifecycle();
+    manager.new_lifecycle().unwrap();
     let next = manager.create("class0", &mut store, None)?;
     assert_eq!(next.raw(), ((MAX_ENTITIES as u64 + 1) << 32));
     assert!(!manager.is_valid(first));
@@ -462,7 +462,7 @@ fn native_creation_matches_unedited_cpp_manager_cache_entity_and_registry() -> R
                         replay.borrow().history[n as usize]
                     });
                 }
-                "f" => manager.new_lifecycle(),
+                "f" => manager.new_lifecycle()?,
                 _ => unreachable!(),
             }
             let records = replay.borrow();

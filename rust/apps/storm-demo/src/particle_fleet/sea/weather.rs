@@ -177,11 +177,25 @@ impl Session {
             .unwrap()
             .erase(&mut self.host.entities, index)
     }
-    pub fn finish_lifecycle(&mut self) {
-        self.host.entities.new_lifecycle();
+    pub fn finish_lifecycle(&mut self) -> Result<()> {
+        self.host.entities.new_lifecycle()
     }
     pub fn ships_report(&self) -> Option<Json> {
         self.ships.as_ref().map(|s| s.report(&self.host.entities))
+    }
+    pub fn enable_cleanup(
+        &mut self,
+        controllers: Vec<std::rc::Weak<RefCell<Controller>>>,
+    ) -> Result<()> {
+        self.ships
+            .as_mut()
+            .unwrap()
+            .enable_cleanup(&mut self.host.entities, controllers)
+    }
+    pub fn cleanup_world(&self) -> Option<Rc<RefCell<ship_cleanup::World>>> {
+        self.ships
+            .as_ref()
+            .and_then(ship_stages::Ships::cleanup_world)
     }
     pub fn realize(&mut self, delta_ms: u32) -> Result<bool> {
         let before = self.stage.borrow().applied;

@@ -19,6 +19,7 @@ pub mod sail_rope;
 pub mod sail_topology;
 pub mod sail_wave;
 pub mod sea;
+pub mod ship_cleanup;
 pub mod ship_motion;
 pub mod ship_parameters;
 pub mod ship_placement;

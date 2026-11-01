@@ -1,5 +1,9 @@
 # Shared ship and sea entity dispatch
 
+The subsequent [ship-cleanup increment](SHIP_CLEANUP.md) retains destructor
+requests and logical group deletion through a checked teardown context. The
+scope and evidence below describe the preceding dispatch checkpoint.
+
 The opt-in `--native-ship-stages` mode requires `--native-sea-stages` and its
 dependencies. It runs retained ship movement, 36-point rocking and optional
 living-pose arithmetic inside each ship entity's Execute callback, using the

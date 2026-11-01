@@ -95,7 +95,7 @@ fn lookup_and_delete_preserve_full_ids_and_defer_native_destruction() -> Result<
             .value()?,
         "19"
     );
-    host.entities.new_lifecycle();
+    host.entities.new_lifecycle().unwrap();
     assert!(host.entities.get(host.id).is_none());
     let new = host
         .entities

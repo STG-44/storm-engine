@@ -213,7 +213,7 @@ fn deletion_defers_drop_and_slot_reuse_rejects_stale_ids() -> Result<()> {
     );
     core.process_stage(Stage::Execute, 5)?;
     assert!(log.borrow().is_empty());
-    core.new_lifecycle();
+    core.new_lifecycle().unwrap();
     assert_eq!(*log.borrow(), [10]);
     assert!(core.get(first).is_none());
     assert!(core.layer_ids(LayerType::Execute).is_empty());

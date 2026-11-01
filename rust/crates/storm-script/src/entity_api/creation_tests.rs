@@ -321,7 +321,7 @@ fn native_init_exceeding_script_attribute_budgets_invalidates_the_unreturned_ent
     assert!(host.entities.get(created).is_some());
     host.ship = Variable::new(Value::Int(0));
     assert_eq!(host.world.live_nodes()?, 0);
-    host.entities.new_lifecycle();
+    host.entities.new_lifecycle().unwrap();
     assert!(host.entities.get(created).is_none());
     Ok(())
 }

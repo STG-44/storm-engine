@@ -98,8 +98,19 @@ impl State {
     pub fn erase_ship(&mut self, index: usize) -> Result<()> {
         self.weather.as_mut().unwrap().erase_ship(index)
     }
-    pub fn finish_lifecycle(&mut self) {
-        self.weather.as_mut().unwrap().finish_lifecycle();
+    pub fn finish_lifecycle(&mut self) -> Result<()> {
+        self.weather.as_mut().unwrap().finish_lifecycle()
+    }
+    pub fn enable_cleanup(
+        &mut self,
+        controllers: Vec<std::rc::Weak<RefCell<Controller>>>,
+    ) -> Result<()> {
+        self.weather.as_mut().unwrap().enable_cleanup(controllers)
+    }
+    pub fn cleanup_world(&self) -> Option<Rc<RefCell<ship_cleanup::World>>> {
+        self.weather
+            .as_ref()
+            .and_then(weather::Session::cleanup_world)
     }
 }
 impl Fleet {

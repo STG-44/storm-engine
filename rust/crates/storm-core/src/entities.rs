@@ -40,6 +40,11 @@ pub trait Entity {
         Ok(true)
     }
     fn process_stage(&mut self, _stage: Stage, _delta_ms: u32) {}
+    /// Explicit native destructor work, before the registry entry is released.
+    /// Rust Drop must not re-enter the manager.
+    fn destroy(&mut self, _context: &mut EntityDestroy<'_>) -> Result<()> {
+        Ok(())
+    }
     fn process_message(&mut self, _message: &mut Message) -> Result<u64> {
         Ok(0)
     }
@@ -67,6 +72,14 @@ pub struct EntityInit<'a> {
     pub id: EntityId,
     pub attributes: Option<AttributeId>,
     pub store: &'a mut AttributeStore,
+    pub manager: &'a mut EntityManager,
+}
+
+/// Layers have been removed and the ID is invalid, but teardown lookups and
+/// attribute bindings remain available. Further erasures join the same queue.
+pub struct EntityDestroy<'a> {
+    pub id: EntityId,
+    pub attributes: Option<AttributeId>,
     pub manager: &'a mut EntityManager,
 }
 
@@ -143,6 +156,7 @@ pub struct EntityManager {
     stamp: u32,
     factories: BTreeMap<String, Factory>,
     init_depth: usize,
+    lifecycle_active: bool,
 }
 impl EntityManager {
     /// Like the retained registry's first matching VMA, the first registration
@@ -346,20 +360,47 @@ impl EntityManager {
             self.deleted.push(id.0 as u32 as usize);
         }
     }
-    pub fn new_lifecycle(&mut self) {
+    pub fn new_lifecycle(&mut self) -> Result<()> {
         // Never destroy/reuse an instance whose Init is still on the stack.
         // The next lifecycle boundary after Init performs the queued cleanup.
-        if self.init_depth != 0 {
-            return;
+        if self.init_depth != 0 || self.lifecycle_active {
+            return Ok(());
         }
+        self.lifecycle_active = true;
+        let mut failure = None;
         while let Some(index) = self.deleted.pop() {
-            let entry = self.entries[index].take().expect("pending entity exists");
+            let entry = self.entries[index].as_ref().expect("pending entity exists");
+            let (id, attributes, instance) = (entry.id, entry.attributes, entry.entity.clone());
             for layer in &mut self.layers {
-                layer.entries.retain(|(_, id)| *id != entry.id);
+                layer.entries.retain(|(_, member)| *member != id);
             }
+            let mut entity = match instance.try_borrow_mut() {
+                Ok(entity) => entity,
+                Err(error) => {
+                    self.deleted.push(index);
+                    failure.get_or_insert(anyhow!(error).context("reentrant entity destruction"));
+                    break;
+                }
+            };
+            if let Err(error) = entity.destroy(&mut EntityDestroy {
+                id,
+                attributes,
+                manager: self,
+            }) {
+                // Teardown side effects are not transactional. Finish releasing
+                // this entry and drain queued dependencies before returning it.
+                failure.get_or_insert(error);
+            }
+            drop(entity);
+            let entry = self.entries[index]
+                .take()
+                .expect("destroying entity exists");
             drop(entry);
+            drop(instance);
             self.free.push(index);
         }
+        self.lifecycle_active = false;
+        failure.map_or(Ok(()), Err)
     }
     pub fn set_layer_type(&mut self, index: u8, kind: LayerType) -> Result<()> {
         self.layer_mut(index)?.kind = kind;
@@ -456,3 +497,5 @@ impl EntityManager {
 
 #[cfg(test)]
 mod creation_tests;
+#[cfg(test)]
+mod teardown_tests;

@@ -100,6 +100,9 @@ struct Options {
     /// Dispatch retained ship movement/rocking through the sea's entity manager.
     #[arg(long, requires = "native_sea_stages")]
     native_ship_stages: bool,
+    /// Use retained ship destructor requests and checked cascading entity cleanup.
+    #[arg(long, requires = "native_ship_stages")]
+    native_ship_cleanup: bool,
     /// External folder containing sea0000.tga..sea0063.tga; otherwise synthetic input.
     #[arg(long, requires = "native_sea")]
     sea_frames_dir: Option<PathBuf>,

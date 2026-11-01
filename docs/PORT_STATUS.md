@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after shared ship/sea entity dispatch:
+Planning snapshot, 2026-11-01, after retained ship destructor requests:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -45,6 +45,11 @@ The [shared ship-dispatch increment](SHIP_STAGES.md) runs retained movement and
 rocking inside actual ship Execute callbacks, with native priorities and deferred
 registry cleanup. Numeric input/output and model presentation remain preview
 bridges; full mount/destructor services and global entity integration are pending.
+
+The [ship-cleanup increment](SHIP_CLEANUP.md) adds checked destructor callbacks,
+native request ownership/order, logical group deletion and cascading registry
+release. Preview particle/sail ownership follows those requests. Geometry
+destruction, service buffer compaction and complete Mount remain pending.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the
