@@ -240,7 +240,7 @@ impl State {
                 .as_ref()
                 .unwrap();
             if let Some(native) = &rocking.native {
-                self.scenes[i].set_native_sea(native.sea.surface().clone())?;
+                self.scenes[i].set_native_sea(native.sea.borrow().surface().clone())?;
             } else {
                 self.scenes[i].set_waves(rocking.waves)?;
             }

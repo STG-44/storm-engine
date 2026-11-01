@@ -593,7 +593,7 @@ impl Fleet {
                 let elapsed = (f64::from(frame) * 1000.0 / 60.0).round() as u32;
                 let delta = elapsed - motion.elapsed_ms;
                 if let Some(native) = motion.rocking.as_mut().and_then(|r| r.native.as_mut()) {
-                    native.sea.advance(delta)?;
+                    native.advance(delta)?;
                 }
                 for index in 0..2 {
                     if self.visible[index] {
@@ -606,7 +606,7 @@ impl Fleet {
                                 rocking: &mut rocking.bodies[index],
                                 reflect: rocking.native.is_none(),
                                 sea: if let Some(native) = &rocking.native {
-                                    &mut native.sea.surface().clone()
+                                    &mut native.sea.borrow().surface().clone()
                                 } else {
                                     &mut rocking.sea
                                 },
@@ -830,7 +830,7 @@ impl Fleet {
                 if let Some(rocking) = self.native_motion.as_ref().and_then(|m| m.rocking.as_ref())
                 {
                     if let Some(native) = &rocking.native {
-                        scene.set_native_sea(native.sea.surface().clone())?;
+                        scene.set_native_sea(native.sea.borrow().surface().clone())?;
                     } else {
                         scene.set_waves(rocking.waves)?;
                     }
@@ -901,6 +901,19 @@ fn load(options: &Options) -> Result<Fleet> {
     }
     if options.native_sea {
         fleet.enable_native_sea(options.sea_frames_dir.as_deref())?;
+        if options.native_sea_weather {
+            fleet
+                .native_motion
+                .as_mut()
+                .unwrap()
+                .rocking
+                .as_mut()
+                .unwrap()
+                .native
+                .as_mut()
+                .unwrap()
+                .enable_weather()?;
+        }
     }
     if options.native_ship_placement {
         fleet.enable_native_placement(options.ship_immersion, options.ship_waterline)?;

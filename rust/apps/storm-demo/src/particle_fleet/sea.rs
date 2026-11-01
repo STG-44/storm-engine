@@ -1,10 +1,12 @@
 //! Original frame bytes are external; generated fixtures keep CI asset-free.
 use super::*;
+mod weather;
 use std::path::Path;
 use storm_sim::sea::{CELLS, FRAMES, Frames, Parameters, Sea};
 
 pub(super) struct State {
-    pub sea: Sea,
+    pub sea: Rc<RefCell<Sea>>,
+    weather: Option<weather::Session>,
     external: bool,
 }
 
@@ -46,12 +48,28 @@ impl State {
             Frames::fixture()
         };
         Ok(Self {
-            sea: Sea::new(Arc::new(frames), Parameters::default())?,
+            sea: Rc::new(RefCell::new(Sea::new(
+                Arc::new(frames),
+                Parameters::default(),
+            )?)),
+            weather: None,
             external: folder.is_some(),
         })
     }
+    pub fn enable_weather(&mut self) -> Result<()> {
+        self.sea.borrow_mut().enable_weather();
+        self.weather = Some(weather::Session::new(self.sea.clone())?);
+        Ok(())
+    }
+    pub fn advance(&mut self, delta_ms: u32) -> Result<()> {
+        if let Some(weather) = &mut self.weather {
+            weather.advance(delta_ms)?;
+        }
+        self.sea.borrow_mut().advance(delta_ms)
+    }
     pub fn report(&self) -> Json {
-        let s = self.sea.surface();
+        let sea = self.sea.borrow();
+        let s = sea.surface();
         let hash = s
             .maps()
             .iter()
@@ -59,11 +77,16 @@ impl State {
             .fold(14695981039346656037u64, |h, b| {
                 (h ^ u64::from(b)).wrapping_mul(1099511628211)
             });
-        json!({"frame_source":if self.external {"external_original_tga"}else{"synthetic_fixture"},"frames":64,"side":128,
+        let mut report = json!({"frame_source":if self.external {"external_original_tga"}else{"synthetic_fixture"},"frames":64,"side":128,
             "amplitude_bits":s.parameters.amplitude.map(f32::to_bits),"scale_bits":s.parameters.scale.map(f32::to_bits),
             "frame_bits":s.animation.frame.map(f32::to_bits),"movement_bits":s.animation.movement.map(|r|r.map(f32::to_bits)),
             "camera_bits":s.camera.map(f32::to_bits),"camera_provider":"explicit_fixed_native_origin","max_distance_bits":s.parameters.max_distance.to_bits(),
-            "prepared_fnv1a64":hash.to_string(),"weather_provider":"original_edit_mode_defaults","native_entity_order":false})
+            "prepared_fnv1a64":hash.to_string(),"weather_provider":"original_edit_mode_defaults","native_entity_order":false});
+        if let Some(weather) = &self.weather {
+            report["weather_provider"] = json!("script_attribute_callbacks");
+            report["weather"] = weather.report(&sea);
+        }
+        report
     }
 }
 
@@ -143,5 +166,101 @@ mod tests {
         );
         a.present_at(3.0, false).unwrap();
         assert_eq!(a.motion_report().unwrap(), report);
+    }
+    #[test]
+    fn script_weather_updates_live_sea_holds_stop_and_preserves_partition_and_restart() {
+        fn fleet() -> Fleet {
+            let mut f = generated().unwrap();
+            f.enable_native_motion();
+            f.enable_native_rocking().unwrap();
+            f.enable_native_sea(None).unwrap();
+            f.native_motion
+                .as_mut()
+                .unwrap()
+                .rocking
+                .as_mut()
+                .unwrap()
+                .native
+                .as_mut()
+                .unwrap()
+                .enable_weather()
+                .unwrap();
+            f
+        }
+        let mut a = fleet();
+        let mut b = fleet();
+        a.advance_frames(3.0).unwrap();
+        a.present_at(3.0, false).unwrap();
+        b.advance_frames(0.5).unwrap();
+        let calm = b.motion_report().unwrap();
+        assert_eq!(calm["rocking"]["sea"]["amplitude_bits"], json!([0, 0]));
+        assert!(
+            calm["rocking"]["bodies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(
+                    |body| body["height_bits"].as_array().unwrap().iter().all(|row| row
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|v| v == 0))
+                )
+        );
+        b.advance_frames(1.5).unwrap();
+        let stopped = b.motion_report().unwrap();
+        assert_eq!(stopped["rocking"]["sea"]["weather"]["stopped"], true);
+        b.advance_frames(1.75).unwrap();
+        let held = b.motion_report().unwrap();
+        assert_eq!(
+            held["rocking"]["sea"]["prepared_fnv1a64"],
+            stopped["rocking"]["sea"]["prepared_fnv1a64"]
+        );
+        assert_eq!(
+            held["rocking"]["sea"]["frame_bits"],
+            stopped["rocking"]["sea"]["frame_bits"]
+        );
+        assert_ne!(
+            held["bodies"][1]["position_bits"],
+            stopped["bodies"][1]["position_bits"]
+        );
+        b.advance_frames(2.5).unwrap();
+        let pending = b.motion_report().unwrap();
+        let pending = &pending["rocking"]["sea"];
+        assert_ne!(
+            pending["weather"]["raw_amplitude_bits"],
+            pending["amplitude_bits"]
+        );
+        b.advance_frames(3.0).unwrap();
+        b.present_at(3.0, false).unwrap();
+        assert_eq!(a.motion_report(), b.motion_report());
+        let report = a.motion_report().unwrap();
+        let weather = &report["rocking"]["sea"]["weather"];
+        assert_eq!(weather["delivered_events"], 6);
+        assert_eq!(weather["pending_events"], 0);
+        assert_eq!(weather["attribute_callbacks"], 24);
+        assert_eq!(
+            report["rocking"]["sea"]["amplitude_bits"],
+            json!([0.8_f32.to_bits(), 0.2_f32.to_bits()])
+        );
+        let refreshed = weather["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| v["realize_zero_requested"] == true)
+            .collect::<Vec<_>>();
+        assert_eq!(refreshed.len(), 5);
+        assert_eq!(
+            refreshed
+                .iter()
+                .filter(|v| v["realize_zero_applied"] == true)
+                .count(),
+            4
+        );
+        a.present_at(3.0, false).unwrap();
+        assert_eq!(a.motion_report().unwrap(), report);
+        let initial = fleet().motion_report().unwrap();
+        assert_eq!(initial, fleet().motion_report().unwrap());
+        assert_eq!(initial["rocking"]["sea"]["weather"]["delivered_events"], 0);
     }
 }

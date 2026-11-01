@@ -4,7 +4,9 @@ The first marine-integration increment retains the numeric surface pipeline in
 `src/libs/sea/src/sea.cpp`: raw bump bytes from Init, normal construction from
 BuildVolumeTexture, CalculateHeightMap, CalculateNormalMap, Realize's frame and
 movement arithmetic, and scalar WaveXZ. The Rust module is `storm-sim::sea`.
-The full SEA entity and original water rendering are not complete.
+The full SEA entity and original water rendering are not complete. The next
+[weather-attribute increment](SEA_WEATHER.md) adds numeric attribute controls
+and a script/entity fixture; full weather/camera/entity integration is pending.
 
 ## Retained behavior
 

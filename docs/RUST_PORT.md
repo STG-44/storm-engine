@@ -2,12 +2,13 @@
 
 Started: 2026-10-17.
 
-Current increment: [native scalar sea surface](SEA_SURFACE.md).
-Original bump-frame preparation, normal packing, temporal interpolation and
-WaveXZ queries now feed retained ship rocking and the preview water sampler.
-The input maps can come from external original TGA files. Weather/camera
-providers and scheduling remain explicit; full SEA and original rendering are
-pending. The preceding [camera-driven sail detail](SAIL_LOD.md) is retained.
+Current increment: [scalar SEA weather attributes](SEA_WEATHER.md).
+Original pending/effective amplitude ordering, layer animation/movement controls,
+stop/resume and zero-time preparation now receive script/entity notifications.
+The diagnostic weather fixture drives the same surface used by ship rocking
+and water sampling. The preceding [scalar surface](SEA_SURFACE.md) remains
+validated; full weather/camera/entity and original rendering integration remain
+pending.
 
 Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), continuing
 from the retained scalar SEA pipeline toward weather/service integration. Complete one repeatable

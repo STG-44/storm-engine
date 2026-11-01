@@ -91,6 +91,9 @@ struct Options {
     /// Use retained SEA maps/queries for both ship rocking and water sampling.
     #[arg(long, requires = "native_ship_rocking")]
     native_sea: bool,
+    /// Exercise original SEA surface attribute callbacks through a timed script fixture.
+    #[arg(long, requires = "native_sea")]
+    native_sea_weather: bool,
     /// External folder containing sea0000.tga..sea0063.tga; otherwise synthetic input.
     #[arg(long, requires = "native_sea")]
     sea_frames_dir: Option<PathBuf>,

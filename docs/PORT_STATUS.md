@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-01, after the first scalar-sea increment:
+Planning snapshot, 2026-11-01, after scalar-sea weather controls:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -30,6 +30,11 @@ The original scalar bump/normal preparation and WaveXZ surface now feed rocking
 and the preview GPU sampler, with explicit weather/camera and scheduling
 providers. Original rendering and full SEA integration remain pending. These
 checks establish the documented scope, not a percentage of the engine.
+
+The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
+amplitude/animation/movement controls and stop/resume through a script/entity
+fixture. This is another bounded integration step; full weather and native
+entity/camera scheduling remain pending.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the

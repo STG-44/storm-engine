@@ -2,6 +2,7 @@
 //! Texture loading, weather attributes and native entity scheduling are providers.
 use anyhow::{Result, ensure};
 use std::sync::Arc;
+pub mod weather;
 
 pub const SIDE: usize = 128;
 pub const CELLS: usize = SIDE * SIDE;
@@ -127,8 +128,7 @@ impl Parameters {
                 .chain(self.move_speed.into_iter().flatten())
                 .chain([self.max_distance, self.max_distance * self.max_distance])
                 .all(f32::is_finite)
-                && self.animation_speed.into_iter().all(|v| v >= 0.0)
-                && self.max_distance >= 0.0,
+                && self.animation_speed.into_iter().all(|v| v >= 0.0),
             "invalid SEA parameters"
         );
         Ok(())
@@ -257,12 +257,14 @@ impl crate::ship_rocking::SeaSurface for Surface {
 pub struct Sea {
     frames: Arc<Frames>,
     surface: Surface,
+    weather: Option<weather::Weather>,
 }
 impl Sea {
     pub fn new(frames: Arc<Frames>, parameters: Parameters) -> Result<Self> {
         parameters.validate()?;
         let mut sea = Self {
             frames,
+            weather: None,
             surface: Surface {
                 parameters,
                 animation: Animation::default(),
@@ -284,10 +286,21 @@ impl Sea {
     /// Retained Realize animation arithmetic, bounded to one second per call.
     /// Failed updates leave the published surface unchanged; pausing calls no step.
     pub fn advance(&mut self, delta_ms: u32) -> Result<()> {
+        if self.weather.as_ref().is_some_and(|w| w.stopped) {
+            return Ok(());
+        }
         ensure!(delta_ms <= 1000, "SEA update exceeds one second");
         let p = self.surface.parameters;
         p.validate()?;
         let delta = delta_ms as f32 * 0.001;
+        let movement_y = self
+            .weather
+            .as_ref()
+            .map(|w| std::array::from_fn::<_, 2, _>(|i| w.movement_y[i] + delta * w.speed_y[i]));
+        ensure!(
+            movement_y.is_none_or(|v| v.into_iter().all(f32::is_finite)),
+            "SEA vertical movement overflow"
+        );
         let mut a = self.surface.animation;
         for l in 0..2 {
             for i in 0..2 {
@@ -324,6 +337,9 @@ impl Sea {
         }
         self.surface.animation = a;
         self.surface.maps = Arc::new(maps);
+        if let Some(weather) = &mut self.weather {
+            weather.movement_y = movement_y.unwrap();
+        }
         Ok(())
     }
 }

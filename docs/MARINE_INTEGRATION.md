@@ -16,7 +16,8 @@ do not require full naval AI, every weather effect or final visual polish first.
 
 First increment: [scalar sea surface](SEA_SURFACE.md) now retains bump/normal
 preparation, frame interpolation and WaveXZ, coupled to ship rocking and the
-preview sampler. The remaining items below still include full weather,
+preview sampler. The [weather-attribute increment](SEA_WEATHER.md) adds numeric attribute changes
+and script/entity notification dispatch. The remaining items below include full weather,
 service/camera scheduling and original rendering integration.
 
 - Port original SEA height/normal sampling and its prepared wave-frame inputs.

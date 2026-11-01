@@ -41,14 +41,20 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         });
     let frames = Arc::new(storm_sim::sea::Frames::fixture());
     for amplitude in [[8.0, 1.0], [0.0, 0.0], [-2.0, 0.75]] {
-        let mut sea = storm_sim::sea::Sea::new(
-            frames.clone(),
-            storm_sim::sea::Parameters {
-                amplitude,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        let mut sea = storm_sim::sea::Sea::new(frames.clone(), Default::default()).unwrap();
+        sea.enable_weather();
+        let mut attributes = storm_core::AttributeStore::default();
+        let root = attributes.create_root().unwrap();
+        for (path, value) in [
+            ("Sea2.Amp1", amplitude[0].to_string()),
+            ("Sea2.Amp2", amplitude[1].to_string()),
+            ("MaxSeaHeight", "50".into()),
+            ("MaxSeaDistance", "-1600".into()),
+        ] {
+            let changed = attributes.create_path(root, path).unwrap();
+            attributes.set_value(changed, Some(&value)).unwrap();
+            sea.attribute_changed(&attributes, root, changed).unwrap();
+        }
         sea.set_camera([7.0, -9.0]).unwrap();
         for _ in 0..11 {
             sea.advance(1000).unwrap();
