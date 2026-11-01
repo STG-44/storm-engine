@@ -869,3 +869,16 @@ tests and nine fleet-window frames; Metal passes 21 render tests, three paused
 new-mode window frames and six captures. Native mast physics/group migration,
 RNG, camera LOD, rope constraints and full scheduling remain pending.
 See [free cloth scope](SAIL_FREE.md).
+
+
+The [rope-constraint PR run](https://github.com/STG-44/storm-engine/actions/runs/41254007411)
+passes all four hosts for `d9042cd7`: 380 CPU tests, 30 scenarios and 120 complete
+JSON reports matching local output with verified archive digests. All preceding
+29 reports remain unchanged. The native oracle covers 78 profiles / 546 endpoint
+queries / 900 finite snapshots and 6 non-finite outcomes. All 40 original roots /
+368 sails pass, including 271 with rotation records and 714 tied anchor slots.
+Linux passes 22 Vulkan tests and twelve fleet-window frames; Metal passes 22
+render tests, three paused new-mode window frames and seven captures. Current-turn
+rope outputs are retained by free cloth, including release at time zero. Native
+registration/pointer ownership, deletion, full matrix/entity scheduling and
+camera LOD remain pending. See [rope scope](SAIL_ROPES.md).

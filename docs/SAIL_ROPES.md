@@ -88,3 +88,36 @@ verify atomic rejection. Integration checks geometry/cloth/rope feedback, damage
 reversals, partitioned presentation and owner release; GPU checks change only
 the live rope endpoints and restore the preceding image. Commercial assets,
 captures and local evidence stay outside Git.
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `d9042cd77271450ceb0b89a8b1798a50590c0018` passes the [PR run](https://github.com/STG-44/storm-engine/actions/runs/41254007411)
+on Linux, Windows, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, builds, 380 CPU tests (135 interpreter) and 30 scenarios.
+Four ZIP digests and all 120 complete JSON reports match local output, including
+rope records, hard/tie points, limits, sphere, geometry and cloth/index fields.
+All preceding 29 reports remain unchanged; host triples/counts are checked in logs.
+
+Linux passes 22 software Vulkan tests and twelve fleet-window frames, including
+three paused rope-mode frames. Local Metal passes 22 render tests and three
+paused new-mode window frames. Seven generated/original captures cover all three
+sets, folding and owner release; original full/normal frames were visually
+inspected. Three-frame presentation does not establish manual keyboard testing.
+Hosted Windows/macOS physical GPU/window coverage remains open.
+
+All 40 original roots / 368 sails pass: 271 sails have rotation records and 714
+anchor slots are tied, with zero held turns. Current/saved geometry, full cloth,
+rope feedback and unchanged normals/UVs pass finite/routing checks. Metadata,
+parameters, motion and owners pass; 274 fire locators retain 548 survivor systems /
+822 finite world rows / 12,243 living particles. Boat has zero sail drive; rowing
+remains pending. The UBSan oracle regenerates byte-identically: 78 profiles /
+546 endpoint queries / 900 finite snapshots / 6 native non-finite outcomes.
+
+A regression test first reproduced stale pPos storage when free cloth followed
+TurnSail, then passed with current-turn synchronization, including release at
+time zero. The cancelled intermediate run is not validation evidence. The final
+run covers the corrected code. Native registration/pointer/deletion lifetime,
+complete matrix accumulation, camera LOD and game scheduling remain pending.
+Commercial resources, captures and local evidence stay outside Git; earlier
+whole-profile and manual damage audits were not repeated.
