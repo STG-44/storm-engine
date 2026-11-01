@@ -64,3 +64,33 @@ This advances the [marine checkpoint](MARINE_INTEGRATION.md). Original ship
 mount/destruction services, native model rendering, global script startup,
 sea rendering and naval gameplay remain pending. The whole-engine estimate
 remains about 20% (roughly 15–25%); land gameplay is included in that scope.
+
+
+## Platform evidence, 2026-11-01
+
+Code `7ebac6eb90c579d2c4d3737d8e5639dcfde2e6df` passes Windows x86_64, Linux x86_64 and macOS Intel in
+[PR run 41339626007](https://github.com/STG-44/storm-engine/actions/runs/41339626007). Complete job logs
+confirm formatting, warnings-denied Clippy, native builds and 404 CPU tests
+(135 interpreter) on each of these three hosts. All 105 complete JSON reports
+over 35 scenarios match local values without rounding or tolerances, and three
+original ZIP SHA256 digests are verified. All 34 preceding reports are unchanged.
+
+The macOS Apple Silicon job is still queued with no assigned runner at this
+checkpoint. It has not been validated for this code commit. Four-host completion
+and 140 matching reports must not be inferred from the three completed jobs.
+The existing run remains queued; no duplicate run was started.
+
+Linux additionally passes 24 software Vulkan tests and 27 fleet-window frames,
+including three paused shared-dispatch frames. Local Metal passes 24 GPU tests
+and three paused shared-dispatch frames on a bounded retry. An initial window
+attempt started without completing presentation; the unchanged baseline and
+the retry both completed. Manual input/restart and hosted Windows/macOS physical
+GPU coverage remain untested.
+
+The native 32-profile / 512-snapshot fixture regenerates byte-identically.
+Original-resource rough/stopped captures with ArabellaShip1, native sea frames,
+placement, parameters, sail drive, rolling, ropes and LOD match the preceding
+mode pixel for pixel; the rough capture was visually inspected. The earlier
+40-root audit was not repeated. Resources, captures and local reports remain
+outside Git. The integration limitations above and the whole-engine estimate
+of about 20% (roughly 15–25%) remain unchanged.
