@@ -24,14 +24,12 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest code validation](SAIL_LOD.md#four-platform-evidence-2026-11-01)
-checks 385 CPU tests per host, 31 scenarios and 124 matching complete reports,
-including camera-selected presentation detail.
-These establish the documented implementations, not a percentage of the engine.
-The new [scalar SEA increment](SEA_SURFACE.md) adds original bump-frame/normal
-preparation and WaveXZ sampling shared with ship rocking and the GPU preview.
-Local native reference, CPU and Metal checks pass; four-host validation of this
-increment is tracked separately from the preceding camera-detail evidence.
+limited. The [latest scalar-sea validation](SEA_SURFACE.md#four-platform-evidence-2026-11-01)
+checks 389 CPU tests per host, 32 scenarios and 128 matching complete reports.
+The original scalar bump/normal preparation and WaveXZ surface now feed rocking
+and the preview GPU sampler, with explicit weather/camera and scheduling
+providers. Original rendering and full SEA integration remain pending. These
+checks establish the documented scope, not a percentage of the engine.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the

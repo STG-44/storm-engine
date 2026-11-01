@@ -909,3 +909,14 @@ uses the near grid; immutable presentation replay supplies camera detail without
 advancing physics or phases. Full native camera/entity scheduling remains pending.
 See [camera-detail scope](SAIL_LOD.md). The whole-engine planning estimate remains
 about 20%, including the substantial unfinished land/gameplay work.
+
+
+The [scalar-sea PR run](https://github.com/STG-44/storm-engine/actions/runs/41295824324)
+passes all four desktop hosts for `70f81a34`: 389 CPU tests per host and 128
+complete reports matching local output across 32 scenarios, with four verified
+archive digests. All preceding 31 reports remain unchanged. Linux passes 24
+Vulkan tests and 18 fleet-window frames; local Metal passes 24 GPU tests and
+three paused native-sea frames. A short original-resource check covers all 40
+ship roots and 20,160 sea queries. Scalar SEA shares prepared maps with rocking
+and preview water; original weather/camera/entity scheduling and water rendering
+remain pending. See [surface evidence](SEA_SURFACE.md#four-platform-evidence-2026-11-01).

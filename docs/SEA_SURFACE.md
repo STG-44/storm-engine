@@ -77,3 +77,36 @@ snapshots, invalid-update atomicity, fixed-step partitioning, repeated paused
 presentation and independent owner removal. CI runs CPU tests on all four
 desktop hosts and the explicit GPU sampler/render/window checks on Linux Vulkan;
 local checks use Metal. Hosted Windows/macOS physical GPUs remain uncovered.
+
+
+## Four-platform evidence, 2026-11-01
+
+Code `70f81a34fbee9f2cfe60376cd6be527afbcbecb0` passes [PR run 41295824324](https://github.com/STG-44/storm-engine/actions/runs/41295824324)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel: formatting,
+warnings-denied Clippy, native builds and 389 CPU tests (135 interpreter) per
+host. Four archive SHA256 digests and all 128 complete JSON reports (32 scenarios
+on each host) match local output. All 31 preceding reports remain unchanged.
+Host triples and actual test counts are checked from complete job logs.
+
+Linux passes 24 software Vulkan tests and 18 fleet-window frames, including
+three paused native-sea frames. Local Metal passes 24 GPU tests and three paused
+native-sea window frames. The sampler agreement test checks 192 GPU queries
+within 0.0001 per component. The unedited C++ oracle regenerates byte-identically:
+64 normal maps, 64 complete prepared surfaces and 6144 height/normal queries.
+These include fractional interpolation from frame 63 to frame 0 in both layers.
+
+All 40 original ship roots pass a short seven-step (0.1 second), two-instance
+rocking check against external original sea frames: 20,160 finite height queries
+using root GM dimensions. This is a surface/bounds check, not a repeat of the
+previous whole-profile damage/particle audit or a long sailing/gameplay test.
+Three captures cover synthetic ships/frames, synthetic ships/original frames
+and original ships/original frames; the latter two were visually inspected.
+
+Pause/partition and owner-release tests preserve independent rocking state.
+The water and ships share immutable prepared maps, with explicit coordinate
+reflection at the renderer boundary. The fixture still supplies EditMode_Update
+layer defaults, a fixed native sampling camera and its own update schedule.
+Original rendering, weather/entity integration and playable naval combat remain
+pending. Hosted Windows/macOS physical GPUs and manual keyboard/restart actions
+were not exercised. Commercial resources, captures and local reports remain
+outside Git. The whole-engine planning estimate remains about 20% (15–25%).
