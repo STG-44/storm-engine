@@ -902,17 +902,7 @@ fn load(options: &Options) -> Result<Fleet> {
     if options.native_sea {
         fleet.enable_native_sea(options.sea_frames_dir.as_deref())?;
         if options.native_sea_weather {
-            fleet
-                .native_motion
-                .as_mut()
-                .unwrap()
-                .rocking
-                .as_mut()
-                .unwrap()
-                .native
-                .as_mut()
-                .unwrap()
-                .enable_weather()?;
+            fleet.enable_native_sea_weather()?;
         }
     }
     if options.native_ship_placement {

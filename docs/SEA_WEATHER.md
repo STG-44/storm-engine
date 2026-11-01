@@ -61,6 +61,13 @@ adapter and its incomplete native entity scheduling. The water and both ships
 observe the same resulting surface. Dropping a ship does not drop the sea;
 viewer restart constructs a fresh script, attribute tree and surface.
 
+Weather-mode world-particle pose histories opt into pinned trigonometry and
+scalar transform/interpolation arithmetic. The initial cross-host comparison
+exposed a one-float-ULP difference in two world-particle bounds on Linux and
+Apple Silicon. These preview frame calculations now use an explicit shared
+policy; existing modes retain their preceding history behavior. This is a
+presentation adapter, not the full original matrix/entity service.
+
 ## Validation
 
 `storm-sim/reference/sea_weather/generate.py` compiles the complete unedited

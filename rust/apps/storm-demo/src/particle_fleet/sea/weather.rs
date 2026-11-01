@@ -102,7 +102,7 @@ impl Session {
     }
     pub fn report(&self, sea: &Sea) -> Json {
         let w = sea.weather().unwrap();
-        json!({"source":"sea_weather.c","original_game_scripts":false,"native_class":"sea","entity":self.host.id.raw(),"full_native_entity":false,
+        json!({"source":"sea_weather.c","original_game_scripts":false,"native_class":"sea","entity":self.host.id.raw(),"full_native_entity":false,"particle_frame_math":"pinned_trig_scalar_pose_history",
             "raw_amplitude_bits":w.raw_amplitude.map(f32::to_bits),"max_height_bits":w.max_height.to_bits(),"stopped":w.stopped,"vertical_speed_bits":w.speed_y.map(f32::to_bits),"vertical_movement_bits":w.movement_y.map(f32::to_bits),
             "delivered_events":self.delivered,"pending_events":self.runtime.pending_events(),"attribute_callbacks":self.records.borrow().len(),"changes":*self.records.borrow()})
     }

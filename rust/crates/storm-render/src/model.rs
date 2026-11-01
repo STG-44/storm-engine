@@ -70,6 +70,38 @@ pub struct ModelPose {
     pub roll: f32,
 }
 impl ModelPose {
+    /// Preview T*Ry*Rx*Rz with pinned trig and scalar operation order.
+    /// This adapter is separate from the native CMatrix/entity accumulation.
+    pub fn pinned_matrix(self) -> Result<[f32; 16]> {
+        ensure!(
+            self.translation
+                .into_iter()
+                .chain([self.yaw, self.pitch, self.roll])
+                .all(f32::is_finite),
+            "invalid pinned model pose"
+        );
+        let (sy, cy) = (libm::sinf(self.yaw), libm::cosf(self.yaw));
+        let (sx, cx) = (libm::sinf(self.pitch), libm::cosf(self.pitch));
+        let (sz, cz) = (libm::sinf(self.roll), libm::cosf(self.roll));
+        Ok([
+            cy * cz + sy * sx * sz,
+            cx * sz,
+            -sy * cz + cy * sx * sz,
+            0.0,
+            -cy * sz + sy * sx * cz,
+            cx * cz,
+            sy * sz + cy * sx * cz,
+            0.0,
+            sy * cx,
+            -sx,
+            cy * cx,
+            0.0,
+            self.translation[0],
+            self.translation[1],
+            self.translation[2],
+            1.0,
+        ])
+    }
     pub fn matrix(self) -> Result<Mat4> {
         ensure!(
             self.translation.iter().all(|v| v.is_finite())

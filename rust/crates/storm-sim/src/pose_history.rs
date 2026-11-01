@@ -80,8 +80,19 @@ mod tests {
 #[derive(Debug, Default)]
 pub struct PoseHistory {
     samples: RwLock<Vec<PoseSample>>,
+    pinned_math: bool,
 }
 impl PoseHistory {
+    /// Opt-in preview frame policy; immutable for the entire recorded history.
+    pub fn with_pinned_math() -> Self {
+        Self {
+            samples: RwLock::default(),
+            pinned_math: true,
+        }
+    }
+    pub fn uses_pinned_math(&self) -> bool {
+        self.pinned_math
+    }
     pub fn read(&self) -> Result<RwLockReadGuard<'_, Vec<PoseSample>>> {
         self.samples
             .read()

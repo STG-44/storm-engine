@@ -1782,6 +1782,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "glam",
+ "libm",
  "naga",
  "png",
  "pollster",

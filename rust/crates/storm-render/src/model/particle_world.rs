@@ -55,15 +55,32 @@ impl WorldEmitter {
         } else {
             (frames[end - 1], frames[end])
         };
-        let point = Vec3::from_array(self.point);
-        let first = ModelPose::from(a).matrix()?.transform_point3(point);
-        let second = ModelPose::from(b).matrix()?.transform_point3(point);
         let k = if a.seconds == b.seconds {
             0.0
         } else {
             ((seconds - a.seconds) / (b.seconds - a.seconds)).clamp(0.0, 1.0) as f32
         };
-        let p = first + (second - first) * k;
+        let p = if self.history.uses_pinned_math() {
+            let point = |sample| -> Result<[f32; 3]> {
+                let m = ModelPose::from(sample).pinned_matrix()?;
+                Ok(std::array::from_fn(|i| {
+                    m[i] * self.point[0]
+                        + m[4 + i] * self.point[1]
+                        + m[8 + i] * self.point[2]
+                        + m[12 + i]
+                }))
+            };
+            let first = point(a)?;
+            let second = point(b)?;
+            Vec3::from_array(std::array::from_fn(|i| {
+                first[i] + (second[i] - first[i]) * k
+            }))
+        } else {
+            let point = Vec3::from_array(self.point);
+            let first = ModelPose::from(a).matrix()?.transform_point3(point);
+            let second = ModelPose::from(b).matrix()?.transform_point3(point);
+            first + (second - first) * k
+        };
         // FirePlace passes these as Euler RADIANS to PARTICLE_SYSTEM::SetEmitter.
         Transform::from_euler([0.0, 1.0, 0.0], [p.x, p.y, -p.z])
     }

@@ -91,6 +91,24 @@ impl State {
 }
 
 impl Fleet {
+    pub(super) fn enable_native_sea_weather(&mut self) -> Result<()> {
+        ensure!(
+            self.next_frame == 0,
+            "weather fixture must start before history recording"
+        );
+        self.native_motion
+            .as_mut()
+            .and_then(|m| m.rocking.as_mut())
+            .and_then(|r| r.native.as_mut())
+            .ok_or_else(|| anyhow::anyhow!("weather requires native sea"))?
+            .enable_weather()?;
+        for asset in &mut self.assets {
+            asset.ship_state.particle_history = Some(Arc::new(
+                storm_sim::pose_history::PoseHistory::with_pinned_math(),
+            ));
+        }
+        Ok(())
+    }
     pub(super) fn enable_native_sea(&mut self, folder: Option<&Path>) -> Result<()> {
         let sea = State::load(folder)?;
         let rocking = self
@@ -174,17 +192,14 @@ mod tests {
             f.enable_native_motion();
             f.enable_native_rocking().unwrap();
             f.enable_native_sea(None).unwrap();
-            f.native_motion
-                .as_mut()
-                .unwrap()
-                .rocking
-                .as_mut()
-                .unwrap()
-                .native
-                .as_mut()
-                .unwrap()
-                .enable_weather()
-                .unwrap();
+            f.enable_native_sea_weather().unwrap();
+            assert!(f.assets.iter().all(|a| {
+                a.ship_state
+                    .particle_history
+                    .as_ref()
+                    .unwrap()
+                    .uses_pinned_math()
+            }));
             f
         }
         let mut a = fleet();

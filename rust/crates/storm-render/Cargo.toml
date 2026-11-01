@@ -10,6 +10,7 @@ repository.workspace = true
 anyhow.workspace = true
 bytemuck.workspace = true
 glam.workspace = true
+libm.workspace = true
 storm-formats = { path = "../storm-formats" }
 storm-sim = { path = "../storm-sim" }
 png.workspace = true
