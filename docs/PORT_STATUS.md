@@ -24,14 +24,15 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest shared-runtime validation](ENGINE_RUNTIME.md#four-platform-evidence-2026-11-02)
-checks 420 CPU tests per host, 36 scenarios, 144 exact complete reports and four
-exact configured startup traces. The separate headless engine now binds script
-objects/messages/layers to common frame ownership. Production classes/window,
-full language/API, controls/audio and state loading remain pending. Rigging
-compaction/storage is validated separately; original geometry/service/draw
-integration is still incomplete. These checks establish the documented scope,
-not a percentage of the engine.
+limited. The [latest static-model validation](STATIC_MODELS.md#platform-evidence-and-hosted-arm-gap-2026-11-02)
+checks 424 CPU tests on Windows, Linux and macOS Intel, 108 exact reports and three
+startup traces. Hosted ARM execution is unavailable because no runner was
+acquired on either attempt; the overall run is not green. The exact source and
+all ten test executables cross-build/link for ARM locally, without execution.
+The preceding shared-runtime increment retains its separate four-host evidence.
+Production window/sea/camera, full model/geometry/lighting, language/API,
+controls/audio and state loading remain pending. These checks establish the
+documented scope, not a percentage of the engine.
 
 The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
 amplitude/animation/movement controls and stop/resume through a script/entity

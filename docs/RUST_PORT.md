@@ -1001,3 +1001,14 @@ passes 25 Vulkan tests and 30 existing fleet-window frames. No GPU code changes
 in this increment; local Metal tests were not repeated. This is configured
 headless startup and shared script/entity scheduling, not complete original game
 startup or production native services. See [runtime evidence](ENGINE_RUNTIME.md#four-platform-evidence-2026-11-02).
+
+
+The [static-model run](https://github.com/STG-44/storm-engine/actions/runs/41497563377)
+validates `6a70a47c` on Windows, Linux and macOS Intel: 424 CPU tests per host,
+three verified archive digests, 108 exact complete reports over the existing 36
+scenarios and three exact startup traces. Linux passes 26 Vulkan tests and 30
+existing fleet-window frames; Metal passes 26 GPU tests. Apple Silicon could
+not obtain a hosted runner on either attempt, so the overall run remains red
+and native ARM tests remain unexecuted. The exact source and all ten test
+executables cross-build/link for ARM locally; that is not ARM test execution.
+See [platform evidence and ARM gap](STATIC_MODELS.md#platform-evidence-and-hosted-arm-gap-2026-11-02).

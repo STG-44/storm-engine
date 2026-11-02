@@ -88,3 +88,38 @@ identity. These are source-derived contract/integration tests, not a new full
 native MODELR/NODER differential oracle or complete lighting comparison.
 Resources and local captures remain outside Git. Full-engine coverage remains
 about 20% (roughly 15–25%).
+
+
+## Platform evidence and hosted ARM gap, 2026-11-02
+
+Code `6a70a47cc8a1b4fc0d99d15ca0a5f51a7cdae8a8` passes native Windows x86_64, Linux x86_64
+and macOS Intel jobs in [PR run 41497563377](https://github.com/STG-44/storm-engine/actions/runs/41497563377).
+Complete logs verify formatting, warnings-denied Clippy, native builds, target
+triples and 424 CPU tests per host (135 interpreter, ten runtime). Three original
+artifact ZIP SHA256 digests are verified; all 108 complete JSON reports over the
+existing 36 scenarios and all three configured startup traces match local values
+exactly. All 36 preceding reports remain unchanged.
+
+Linux additionally passes 26 software Vulkan tests and the existing 30 fleet
+window frames. Local Metal passes 26 GPU tests. The native model test checks
+static hierarchies, shared texture-prefix/reload behavior, full matrix transfer,
+owner removal and stage faults. GPU readback additionally checks actual color /
+pose changes, restoration, failed-request preservation, empty rendering and fresh
+sessions reusing IDs/revisions. The actual headless engine also captures the
+upstream cannon with a generated texture; local captures were visually inspected.
+
+The Apple Silicon job was cancelled while queued on both attempts. GitHub check
+annotations state that no hosted runner was acquired and identify macOS arm64
+capacity constraints. The overall run is therefore not green; native ARM tests
+have not executed. Only that ARM job was requested again after the first cancel.
+
+A clean detached copy of this exact source successfully builds and links the
+entire workspace plus all ten test executables for `aarch64-apple-darwin` with
+pinned Rust 1.96.0 on the Intel Mac. All four application/tool binaries are
+verified Mach-O arm64. This is cross-build evidence, not native ARM execution or
+physical ARM GPU/input acceptance. Hosted ARM verification remains open.
+
+Native window/TIMER work is a separate uncommitted increment and is excluded
+from these checks. Complete model/geometry/lighting, camera/sea, collision,
+animation and original gameplay remain pending. Full-engine coverage stays about
+20% (roughly 15–25%). Resources/captures/local reports remain outside Git.
