@@ -25,6 +25,9 @@ services, SAIL/ROPE entity scheduling and original model drawing remain pending.
 The [ship-cleanup increment](SHIP_CLEANUP.md) retains destructor request order,
 logical group marks and checked cascading registry release. Original geometry
 destruction, service compaction and complete Mount remain pending.
+The [rigging-compaction library](RIG_COMPACTION.md) now retains the four layout /
+buffer-decision algorithms with a tested wgpu buffer owner. Native geometry fills
+and fleet service wiring remain pending; original rendering is not established.
 The remaining items below include full weather,
 service/camera scheduling and original rendering integration.
 

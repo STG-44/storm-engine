@@ -13,6 +13,7 @@ mod particle_style;
 pub use particle_replay::{BirthStats, MotionStats, ParticleStream};
 pub use particle_style::{MAX_PARTICLE_LIFETIME, MotionProfile, ParticleStyle};
 pub use storm_formats::particles::profile_key as particle_profile_key;
+pub mod rig_buffers;
 mod rigging;
 mod sail_damage;
 mod sails;

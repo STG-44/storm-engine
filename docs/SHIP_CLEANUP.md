@@ -1,5 +1,9 @@
 # Ship destructor requests and cascading entity cleanup
 
+The subsequent [rigging-compaction library](RIG_COMPACTION.md) ports layout and
+buffer decisions. Its original geometry fills and live service wiring remain
+pending. The evidence below describes the preceding cleanup checkpoint.
+
 The opt-in `--native-ship-cleanup` mode requires `--native-ship-stages` and its
 dependencies. It retains the SHIP destructor's service request order and logical
 group-deletion behavior, and connects them to the fleet's owner/effect cleanup.

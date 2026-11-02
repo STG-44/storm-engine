@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-02, after retained ship destructor requests:
+Planning snapshot, 2026-11-02, after rigging-compaction library ports:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -50,6 +50,10 @@ The [ship-cleanup increment](SHIP_CLEANUP.md) adds checked destructor callbacks,
 native request ownership/order, logical group deletion and cascading registry
 release. Preview particle/sail ownership follows those requests. Geometry
 destruction, service buffer compaction and complete Mount remain pending.
+
+The [rigging-compaction library](RIG_COMPACTION.md) adds retained layout /
+buffer-replacement rules and a tested wgpu storage port. Original geometry fills,
+full group payloads and live service/render integration remain pending.
 
 The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
 original sea/coupled simulation and one playable naval encounter before the

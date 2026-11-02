@@ -2,11 +2,12 @@
 
 Started: 2026-10-17.
 
-Current increment: [ship destructor and cascading cleanup](SHIP_CLEANUP.md).
-Retained destructor requests now delete logical groups by their original ship /
-model owners through a checked registry teardown boundary. The fleet connects
-that cleanup to its fire/particle owners and sail drive. Geometry proxies,
-presentation, complete Mount and GPU service compaction remain explicit gaps.
+Current increment: [rigging compaction and buffer ownership](RIG_COMPACTION.md).
+All four retained rigging compaction helpers now have scalar layout ports and a
+wgpu buffer-intent owner with explicit geometry-fill hooks. Fleet scheduling,
+complete native geometry and drawing through these buffers remain pending.
+Preceding [ship destructor/cleanup](SHIP_CLEANUP.md) connects logical requests to
+the preview's fire/particle owners and sail drive through checked teardown.
 Preceding [shared ship/sea dispatch](SHIP_STAGES.md) retains numeric callbacks,
 native priority defaults and deferred entity release.
 Preceding [SEA camera/frame boundaries](SEA_STAGES.md) continue to supply the
