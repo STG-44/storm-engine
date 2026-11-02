@@ -90,3 +90,28 @@ The next step is to attach a real model/sea subsystem and native window to this
 same runtime, extending language/API compatibility alongside that scene. See
 the [complete-engine sequence](ENGINE_ROADMAP.md). Full-game coverage remains
 about 20% (roughly 15–25%); runnable fixtures are not complete game startup.
+
+
+## Four-platform evidence, 2026-11-02
+
+Code `6ebb5d15484e884c788344a6064c41a225103234` passes [PR run 41490786016](https://github.com/STG-44/storm-engine/actions/runs/41490786016)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Complete
+logs verify formatting, warnings-denied Clippy, native builds, target triples
+and 420 CPU tests per host, including 135 interpreter and seven new runtime
+tests. Each host also runs the configured `storm-engine` executable.
+
+Four original artifact ZIP SHA256 digests are verified. All 144 complete JSON
+reports over the existing 36 scenarios match local values exactly, and all four
+new startup traces match the same Main/posted/frame/delta/exit line sequence.
+All 36 preceding reports remain unchanged. Linux additionally passes 25 software
+Vulkan tests and the existing 30 fleet-window frames. No GPU code changes in
+this runtime increment; local Metal tests were not repeated.
+
+Local startup also checks the external installed resource root: its configuration
+correctly reports that the required PROGRAM directory is absent. No commercial
+programs/resources are included in the fixture or repository. That missing data
+and full language/native-service compatibility remain requirements for original
+game acceptance. Production classes/window, controls/audio, state loading and
+complete service lifecycle remain pending. The next uncommitted static-model
+integration is excluded from this evidence. Whole-engine coverage remains about
+20% (roughly 15–25%).

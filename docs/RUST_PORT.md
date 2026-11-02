@@ -985,3 +985,13 @@ frames; Metal passes 25 GPU tests. The native reference matches 768 complete
 compaction/layout/buffer-intent snapshots. Original geometry fills, full group
 payloads, service scheduling and live fleet buffer/draw integration remain pending.
 See [rigging evidence](RIG_COMPACTION.md#four-platform-evidence-2026-11-02).
+
+
+The [shared-runtime PR run](https://github.com/STG-44/storm-engine/actions/runs/41490786016)
+passes all four desktop hosts for `6ebb5d15`: 420 CPU tests per host, four
+verified artifact digests, 144 exact complete reports over the existing 36
+scenarios and four exact configured engine-startup traces. Linux additionally
+passes 25 Vulkan tests and 30 existing fleet-window frames. No GPU code changes
+in this increment; local Metal tests were not repeated. This is configured
+headless startup and shared script/entity scheduling, not complete original game
+startup or production native services. See [runtime evidence](ENGINE_RUNTIME.md#four-platform-evidence-2026-11-02).
