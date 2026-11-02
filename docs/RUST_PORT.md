@@ -955,3 +955,13 @@ fleet-window frames; Metal passes 24 GPU tests and three paused dispatch frames.
 The native priority/dispatch/registry reference matches 512 complete snapshots.
 Full mount/destructor services, original drawing and global scheduling remain
 pending. See [dispatch evidence](SHIP_STAGES.md#four-platform-evidence-2026-11-01).
+
+
+The [ship-cleanup PR run](https://github.com/STG-44/storm-engine/actions/runs/41342681953)
+passes all four desktop hosts for `9a2f4065`: 411 CPU tests per host and 144
+complete matching reports over 36 scenarios, with four verified archive digests.
+All 35 preceding reports remain unchanged. Linux passes 24 Vulkan tests and 30
+fleet-window frames; Metal passes 24 GPU tests and three paused cleanup frames.
+The native destructor/group/registry reference matches 512 complete snapshots.
+Original geometry release, service compaction and complete Mount remain pending.
+See [cleanup evidence](SHIP_CLEANUP.md#four-platform-evidence-2026-11-02).

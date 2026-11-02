@@ -77,3 +77,40 @@ cloth output, fixed-step partitions, fresh sessions and repeated cleanup.
 This advances the [marine checkpoint](MARINE_INTEGRATION.md). Original service
 updates/rendering, complete Mount and broader naval gameplay remain unfinished.
 Whole-engine coverage, including land, remains about 20% (roughly 15–25%).
+
+
+## Four-platform evidence, 2026-11-02
+
+Code `9a2f406579a619fd5b75216f50b3738df169d210` passes [PR run 41342681953](https://github.com/STG-44/storm-engine/actions/runs/41342681953)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Complete
+job logs verify formatting, warnings-denied Clippy, native builds, target triples
+and 411 CPU tests (135 interpreter) on each host. Four original ZIP SHA256 digests
+are verified; all 144 complete JSON reports over 36 scenarios match local values
+without rounding or tolerances. All 35 preceding reports remain unchanged.
+
+Linux additionally passes 24 software Vulkan tests and 30 fleet-window frames,
+including three paused cleanup-mode frames. It also renders an offscreen
+surviving-ship scene.
+Local Metal passes 24 GPU tests and three paused cleanup-mode window frames.
+The native 64-profile / 512-snapshot fixture regenerates byte-identically.
+
+The three-second integration fixture checks all six delete-group requests and
+their original ship/model owner mapping. Model/blots cascade out of the registry,
+the ship leaves tracks and only its controller/particles and sail-drive group
+are released. Numeric bodies and cloth preserve preceding results and fixed-step
+partitions. Repeated erasure/fresh sessions, pending lookup lifetime, attribute
+bindings, recursive deferral and checked teardown errors are also tested.
+
+Three new captures use original ArabellaShip1 and 64 sea frames with the existing
+placement/parameters/drive/rolling/rope/LOD adapters. Rough/stopped frames remain
+pixel-identical to the preceding mode. The post-retirement frame at 2.5 seconds
+was visually inspected and shows one surviving ship with its rig and effects.
+The earlier 40-root audit was not repeated for this ownership increment.
+
+The original Storm script language and game-facing API remain compatibility
+targets; game scripts are not being rewritten into Rust. The interpreter is
+still a bounded subset, not complete original program support. This increment
+does not establish full Mount, geometry destruction, GPU service compaction,
+native rendering or gameplay. Hosted Windows/macOS physical GPU and manual
+input/restart coverage remain pending. Resources, captures and local reports
+stay outside Git. Whole-engine coverage remains about 20% (roughly 15–25%).
