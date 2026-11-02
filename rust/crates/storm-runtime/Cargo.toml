@@ -1,0 +1,16 @@
+[package]
+name = "storm-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+encoding_rs.workspace = true
+storm-core = { path = "../storm-core" }
+storm-script = { path = "../storm-script" }
+
+[lints]
+workspace = true

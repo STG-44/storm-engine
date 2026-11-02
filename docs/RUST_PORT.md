@@ -2,7 +2,13 @@
 
 Started: 2026-10-17.
 
-Current increment: [rigging compaction and buffer ownership](RIG_COMPACTION.md).
+Current increment: [shared engine runtime and configured startup](ENGINE_RUNTIME.md).
+The new headless `storm-engine` entry point owns one script/native world and
+supported core frame order. Production classes, window/input/audio, state loading
+and full original program compatibility remain pending. The complete integration
+sequence now lives in [the engine roadmap](ENGINE_ROADMAP.md).
+Preceding [rigging compaction and buffer ownership](RIG_COMPACTION.md) remains
+validated across all four CI hosts.
 All four retained rigging compaction helpers now have scalar layout ports and a
 wgpu buffer-intent owner with explicit geometry-fill hooks. Fleet scheduling,
 complete native geometry and drawing through these buffers remain pending.
@@ -15,8 +21,9 @@ native view and query-before-preparation behavior.
 Preceding [surface](SEA_SURFACE.md) and [weather controls](SEA_WEATHER.md) remain
 validated in their original diagnostic modes.
 
-Next priority: the [integrated marine checkpoint](MARINE_INTEGRATION.md), continuing
-from the retained scalar SEA pipeline toward weather/service integration. Complete one repeatable
+Next priority: attach actual model/sea entities and native window/rendering to
+the shared runtime while extending script/API compatibility. The first playable
+target is the [integrated marine checkpoint](MARINE_INTEGRATION.md). Complete one repeatable
 naval encounter before the first playable land location. Shared character/deck /
 boarding, interface, audio and persistence systems will span both environments;
 full marine feature completion is not a prerequisite for starting land.
@@ -48,6 +55,8 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Record scope and architecture in the first port commit.
 - [x] Create the Rust workspace, native window, GPU diagnostics, and offscreen rendering.
 - [x] Verify CI builds for all three operating systems.
+- [x] Add a bounded headless engine entry point with configured source startup and shared script/entity frames.
+- [ ] Connect production model/sea classes, native window/input and complete game services to that shared host.
 - [x] Inspect original GM/TX headers with bounded reads and format tests.
 - [x] Decode static GM 1.05 render data and 2D TX mip pixels with bounds checks.
 - [x] Display an original ship with textures, static sails, preview water, and an orbit camera on local macOS Metal.

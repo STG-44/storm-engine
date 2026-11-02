@@ -1,4 +1,17 @@
-# Storm Rust native model preview
+# Storm Rust engine and native model preview
+
+The [shared runtime foundation](../docs/ENGINE_RUNTIME.md) adds a separate
+`storm-engine` entry point, configured source loading and common script/entity
+frames. Its initial path is headless; production game classes, window/services
+and full original program compatibility remain pending. From the repository root:
+
+```sh
+cargo run -p storm-engine --locked -- --game-dir rust/apps/storm-engine/fixtures/startup --script-encoding utf8 --frame-ms 0,9,1,0
+```
+
+This runs newly written compatibility source. Original game scripts retain their
+language and syntax as the engine/runtime/API move to Rust. See the
+[whole-engine sequence](../docs/ENGINE_ROADMAP.md) for sea and land dependencies.
 
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or

@@ -1766,6 +1766,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "storm-engine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "storm-runtime",
+]
+
+[[package]]
 name = "storm-formats"
 version = "0.1.0"
 dependencies = [
@@ -1791,6 +1800,16 @@ dependencies = [
  "storm-formats",
  "storm-sim",
  "wgpu",
+]
+
+[[package]]
+name = "storm-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "encoding_rs",
+ "storm-core",
+ "storm-script",
 ]
 
 [[package]]

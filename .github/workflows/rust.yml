@@ -53,6 +53,10 @@ jobs:
           python -c "import json; s=json.load(open('particle-profile-state.json')); p=s['decoded']; assert p['signature']=='PSYSv3.5' and p['stage']=='raw fields before schema conversion'; assert len(p['emitters'])==1; assert [v['kind'] for v in p['emitters'][0]['particles']]==[1,2]; assert {v['kind'] for v in p['emitters'][0]['particles'][0]['fields']}=={'bool','float','position','string','graph','uv','color'}"
       - name: Build native executable
         run: cargo build --workspace --locked
+      - name: Launch the configured engine runtime foundation
+        run: |
+          cargo run -q -p storm-engine --locked -- --game-dir rust/apps/storm-engine/fixtures/startup --script-encoding utf8 --frame-ms 0,9,1,0 > engine-startup.txt
+          python -c "from pathlib import Path; assert Path('engine-startup.txt').read_text(encoding='utf-8-sig').splitlines()==['runtime-start','pc','frame=1','delta=0','frame=2','delta=9','posted','frame=3','delta=1','frame=4','delta=0','exit']"
       - name: Execute Storm source subset and native attribute bindings
         run: |
           cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
@@ -264,8 +268,11 @@ jobs:
             sea-stages-state.json
             ship-stages-state.json
             ship-cleanup-state.json
+            engine-startup.txt
             target/debug/storm-script
             target/debug/storm-script.exe
+            target/debug/storm-engine
+            target/debug/storm-engine.exe
           if-no-files-found: error
       - name: Upload native attribute roundtrip fixture
         uses: actions/upload-artifact@v7

@@ -360,6 +360,15 @@ impl EntityManager {
             self.deleted.push(id.0 as u32 as usize);
         }
     }
+    /// Snapshot of valid IDs in storage order for embedding-owned shutdown.
+    pub fn all_ids(&self) -> Vec<EntityId> {
+        self.entries
+            .iter()
+            .flatten()
+            .filter(|entry| entry.valid)
+            .map(|entry| entry.id)
+            .collect()
+    }
     pub fn new_lifecycle(&mut self) -> Result<()> {
         // Never destroy/reuse an instance whose Init is still on the stack.
         // The next lifecycle boundary after Init performs the queued cleanup.

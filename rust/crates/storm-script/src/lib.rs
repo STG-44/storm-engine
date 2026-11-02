@@ -62,6 +62,24 @@ pub trait Host {
     ) -> Result<()> {
         Ok(())
     }
+    fn set_layer_type(&mut self, _index: u8, _kind: storm_core::LayerType) -> Result<()> {
+        bail!("layer types are not bound by this host")
+    }
+    fn add_to_layer(&mut self, _index: u8, _entity: EntityId, _priority: u32) -> Result<()> {
+        bail!("entity layers are not bound by this host")
+    }
+    fn remove_from_layer(&mut self, _index: u8, _entity: EntityId) -> Result<()> {
+        bail!("entity layers are not bound by this host")
+    }
+    fn freeze_layer(&mut self, _index: u8, _frozen: bool) -> Result<()> {
+        bail!("layer freezing is not bound by this host")
+    }
+    fn delta_time(&self) -> Result<u32> {
+        bail!("frame time is not bound by this host")
+    }
+    fn trace(&mut self, _text: &str) -> Result<()> {
+        bail!("script logging is not bound by this host")
+    }
 }
 
 impl Host for () {

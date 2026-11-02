@@ -10,6 +10,11 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "createclass" => (1, Type::Object),
         "sendmessage" => (2, Type::Ptr),
         "deleteclass" | "entityupdate" => (1, Type::Void),
+        "layersetexecute" | "layersetrealize" | "trace" => (1, Type::Void),
+        "layeraddobject" => (3, Type::Void),
+        "layerdelobject" | "layerfreeze" => (2, Type::Void),
+        "getdeltatime" => (0, Type::Int),
+        "gettargetplatform" => (0, Type::String),
         _ => return None,
     })
 }
@@ -30,6 +35,18 @@ fn entity(value: &Value) -> Result<EntityId> {
     }
 }
 
+fn integer(value: &Value) -> Result<i32> {
+    let Value::Int(n) = value.resolved()? else {
+        bail!("core argument requires integer");
+    };
+    Ok(n)
+}
+fn layer(value: &Value) -> Result<u8> {
+    let n = integer(value)?;
+    ensure!((0..32).contains(&n), "layer index must be 0..31");
+    Ok(n as u8)
+}
+
 pub(crate) fn call(
     name: &str,
     arguments: &[Value],
@@ -40,6 +57,42 @@ pub(crate) fn call(
         "entity builtin argument count"
     );
     match name {
+        "layersetexecute" | "layersetrealize" => {
+            let kind = if name == "layersetexecute" {
+                storm_core::LayerType::Execute
+            } else {
+                storm_core::LayerType::Realize
+            };
+            execution.host.set_layer_type(layer(&arguments[0])?, kind)?;
+            Ok(Value::Void)
+        }
+        "layeraddobject" => {
+            execution.host.add_to_layer(
+                layer(&arguments[0])?,
+                entity(&arguments[1])?,
+                integer(&arguments[2])? as u32,
+            )?;
+            Ok(Value::Void)
+        }
+        "layerdelobject" => {
+            execution
+                .host
+                .remove_from_layer(layer(&arguments[0])?, entity(&arguments[1])?)?;
+            Ok(Value::Void)
+        }
+        "layerfreeze" => {
+            execution
+                .host
+                .freeze_layer(layer(&arguments[0])?, integer(&arguments[1])? != 0)?;
+            Ok(Value::Void)
+        }
+        "getdeltatime" => Ok(Value::Int(execution.host.delta_time()? as i32)),
+        // Original FUNC_GETTARGETPLATFORM returns "pc", including native Unix.
+        "gettargetplatform" => Ok(Value::String("pc".into())),
+        "trace" => {
+            execution.host.trace(&arguments[0].clone().path_text()?)?;
+            Ok(Value::Void)
+        }
         "sendmessage" => {
             let id = entity(&arguments[0])?;
             let mut prepared = messages::make(&arguments[1..], &execution.world)?;

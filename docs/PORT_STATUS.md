@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-02, after rigging-compaction library ports:
+Planning snapshot, 2026-11-02, after the shared headless runtime foundation:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -56,8 +56,10 @@ full group payloads and live service/render integration remain pending.
 
 The immediate shared-foundation priority is an actual runtime host and engine
 entry point: rooted game access, configuration, original script entry/events,
-native class/layer bindings and common frame scheduling. The current executable
-is still a diagnostic demo; this host must feed both sea and land gameplay.
+native class/layer bindings and common frame scheduling. The
+[initial shared host](ENGINE_RUNTIME.md) now has a separate headless
+`storm-engine` entry point; production window/services and complete game startup
+remain pending. This host must feed both sea and land gameplay.
 The [integrated marine checkpoint](MARINE_INTEGRATION.md) remains the first
 playable target: original sea/coupled simulation and one naval encounter before
 the first land location. Shared character/deck/boarding, interface, audio and
