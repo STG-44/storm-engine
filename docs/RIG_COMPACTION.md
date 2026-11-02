@@ -64,3 +64,27 @@ full group payloads, geometry fills, live fleet buffer wiring and rendering must
 still be integrated. Original Storm scripts remain compatibility inputs; their
 language and syntax are preserved while the engine/runtime/API move to Rust.
 The whole-engine estimate remains about 20% (roughly 15–25%).
+
+
+## Four-platform evidence, 2026-11-02
+
+Code `ecdba85c3bc31cfac0c881a3387f1f00956e4a1c` passes [PR run 41373941089](https://github.com/STG-44/storm-engine/actions/runs/41373941089)
+on Windows x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Full logs
+verify formatting, warnings-denied Clippy, native builds, target triples and
+413 CPU tests (135 interpreter) on every host. All four original ZIP SHA256
+digests are verified and all 144 complete reports over the existing 36 scenarios
+match local values without rounding or tolerances. All 36 preceding reports
+remain unchanged; no new scene mode is introduced by this library increment.
+
+Linux additionally passes 25 software Vulkan tests and the existing 30 fleet
+window frames. Local Metal passes 25 GPU tests. The new allocation test reads
+actual GPU buffers back for each service after survivor compaction and final
+owner removal, checks native u16 transfer padding and retains the shared sail
+index buffer. The diagnostic payload producer is explicit. Native geometry
+fills and drawing these buffers through live fleet services remain pending.
+The 256-profile / 768-snapshot C++ fixture regenerates byte-identically.
+
+This storage/layout increment does not establish original geometry, service
+startup/scheduling, complete Mount or gameplay. Windows/macOS physical GPU
+acceptance remains pending. Resources and local reports remain outside Git.
+The whole-engine estimate remains about 20% (roughly 15–25%).

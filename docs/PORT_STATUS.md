@@ -24,13 +24,12 @@ ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmeti
 now have reference comparisons; their surrounding services remain incomplete.
 Original resources have been exercised on all 40 available ship roots. CI covers
 Windows, Linux and both macOS architectures; physical GPU coverage remains
-limited. The [latest ship-cleanup validation](SHIP_CLEANUP.md#four-platform-evidence-2026-11-02)
-checks 411 CPU tests per host, 36 scenarios and 144 matching complete reports.
-Retained ship destructor requests now mark their original group owners and drain
-model/blots dependencies through checked registry teardown. Preview fire/particle
-and sail-drive ownership follows that cleanup. Complete Mount, geometry release,
-GPU service compaction, global scheduling and original rendering remain pending.
-These checks establish the documented scope, not a percentage of the engine.
+limited. The [latest rigging-compaction validation](RIG_COMPACTION.md#four-platform-evidence-2026-11-02)
+checks 413 CPU tests per host, 36 scenarios and 144 matching complete reports.
+Retained destructor requests and service compaction/storage rules now have
+native references and GPU readback coverage. Native geometry fills, full group
+payloads, complete Mount, live service integration and original drawing remain
+pending. These checks establish the documented scope, not a percentage of the engine.
 
 The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
 amplitude/animation/movement controls and stop/resume through a script/entity
@@ -55,11 +54,15 @@ The [rigging-compaction library](RIG_COMPACTION.md) adds retained layout /
 buffer-replacement rules and a tested wgpu storage port. Original geometry fills,
 full group payloads and live service/render integration remain pending.
 
-The next priority is an [integrated marine checkpoint](MARINE_INTEGRATION.md):
-original sea/coupled simulation and one playable naval encounter before the
-first land location. Shared character/deck/boarding, interface, audio and save
-systems span both environments; completing every marine feature first is not
-the sequencing goal. This plan update does not change the coverage estimate.
+The immediate shared-foundation priority is an actual runtime host and engine
+entry point: rooted game access, configuration, original script entry/events,
+native class/layer bindings and common frame scheduling. The current executable
+is still a diagnostic demo; this host must feed both sea and land gameplay.
+The [integrated marine checkpoint](MARINE_INTEGRATION.md) remains the first
+playable target: original sea/coupled simulation and one naval encounter before
+the first land location. Shared character/deck/boarding, interface, audio and
+save systems span both environments. This sequencing update does not change
+the coverage estimate.
 
 ## Scope still to cover
 

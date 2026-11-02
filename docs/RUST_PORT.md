@@ -966,3 +966,13 @@ fleet-window frames; Metal passes 24 GPU tests and three paused cleanup frames.
 The native destructor/group/registry reference matches 512 complete snapshots.
 Original geometry release, service compaction and complete Mount remain pending.
 See [cleanup evidence](SHIP_CLEANUP.md#four-platform-evidence-2026-11-02).
+
+
+The [rigging-compaction PR run](https://github.com/STG-44/storm-engine/actions/runs/41373941089)
+passes all four desktop hosts for `ecdba85c`: 413 CPU tests per host and all
+144 complete matching reports over the existing 36 scenarios, with four verified
+archive digests. Linux passes 25 Vulkan tests and 30 existing fleet-window
+frames; Metal passes 25 GPU tests. The native reference matches 768 complete
+compaction/layout/buffer-intent snapshots. Original geometry fills, full group
+payloads, service scheduling and live fleet buffer/draw integration remain pending.
+See [rigging evidence](RIG_COMPACTION.md#four-platform-evidence-2026-11-02).
