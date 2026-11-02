@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn native_model_roots_preserve_full_affine_coordinates_through_the_render_z_reflection() {
+    let native = [
+        2.0, 0.0, 0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 4.0, 5.0, 6.0, 1.0,
+    ];
+    let converted = native_model_matrix(native).unwrap();
+    for point in [[0.0, 0.0, 0.0], [1.0, 2.0, 3.0], [-2.0, 4.0, -1.0]] {
+        let world = Mat4::from_cols_array(&native).transform_point3(point.into());
+        let render = converted.transform_point3(Vec3::new(point[0], point[1], -point[2]));
+        assert_eq!(render, Vec3::new(world.x, world.y, -world.z));
+    }
+    let mut invalid = native;
+    invalid[0] = f32::NAN;
+    assert!(native_model_matrix(invalid).is_err());
+    invalid = native;
+    invalid[15] = 0.0;
+    assert!(native_model_matrix(invalid).is_err());
+    invalid = native;
+    invalid[10] = 0.0;
+    assert!(native_model_matrix(invalid).is_err());
+}
+
+#[test]
 fn native_lod_camera_uses_exactly_the_eye_and_fov_of_the_gpu_view() {
     let a = ModelAsset::ship_demo().unwrap();
     let mut c = OrbitCamera::new(&a);

@@ -1771,7 +1771,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "pollster",
+ "storm-render",
  "storm-runtime",
+ "wgpu",
 ]
 
 [[package]]
@@ -1808,8 +1811,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "encoding_rs",
+ "pollster",
  "storm-core",
+ "storm-formats",
+ "storm-render",
  "storm-script",
+ "wgpu",
 ]
 
 [[package]]

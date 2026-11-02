@@ -10,6 +10,9 @@ repository.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 storm-runtime = { path = "../../crates/storm-runtime" }
+storm-render = { path = "../../crates/storm-render" }
+wgpu.workspace = true
+pollster.workspace = true
 
 [lints]
 workspace = true

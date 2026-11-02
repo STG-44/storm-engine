@@ -11,6 +11,12 @@ anyhow.workspace = true
 encoding_rs.workspace = true
 storm-core = { path = "../storm-core" }
 storm-script = { path = "../storm-script" }
+storm-render = { path = "../storm-render" }
+wgpu.workspace = true
+
+[dev-dependencies]
+storm-formats = { path = "../storm-formats" }
+pollster.workspace = true
 
 [lints]
 workspace = true

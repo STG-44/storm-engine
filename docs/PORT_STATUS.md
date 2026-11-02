@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-02, after the shared headless runtime foundation:
+Planning snapshot, 2026-11-02, after script-created static model integration:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -55,6 +55,11 @@ destruction, service buffer compaction and complete Mount remain pending.
 The [rigging-compaction library](RIG_COMPACTION.md) adds retained layout /
 buffer-replacement rules and a tested wgpu storage port. Original geometry fills,
 full group payloads and live service/render integration remain pending.
+
+The [static MODELR path](STATIC_MODELS.md) connects original geometry/transform /
+texture-prefix messages to real GPU draws through the shared host. Complete
+MODELR/NODER, window/camera/sea, lighting/materials, animation and gameplay remain
+pending; this does not establish a playable land location.
 
 The immediate shared-foundation priority is an actual runtime host and engine
 entry point: rooted game access, configuration, original script entry/events,

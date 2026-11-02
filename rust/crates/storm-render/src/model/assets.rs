@@ -136,6 +136,7 @@ struct TextureFiles {
     root: PathBuf,
     paths: BTreeMap<String, PathBuf>,
     prefixes: Vec<String>,
+    native_prefix: Option<String>,
 }
 impl TextureFiles {
     fn new(game: &Path, model: &Path, override_dir: Option<&Path>) -> Result<Self> {
@@ -188,6 +189,7 @@ impl TextureFiles {
             root,
             paths,
             prefixes,
+            native_prefix: None,
         })
     }
     fn find(&self, name: &str) -> Result<PathBuf> {
@@ -195,6 +197,18 @@ impl TextureFiles {
         let mut name = logical(Path::new(&name))?;
         if !name.ends_with(".tx") {
             name.push_str(".tx");
+        }
+        if let Some(prefix) = &self.native_prefix {
+            ensure!(
+                name != "shadow.tga.tx",
+                "native shadow textures require the unported lighting path"
+            );
+            let candidate = format!("{prefix}{name}");
+            return self
+                .paths
+                .get(&candidate)
+                .cloned()
+                .with_context(|| format!("native model texture not found: {candidate}"));
         }
         for prefix in &self.prefixes {
             let candidate = if prefix.is_empty() {
@@ -436,6 +450,30 @@ impl ModelAsset {
     }
 
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
+        Self::load_impl(path, options, true, None)
+    }
+    /// Static native model hierarchy without preview sails, rigging, crew or
+    /// effects. Texture names use GEOMETRY's literal shared prefix, without
+    /// ship-specific or basename fallbacks.
+    pub fn load_geometry(path: &Path, game: &Path, texture_prefix: &str) -> Result<Self> {
+        let prefix = texture_prefix.replace('\\', "/").to_ascii_lowercase();
+        if !prefix.is_empty() {
+            logical(Path::new(prefix.trim_end_matches('/')))?;
+            ensure!(!prefix.starts_with('/'), "absolute native texture prefix");
+        }
+        let options = LoadOptions {
+            game_dir: Some(game.to_owned()),
+            crew: Some(0),
+            ..Default::default()
+        };
+        Self::load_impl(path, &options, false, Some(&prefix))
+    }
+    fn load_impl(
+        path: &Path,
+        options: &LoadOptions,
+        preview: bool,
+        native_prefix: Option<&str>,
+    ) -> Result<Self> {
         ensure!(
             (options.particle_profiles.is_empty() && options.particle_project.is_none())
                 || (!options.single_mesh && !options.untextured && options.game_dir.is_some()),
@@ -459,7 +497,7 @@ impl ModelAsset {
                 rgba: vec![255; 4],
             }],
         };
-        let files = if options.untextured {
+        let mut files = if options.untextured {
             None
         } else {
             Some(TextureFiles::new(
@@ -471,6 +509,9 @@ impl ModelAsset {
                 options.texture_dir.as_deref(),
             )?)
         };
+        if let Some(files) = &mut files {
+            files.native_prefix = native_prefix.map(str::to_owned);
+        }
         let mut builder = Builder {
             asset: Self {
                 sail_damage: None,
@@ -489,6 +530,7 @@ impl ModelAsset {
             cache: BTreeMap::new(),
             active: BTreeSet::new(),
             single: options.single_mesh,
+            preview,
             rigging: rigging::Collector::default(),
             render_bytes: 4,
         };
@@ -505,7 +547,7 @@ impl ModelAsset {
             Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
             0,
         )?;
-        if !options.single_mesh {
+        if !options.single_mesh && preview {
             builder.add_rigging()?;
             if builder.asset.sails > 0 {
                 if let Some(files) = &builder.files {
@@ -543,7 +585,7 @@ impl ModelAsset {
             builder.asset.center.is_finite() && builder.asset.radius.is_finite(),
             "model bounds overflow"
         );
-        if !options.single_mesh {
+        if !options.single_mesh && preview {
             builder.add_presentation(&stem, options)?;
         }
         Ok(builder.asset)
@@ -556,6 +598,7 @@ struct Builder {
     cache: BTreeMap<PathBuf, usize>,
     active: BTreeSet<PathBuf>,
     single: bool,
+    preview: bool,
     render_bytes: usize,
     rigging: rigging::Collector,
 }
@@ -759,17 +802,19 @@ impl Builder {
             });
         }
         if !self.single {
-            for patch in sails::from_labels(&model.labels, world, node, parent)
-                .with_context(|| format!("sails in {}", path.display()))?
-            {
-                let texture = self.texture("parus_common.tga")?;
-                let mesh = Mesh::sail(patch, texture)?;
-                self.reserve(
-                    mesh.vertices.len() * std::mem::size_of::<ModelVertex>()
-                        + mesh.indices.len() * std::mem::size_of::<u32>(),
-                )?;
-                self.asset.meshes.push(mesh);
-                self.asset.sails += 1;
+            if self.preview {
+                for patch in sails::from_labels(&model.labels, world, node, parent)
+                    .with_context(|| format!("sails in {}", path.display()))?
+                {
+                    let texture = self.texture("parus_common.tga")?;
+                    let mesh = Mesh::sail(patch, texture)?;
+                    self.reserve(
+                        mesh.vertices.len() * std::mem::size_of::<ModelVertex>()
+                            + mesh.indices.len() * std::mem::size_of::<u32>(),
+                    )?;
+                    self.asset.meshes.push(mesh);
+                    self.asset.sails += 1;
+                }
             }
             for label in &model.labels {
                 if label.group == "geometry"

@@ -13,6 +13,11 @@ This runs newly written compatibility source. Original game scripts retain their
 language and syntax as the engine/runtime/API move to Rust. See the
 [whole-engine sequence](../docs/ENGINE_ROADMAP.md) for sea and land dependencies.
 
+The shared executable also supports [original MODELR static messages](../docs/STATIC_MODELS.md).
+With a configured script creating/loading models, add `--headless model.png` to
+render their final frame. This path adds no preview rig/crew/effects or ocean;
+native window, sea/camera and full game services remain pending.
+
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or
 opens an animated resource-free diagnostic sea. Both can render to a PNG without

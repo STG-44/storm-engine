@@ -191,6 +191,7 @@ impl ModelAsset {
         add("fixture", "vants", "vant1r", Vec3::new(-3.0, 1.0, -1.0));
         let (ropes, _, _) = collector.build(&[], &RiggingConfig::default())?;
         let mut builder = Builder {
+            preview: true,
             asset,
             files: None,
             cache: BTreeMap::new(),

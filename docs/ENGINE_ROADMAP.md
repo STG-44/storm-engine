@@ -8,7 +8,7 @@ does not establish the engine's completion percentage.
 | Dependency milestone | Acceptance |
 | --- | --- |
 | Shared runtime startup and core services | One engine host loads configured source, owns script/native objects and frames, exposes original API names and diagnoses missing services. The initial [headless runtime](ENGINE_RUNTIME.md) is a bounded foundation. |
-| Real scripted scene through that host | Register actual model/sea classes, connect native window/rendering and input, and show script-driven changes in the same world. Extend source/compiler/API compatibility alongside the scene. |
+| Real scripted scene through that host | A bounded [MODELR static-message/render path](STATIC_MODELS.md) runs through the shared world. Complete model/sea/camera, native window/input and original rendering while extending source/compiler/API compatibility. |
 | Integrated naval encounter | Complete Mount/transforms, rig geometry and GPU/service lifetime, sea/weather, controls/camera, cannon/projectiles, swept hits, damage, contact/opponent behavior and sinking. |
 | Playable land scene and shared characters | Load a location with animation, player collision/movement, navigation/NPC behavior and combat; reuse these systems for decks and boarding. |
 | Full shared services and transitions | Complete sound, interface/dialogues, remaining rendering/resource APIs and sea/land transitions without replacing the script/world ownership model. |

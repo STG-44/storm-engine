@@ -5,6 +5,8 @@ host and service frame sequence. `storm-engine` loads `engine.ini` and executes
 that host without the ship preview. This initial executable is headless and
 does not yet run the complete game. Native window/input, production classes,
 rendering/audio and state loading still need to be attached to this same host.
+The [static MODELR path](STATIC_MODELS.md) now adds bounded original model
+messages and real GPU draws; full model/sea/game services remain pending.
 
 ## Startup and shared ownership
 
@@ -86,7 +88,7 @@ shutdown errors, persistent globals, source-context failures and rooted legacy
 source loading. Ordering assertions are derived from the native source; this
 increment does not introduce a new full-C++ runtime differential oracle.
 
-The next step is to attach a real model/sea subsystem and native window to this
+The next step is to extend static models with sea/camera and native window in this
 same runtime, extending language/API compatibility alongside that scene. See
 the [complete-engine sequence](ENGINE_ROADMAP.md). Full-game coverage remains
 about 20% (roughly 15–25%); runnable fixtures are not complete game startup.

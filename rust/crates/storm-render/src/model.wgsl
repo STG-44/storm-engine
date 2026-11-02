@@ -28,6 +28,16 @@ struct Output {
     let world_position = object.matrix * vec4(position, 1.0);
     output.clip = camera.view_projection * world_position;
     output.normal = (object.matrix * vec4(normal, 0.0)).xyz;
+    if (object.damage.z != 0u) {
+        // Runtime MODELR roots may include nonuniform scale/shear. Cofactors
+        // give the inverse-transpose direction without division before the
+        // fragment normalizes it. Preview paths retain their preceding math.
+        let x=object.matrix[0].xyz;
+        let y=object.matrix[1].xyz;
+        let z=object.matrix[2].xyz;
+        output.normal=(cross(y,z)*normal.x+cross(z,x)*normal.y+cross(x,y)*normal.z)
+            *sign(dot(x,cross(y,z)));
+    }
     output.uv = uv;
     output.color = color;
     output.world_position = world_position.xyz;

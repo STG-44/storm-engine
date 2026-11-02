@@ -61,6 +61,31 @@ pub struct ModelVertex {
     pub color: [f32; 4],
 }
 
+/// GM vertices already use the renderer's Z reflection. Conjugate the original
+/// row-vector CMatrix bytes by that reflection for a runtime MODELR root.
+pub fn native_model_matrix(mut matrix: [f32; 16]) -> Result<Mat4> {
+    ensure!(
+        matrix.iter().all(|v| v.is_finite()),
+        "nonfinite native model matrix"
+    );
+    ensure!(
+        matrix[3] == 0.0 && matrix[7] == 0.0 && matrix[11] == 0.0 && matrix[15] == 1.0,
+        "native model matrix must be affine"
+    );
+    for (i, value) in matrix.iter_mut().enumerate() {
+        if (i / 4 == 2) != (i % 4 == 2) {
+            *value = -*value;
+        }
+    }
+    let matrix = Mat4::from_cols_array(&matrix);
+    let determinant = matrix.determinant();
+    ensure!(
+        determinant.is_finite() && determinant.abs() > 1e-8,
+        "singular native model matrix"
+    );
+    Ok(matrix)
+}
+
 /// Rigid transform in renderer coordinates; no ship physics is implemented here.
 #[derive(Clone, Copy, Default)]
 pub struct ModelPose {
@@ -133,14 +158,17 @@ pub struct OrbitCamera {
 }
 impl OrbitCamera {
     pub fn new(asset: &ModelAsset) -> Self {
+        Self::from_bounds(asset.center, asset.radius)
+    }
+    pub fn from_bounds(center: Vec3, radius: f32) -> Self {
         Self {
             native_sail_math: false,
             native_sea_view: false,
-            target: asset.center,
+            target: center,
             yaw: 0.85,
             pitch: 0.27,
-            distance: asset.radius * 2.2,
-            radius: asset.radius,
+            distance: radius * 2.2,
+            radius,
         }
     }
     /// Centre-screen swept test shot; the camera and target are world positions.
@@ -286,6 +314,10 @@ impl ObjectUniform {
             damage: [u32::from(mask), u32::from(triangle), 0, 0],
         }
     }
+    fn native_normals(mut self, enabled: bool) -> Self {
+        self.damage[2] = u32::from(enabled);
+        self
+    }
 }
 const OBJECT_BYTES: usize = std::mem::size_of::<ObjectUniform>();
 
@@ -344,6 +376,7 @@ pub struct ModelScene {
     camera_buffer: wgpu::Buffer,
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
+    model_root: Option<Mat4>,
     waves: storm_sim::Waves,
     rig: storm_sim::RigState,
     native_sail_geometry: bool,
@@ -908,6 +941,7 @@ impl ModelScene {
             rig: storm_sim::RigState::uniform(1.0),
             native_sail_geometry: false,
             native_pose_math: false,
+            model_root: None,
             wave_buffer,
             sea_map_buffer,
             sea_uniform_buffer,
@@ -924,6 +958,9 @@ impl ModelScene {
         self.native_pose_math = enabled;
     }
     fn pose_matrix(&self) -> Result<Mat4> {
+        if let Some(matrix) = self.model_root {
+            return Ok(matrix);
+        }
         if self.native_pose_math {
             Ok(Mat4::from_cols_array(&self.pose.pinned_matrix()?))
         } else {
@@ -933,6 +970,10 @@ impl ModelScene {
     pub fn set_pose(&mut self, pose: ModelPose) -> Result<()> {
         pose.matrix()?;
         self.pose = pose;
+        Ok(())
+    }
+    pub fn set_native_model_matrix(&mut self, matrix: Option<[f32; 16]>) -> Result<()> {
+        self.model_root = matrix.map(native_model_matrix).transpose()?;
         Ok(())
     }
     pub fn set_ship_state(&mut self, state: ShipState) -> Result<()> {
@@ -1013,10 +1054,61 @@ impl ModelScene {
         camera: &OrbitCamera,
         wind: SailWind,
     ) -> Result<()> {
+        Self::draw_collection(
+            scenes, gpu, encoder, target, width, height, seconds, camera, wind, true,
+        )
+    }
+    /// Runtime static models without the preview ocean. Empty registered scenes
+    /// clear the frame, including after the final entity is released.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_models(
+        scenes: &mut [Self],
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        camera: &OrbitCamera,
+        wind: SailWind,
+    ) -> Result<()> {
+        Self::draw_collection(
+            scenes, gpu, encoder, target, width, height, seconds, camera, wind, false,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn draw_collection(
+        scenes: &mut [Self],
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        seconds: f32,
+        camera: &OrbitCamera,
+        wind: SailWind,
+        ocean: bool,
+    ) -> Result<()> {
         ensure!(
-            !scenes.is_empty() && scenes.len() <= 16,
+            (!ocean || !scenes.is_empty()) && scenes.len() <= 16,
             "fleet scene count must be 1..=16"
         );
+        if scenes.is_empty() {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Empty runtime model scene"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            return Ok(());
+        }
         let mut total = 0usize;
         for scene in scenes.iter_mut() {
             scene.sync_particle_profiles(gpu)?;
@@ -1058,9 +1150,11 @@ impl ModelScene {
             }),
             ..Default::default()
         });
-        pass.set_bind_group(0, &scenes[0].camera_group, &[0]);
-        pass.set_pipeline(&scenes[0].ocean);
-        pass.draw(0..3, 0..1);
+        if ocean {
+            pass.set_bind_group(0, &scenes[0].camera_group, &[0]);
+            pass.set_pipeline(&scenes[0].ocean);
+            pass.draw(0..3, 0..1);
+        }
         for particles in [false, true] {
             for scene in scenes.iter() {
                 scene.encode_meshes(&mut pass, seconds, particles);
@@ -1347,8 +1441,9 @@ impl ModelScene {
             bytemuck::bytes_of(&sea_uniform),
         );
         let base = self.pose_matrix()?;
-        self.pose_bytes[..OBJECT_BYTES]
-            .copy_from_slice(bytemuck::bytes_of(&ObjectUniform::new(base, 0, false)));
+        self.pose_bytes[..OBJECT_BYTES].copy_from_slice(bytemuck::bytes_of(
+            &ObjectUniform::new(base, 0, false).native_normals(self.model_root.is_some()),
+        ));
         for (i, mesh) in self.meshes.iter().enumerate() {
             let transform = mesh
                 .ship_node
@@ -1361,7 +1456,7 @@ impl ModelScene {
                     if matches!(&mesh.dynamic,Some((DynamicMesh::Particles(p),_)) if p.style.is_some()) {Mat4::IDENTITY} else {base * transform},
                     self.ship_state.sail_holes.get(&i).copied().unwrap_or(0),
                     mesh.sail.as_ref().is_some_and(|(p, _)| p.is_triangle()),
-                ),
+                ).native_normals(self.model_root.is_some()),
             ));
         }
         gpu.queue

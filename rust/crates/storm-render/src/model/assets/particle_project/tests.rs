@@ -62,8 +62,10 @@ impl Fixture {
             paths.insert(name.into(), root.join(name));
         }
         Builder {
+            preview: true,
             asset,
             files: Some(TextureFiles {
+                native_prefix: None,
                 root,
                 paths,
                 prefixes: vec!["ships/override".into(), String::new()],

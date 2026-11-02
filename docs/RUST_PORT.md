@@ -2,7 +2,12 @@
 
 Started: 2026-10-17.
 
-Current increment: [shared engine runtime and configured startup](ENGINE_RUNTIME.md).
+Current increment: [script-created static models](STATIC_MODELS.md).
+Original MODELR geometry/transform/texture-prefix messages feed static GM/TX
+hierarchies and actual GPU draws through the shared host. Full model services,
+window/sea/camera, controls/audio and original game startup remain pending.
+Preceding [shared engine runtime and configured startup](ENGINE_RUNTIME.md)
+is validated across all four native CI hosts.
 The new headless `storm-engine` entry point owns one script/native world and
 supported core frame order. Production classes, window/input/audio, state loading
 and full original program compatibility remain pending. The complete integration
@@ -21,7 +26,7 @@ native view and query-before-preparation behavior.
 Preceding [surface](SEA_SURFACE.md) and [weather controls](SEA_WEATHER.md) remain
 validated in their original diagnostic modes.
 
-Next priority: attach actual model/sea entities and native window/rendering to
+Next priority: attach native window and sea/camera entities to
 the shared runtime while extending script/API compatibility. The first playable
 target is the [integrated marine checkpoint](MARINE_INTEGRATION.md). Complete one repeatable
 naval encounter before the first playable land location. Shared character/deck /
@@ -56,6 +61,7 @@ Gradually replace the C++ engine with Rust while preserving compatibility with S
 - [x] Create the Rust workspace, native window, GPU diagnostics, and offscreen rendering.
 - [x] Verify CI builds for all three operating systems.
 - [x] Add a bounded headless engine entry point with configured source startup and shared script/entity frames.
+- [x] Connect a bounded original MODELR static-message path to actual GPU draws through the shared host.
 - [ ] Connect production model/sea classes, native window/input and complete game services to that shared host.
 - [x] Inspect original GM/TX headers with bounded reads and format tests.
 - [x] Decode static GM 1.05 render data and 2D TX mip pixels with bounds checks.

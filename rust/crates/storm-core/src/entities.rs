@@ -40,6 +40,12 @@ pub trait Entity {
         Ok(true)
     }
     fn process_stage(&mut self, _stage: Stage, _delta_ms: u32) {}
+    /// Fallible production callbacks propagate to the frame owner. Existing
+    /// infallible entities keep their original adapter.
+    fn process_stage_checked(&mut self, stage: Stage, delta_ms: u32) -> Result<()> {
+        self.process_stage(stage, delta_ms);
+        Ok(())
+    }
     /// Explicit native destructor work, before the registry entry is released.
     /// Rust Drop must not re-enter the manager.
     fn destroy(&mut self, _context: &mut EntityDestroy<'_>) -> Result<()> {
@@ -465,7 +471,7 @@ impl EntityManager {
                     .entity
                     .try_borrow_mut()
                     .context("reentrant entity callback")?
-                    .process_stage(stage, delta_ms);
+                    .process_stage_checked(stage, delta_ms)?;
             }
         }
         Ok(())
