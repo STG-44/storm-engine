@@ -3,6 +3,7 @@ use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use storm_runtime::model::{ModelScenes, Models};
 use storm_runtime::{GameDirectory, NativeHost, ScriptEncoding, Startup};
+mod window;
 
 #[derive(Clone, Copy, ValueEnum)]
 enum Encoding {
@@ -27,7 +28,7 @@ impl Backend {
     }
 }
 #[derive(Parser)]
-#[command(about = "Storm engine runtime foundation: configured source startup and headless frames")]
+#[command(about = "Storm runtime: configured source, native window and static model rendering")]
 struct Arguments {
     /// Installed game directory containing engine.ini and original PROGRAM.
     #[arg(long)]
@@ -35,18 +36,27 @@ struct Arguments {
     /// Select the original source text encoding explicitly.
     #[arg(long, value_enum)]
     script_encoding: Encoding,
-    /// Headless frame deltas in milliseconds. Native window/services are pending.
+    /// Explicit headless frame deltas in milliseconds; window mode uses TIMER.
     #[arg(long, value_delimiter = ',', default_value = "16")]
     frame_ms: Vec<u32>,
     /// Render the final script-created static models to PNG. Full game rendering is pending.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "window")]
     headless: Option<PathBuf>,
+    /// Run the same configured engine and scene in a native desktop window.
+    #[arg(long, conflicts_with = "frame_ms")]
+    window: bool,
+    /// Stop after this many presented window frames (smoke check).
+    #[arg(long, requires = "window")]
+    window_frames: Option<u64>,
+    /// Set native TIMER fixed delta in window mode; <=0 disables it.
+    #[arg(long, requires = "window", allow_hyphen_values = true)]
+    window_fixed_delta: Option<i32>,
     #[arg(long, value_enum, default_value = "auto")]
     backend: Backend,
-    #[arg(long, default_value_t = 960)]
-    width: u32,
-    #[arg(long, default_value_t = 540)]
-    height: u32,
+    #[arg(long)]
+    width: Option<u32>,
+    #[arg(long)]
+    height: Option<u32>,
 }
 fn main() -> Result<()> {
     let arguments = Arguments::parse();
@@ -69,6 +79,25 @@ fn main() -> Result<()> {
         engine.sources().len()
     );
     let frames = (|| -> Result<()> {
+        if arguments.window {
+            let mut settings = storm_runtime::WindowSettings::load(&game)?;
+            if let Some(width) = arguments.width {
+                settings.width = width;
+            }
+            if let Some(height) = arguments.height {
+                settings.height = height;
+            }
+            return window::run(
+                &mut engine,
+                models.clone(),
+                window::Options {
+                    settings,
+                    frames: arguments.window_frames,
+                    fixed_delta: arguments.window_fixed_delta,
+                    backends: arguments.backend.flags(),
+                },
+            );
+        }
         let mut elapsed_ms = 0u64;
         for (index, delta_ms) in arguments.frame_ms.into_iter().enumerate() {
             let frame = engine
@@ -91,8 +120,8 @@ fn main() -> Result<()> {
             scenes
                 .offscreen(
                     &gpu,
-                    arguments.width,
-                    arguments.height,
+                    arguments.width.unwrap_or(960),
+                    arguments.height.unwrap_or(540),
                     elapsed_ms as f32 * 0.001,
                 )?
                 .save_png(&path)?;

@@ -1,6 +1,6 @@
 # Port status estimate
 
-Planning snapshot, 2026-11-02, after script-created static model integration:
+Planning snapshot, 2026-11-05, after shared native window/TIMER integration:
 
 | Target | Approximate functional coverage |
 | --- | --- |
@@ -59,8 +59,13 @@ full group payloads and live service/render integration remain pending.
 
 The [static MODELR path](STATIC_MODELS.md) connects original geometry/transform /
 texture-prefix messages to real GPU draws through the shared host. Complete
-MODELR/NODER, window/camera/sea, lighting/materials, animation and gameplay remain
+MODELR/NODER, native camera/sea, lighting/materials, animation and gameplay remain
 pending; this does not establish a playable land location.
+
+The [desktop window/TIMER path](NATIVE_WINDOW.md) drives that same host and real
+model draws, retains timing/config/close boundaries and handles portable surface
+lifetime. Full controls/audio, native camera/sea and original game startup remain
+pending. Hosted ARM execution has the separate documented capacity gap.
 
 The immediate shared-foundation priority is an actual runtime host and engine
 entry point: rooted game access, configuration, original script entry/events,

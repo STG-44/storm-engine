@@ -1,7 +1,7 @@
 use crate::NativeHost;
 use anyhow::{Result, ensure};
 use storm_core::{Message, Stage};
-use storm_script::{Limits, Runtime};
+use storm_script::{Limits, Runtime, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -72,6 +72,21 @@ impl Engine {
     }
     pub fn request_exit(&mut self) {
         self.exit_requested = true;
+    }
+    /// Platform events arrive between frames, after Main has initialized the
+    /// program. Native stage-to-script reentrancy remains a separate boundary.
+    pub fn emit_event(&mut self, name: &str, message: &mut Message) -> Result<Option<Value>> {
+        ensure!(
+            self.phase == Phase::Running,
+            "platform events require a running engine"
+        );
+        let result = self
+            .runtime
+            .emit(name, message, &mut self.host, self.limits);
+        if result.is_err() {
+            self.phase = Phase::Faulted;
+        }
+        result
     }
     fn services(&mut self, section: Section, start: bool, frame: &mut ServiceFrame) -> Result<()> {
         // SERVICES_LIST adds at its head: newest services are visited first.

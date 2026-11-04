@@ -96,6 +96,9 @@ jobs:
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
           cargo test -p storm-runtime --locked -- --ignored
+          python rust/apps/storm-engine/fixtures/prepare_model_game.py generated-model-game
+          timeout 30s xvfb-run -a cargo run -q -p storm-engine --locked -- --game-dir generated-model-game --script-encoding utf8 --backend vulkan --window --window-frames 3 --window-fixed-delta 16 > engine-window.txt
+          python -c "from pathlib import Path; s=Path('engine-window.txt').read_text(encoding='utf-8-sig').splitlines(); assert s[0]=='model-loaded=1' and s[-2:]==['destroy','exit']; body=s[1:-2]; assert len(body)>=6 and len(body)%2==0; assert body[::2]==['frame='+str(i+1) for i in range(len(body)//2)] and set(body[1::2])=={'delta=16'}"
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --time 2.5 --headless ship-cleanup-vulkan.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --fleet-window --time 1.75 --paused --frames 3
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --time 1.25 --headless ship-stages-vulkan.png --width 641 --height 361
@@ -270,6 +273,7 @@ jobs:
             ship-stages-state.json
             ship-cleanup-state.json
             engine-startup.txt
+            engine-window.txt
             target/debug/storm-script
             target/debug/storm-script.exe
             target/debug/storm-engine

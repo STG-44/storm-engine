@@ -1772,9 +1772,11 @@ dependencies = [
  "anyhow",
  "clap",
  "pollster",
+ "storm-core",
  "storm-render",
  "storm-runtime",
  "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -1812,6 +1814,7 @@ dependencies = [
  "anyhow",
  "encoding_rs",
  "pollster",
+ "serde_json",
  "storm-core",
  "storm-formats",
  "storm-render",

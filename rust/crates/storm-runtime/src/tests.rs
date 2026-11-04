@@ -349,6 +349,29 @@ fn unsupported_functions_classes_and_invalid_layers_fault_with_source_context() 
 }
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
+#[test]
+fn platform_close_events_use_the_existing_runtime_and_shutdown_emits_exit_once() -> Result<()> {
+    let trace = Trace::default();
+    let source = r#"int closed;void Main(){SetEventHandler("DestroyWindow","Closed",0);SetEventHandler("ExitApplication","Exit",0);}
+        void Closed(){closed++;Trace(closed);}void Exit(){Trace("exit");}"#;
+    let mut engine = Engine::from_runtime(Runtime::compile(source)?, host(&trace)?);
+    assert!(
+        engine
+            .emit_event("DestroyWindow", &mut Message::new("", vec![])?)
+            .is_err()
+    );
+    engine.frame(0)?;
+    engine.emit_event("DestroyWindow", &mut Message::new("", vec![])?)?;
+    engine.shutdown()?;
+    engine.shutdown()?;
+    assert_eq!(*trace.borrow(), ["script:1", "script:exit"]);
+    assert!(
+        engine
+            .emit_event("DestroyWindow", &mut Message::new("", vec![])?)
+            .is_err()
+    );
+    Ok(())
+}
 struct Temporary(PathBuf);
 impl Temporary {
     fn new() -> Result<Self> {

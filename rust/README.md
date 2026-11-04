@@ -18,6 +18,11 @@ With a configured script creating/loading models, add `--headless model.png` to
 render their final frame. This path adds no preview rig/crew/effects or ocean;
 native window, sea/camera and full game services remain pending.
 
+The [desktop engine window](../docs/NATIVE_WINDOW.md) now uses the same script /
+model host. Add `--window`, or `--window --window-frames 3 --window-fixed-delta 16`
+for a native presentation check. Window settings come from engine.ini; complete
+game controls/audio, native camera/sea and game startup remain pending.
+
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or
 opens an animated resource-free diagnostic sea. Both can render to a PNG without

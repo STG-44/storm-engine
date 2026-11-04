@@ -15,6 +15,7 @@ storm-render = { path = "../storm-render" }
 wgpu.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 storm-formats = { path = "../storm-formats" }
 pollster.workspace = true
 

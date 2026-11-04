@@ -7,6 +7,8 @@ does not yet run the complete game. Native window/input, production classes,
 rendering/audio and state loading still need to be attached to this same host.
 The [static MODELR path](STATIC_MODELS.md) now adds bounded original model
 messages and real GPU draws; full model/sea/game services remain pending.
+The [desktop window/TIMER adapter](NATIVE_WINDOW.md) now drives this same host;
+its original input/audio and full game services remain pending.
 
 ## Startup and shared ownership
 
