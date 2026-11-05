@@ -97,7 +97,7 @@ jobs:
           cargo test -p storm-render --locked -- --ignored
           cargo test -p storm-runtime --locked -- --ignored
           python rust/apps/storm-engine/fixtures/prepare_model_game.py generated-model-game
-          timeout 30s xvfb-run -a cargo run -q -p storm-engine --locked -- --game-dir generated-model-game --script-encoding utf8 --backend vulkan --window --window-frames 3 --window-fixed-delta 16 > engine-window.txt
+          timeout 30s xvfb-run -a sh -c 'exec "$@" > engine-window.txt' sh cargo run -q -p storm-engine --locked -- --game-dir generated-model-game --script-encoding utf8 --backend vulkan --window --window-frames 3 --window-fixed-delta 16
           python -c "from pathlib import Path; s=Path('engine-window.txt').read_text(encoding='utf-8-sig').splitlines(); assert s[0]=='model-loaded=1' and s[-2:]==['destroy','exit']; body=s[1:-2]; assert len(body)>=6 and len(body)%2==0; assert body[::2]==['frame='+str(i+1) for i in range(len(body)//2)] and set(body[1::2])=={'delta=16'}"
           cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --time 2.5 --headless ship-cleanup-vulkan.png --width 641 --height 361
           timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --fleet-window --time 1.75 --paused --frames 3
@@ -223,6 +223,13 @@ jobs:
         run: |
           cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --time 3 --particle-fleet-report ship-cleanup-state.json
           python -c "import json; s=json.load(open('ship-cleanup-state.json')); e=s['native_motion']['rocking']['sea']['stages']['ship_entities']; c=e['cleanup']; assert c['source']=='retained_ship_destructor_and_group_marks' and not c['full_original_services'] and not c['original_buffer_compaction']; assert c['retired_owners']==[1] and c['preview_cleanup_applied']==[True,False]; assert all(g['pending'] and g['owners'][0][1] and not g['owners'][1][1] for g in c['groups']); a,b=c['models']; assert not a['model_valid'] and not a['model_lookup'] and not a['blots_lookup'] and b['model_valid']; assert c['tracks']==[b['ship']]; calls=[v for v in c['events'] if v[0]=='send']; assert [v[2] for v in calls]==[40030,40102,40201,40301,40301,40301]; assert [v[3] for v in calls]==[a['ship']]+[a['model']]*5; assert all(v[4] and v[5] and not v[6] for v in calls); assert s['service']['manager']['owners']==[2]"
+      - name: Upload engine window trace
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-window-trace-${{ matrix.os }}
+          path: engine-window.txt
+          if-no-files-found: warn
       - name: Upload native executable
         uses: actions/upload-artifact@v7
         with:
