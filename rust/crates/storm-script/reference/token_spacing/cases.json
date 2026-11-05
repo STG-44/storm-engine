@@ -1,0 +1,1336 @@
+{
+  "source": "Complete unedited TOKEN::Get/StartArgument/ProcessToken; signed char, UBSan",
+  "files_sha256": {
+    "token.cpp": "5cd68cf6b51f6aea162fb004a29eb240aff24c0a3326523e41f6b66a5580c660",
+    "token.h": "eeb358dda18539c0d0e1d48ad4748faf6a7bd4c29f6e822062953d4a4c18ab63"
+  },
+  "utf8_sha256": "6350504339a953b3187a958cb857b1a4b12f4cbc9db126f96fa941a6fea5ee64",
+  "cases": [
+    {
+      "source": "int main(){return 7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a b\";/*x y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\tmain(){return\t7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a\tb\";/*x\ty*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a\tb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\u000bmain(){return\u000b7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a\u000bb\";/*x\u000by*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a\u000bb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\fmain(){return\f7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a\fb\";/*x\fy*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a\fb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\u0001main(){return\u00017;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a\u0001b\";/*x\u0001y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a\u0001b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\u001fmain(){return\u001f7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a\u001fb\";/*x\u001fy*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a\u001fb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){return 7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a b\";/*x y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){return 7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a b\";/*x y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int﻿main(){return﻿7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a﻿b\";/*x﻿y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a﻿b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "intяmain(){returnя7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"aяb\";/*xяy*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "aяb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int☀main(){return☀7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a☀b\";/*x☀y*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a☀b"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int  \tmain(){return  \t7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"a  \tb\";/*x  \ty*/return 3;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "a  \tb"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int\r\nmain(){//я\nreturn  7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){string s=\"Корсары\";return 7;}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "string"
+        },
+        {
+          "kind": "word",
+          "text": "s"
+        },
+        {
+          "kind": "word",
+          "text": "="
+        },
+        {
+          "kind": "string",
+          "text": "Корсары"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    }
+  ]
+}

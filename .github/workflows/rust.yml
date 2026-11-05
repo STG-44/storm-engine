@@ -1,0 +1,404 @@
+name: Rust
+
+on:
+  push:
+    branches: [develop]
+    paths: ['rust/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rust.yml']
+  pull_request:
+    paths: ['rust/**', 'Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rust.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  PYTHONUTF8: "1"
+
+jobs:
+  native:
+    name: Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Linux window and Vulkan dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxi-dev libxrandr-dev libxcursor-dev libvulkan1 mesa-vulkan-drivers vulkan-tools xvfb xauth
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Check code
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Run CPU tests
+        run: cargo test --workspace --locked
+      - name: Inspect upstream geometry fixture
+        run: cargo run -p storm-formats --locked -- decode tools/modding-tool/Meshes/cannon_x.gm
+      - name: Decode retained XPS field-format fixture
+        run: |
+          cargo run -p storm-formats --locked -- decode rust/crates/storm-formats/reference/particles/synthetic.xps > particle-profile-state.json
+          python -c "import json; s=json.load(open('particle-profile-state.json')); p=s['decoded']; assert p['signature']=='PSYSv3.5' and p['stage']=='raw fields before schema conversion'; assert len(p['emitters'])==1; assert [v['kind'] for v in p['emitters'][0]['particles']]==[1,2]; assert {v['kind'] for v in p['emitters'][0]['particles'][0]['fields']}=={'bool','float','position','string','graph','uv','color'}"
+      - name: Build native executable
+        run: cargo build --workspace --locked
+      - name: Launch the configured engine runtime foundation
+        run: |
+          cargo run -q -p storm-engine --locked -- --game-dir rust/apps/storm-engine/fixtures/startup --script-encoding utf8 --frame-ms 0,9,1,0 > engine-startup.txt
+          python -c "from pathlib import Path; assert Path('engine-startup.txt').read_text(encoding='utf-8-sig').splitlines()==['runtime-start','pc','frame=1','delta=0','frame=2','delta=9','posted','frame=3','delta=1','frame=4','delta=0','exit']"
+      - name: Execute Storm source subset and native attribute bindings
+        run: |
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/sail_damage.c --report script-state.json
+          python -c "import json; s=json.load(open('script-state.json')); assert s['script_runtime']=='bounded-source-subset'; assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['attribute_writes']==3; a=s['attributes']['children'][0]['children'][0]['children']; assert a[0]['name']=='rey_a1' and a[0]['children'][0]['children']==[{'name':'hd','value':'548','children':[]},{'name':'holes','value':'3','children':[]}]; assert a[1]['name']=='rey_b1' and a[1]['children'][0]['children']==[{'name':'hd','value':'274','children':[]}]"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/ship_attributes.c --report ship-script-state.json
+          python -c "import json; s=json.load(open('ship-script-state.json')); assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==7; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('hd','548'),('holes','3'),('hd','274'),('holes','3'),('damage','3.2500000'),('hd','1')]; r=s['script_ship']['children']; assert r[0]['value']=='19'; a=r[1]['children']; assert a[1]['value']=='3.2500000'; assert a[0]['children'][0]['children'][0]['children'][0]['value']=='548'; assert a[0]['children'][1]['children'][0]['children'][0]['value']=='274'"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/timed_events.c --frame-ms 0,9,1,0 --report timed-script-state.json
+          python -c "import json; s=json.load(open('timed-script-state.json')); assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==4; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('hd','274'),('hd','548'),('total','6'),('committed','1')]; assert s['script_events']=={'completed_handlers':4,'posted_events':2,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':9,'delivered_events':0},{'delta_ms':1,'delivered_events':1},{'delta_ms':0,'delivered_events':1}]}"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/global_ships.c --frame-ms 0,0 --report global-script-state.json
+          python -c "import json; s=json.load(open('global-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':6}; assert s['ship_attribute_notifications']==3; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('hd','548'),('hd','274'),('holes','6')]; assert s['script_events']=={'completed_handlers':3,'posted_events':1,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':0,'delivered_events':1}]}"
+          cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/multi_ship MAIN.C --frame-ms 0,0 --report multi-script-state.json
+          python -c "import json; a=json.load(open('global-script-state.json')); b=json.load(open('multi-script-state.json')); assert b.pop('script_sources')==['main.c','data/characters.c','handlers/sails.c','helpers/bits.c']; assert a==b"
+          cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --frame-ms 0,0 --report static-script-state.json
+          python -c "import json; a=json.load(open('multi-script-state.json')); b=json.load(open('static-script-state.json')); assert a==b"
+          cargo run -p storm-script --locked -- --script-root rust/crates/storm-script/fixtures/static_ship MAIN.C --entry ClearMain --frame-ms 0,0 --report clear-script-state.json
+          python -c "import json; a=json.load(open('static-script-state.json')); b=json.load(open('clear-script-state.json')); assert a==b"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_lifecycle.c --frame-ms 0,0 --report entity-script-state.json
+          python -c "import json; s=json.load(open('entity-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':19}; assert s['ship_attribute_notifications']==3; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('hd','548'),('deleted','1')]; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','hd':'548','silent':'1','deleted':'1','valid':'0'}; assert s['script_events']=={'completed_handlers':1,'posted_events':1,'pending_events':0,'retained_post_events':0,'frames':[{'delta_ms':0,'delivered_events':0},{'delta_ms':0,'delivered_events':1}]}"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_creation.c --report creation-script-state.json
+          python -c "import json; s=json.load(open('creation-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':19}; assert s['ship_attribute_notifications']==6; assert [(e['name'],e['value']) for e in s['ship_attribute_changes']]==[('index','19'),('ready','1'),('failed','1'),('test','7'),('new_valid','1'),('old_valid','0')]; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','initialized':'1','ready':'1','rejected':'1','failed':'1','new_valid':'1','old_valid':'0'}"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_creation.c --entry AddressMain --report address-script-state.json
+          python -c "import json; a=json.load(open('creation-script-state.json')); b=json.load(open('address-script-state.json')); assert a==b"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/entity_messages.c --report message-script-state.json
+          python -c "import json; s=json.load(open('message-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'ptr','value':18364758544493064720}; assert s['entity_messages']=={'total':3,'recent':[{'format':'lfsiap','result':18364758544493064720},{'format':'p','result':18364758544493064720},{'format':'','result':0}]}; assert s['ship_attribute_notifications']==1; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','number':'7.0000000','low_bits':'1985229328','deleted_result':'0'}"
+          cargo run -p storm-script --locked -- rust/crates/storm-script/fixtures/variable_messages.c --report variable-script-state.json
+          python -c "import json; s=json.load(open('variable-script-state.json')); assert s['original_game_scripts'] is False; assert s['result']=={'type':'int','value':19}; assert s['entity_messages']=={'total':5,'recent':[{'format':'leeee','result':18364758544493064720},{'format':'lee','result':0},{'format':'le','result':88},{'format':'le','result':7},{'format':'l','result':19}]}; assert s['ship_attribute_notifications']==1; assert {c['name']:c['value'] for c in s['script_ship']['children']}=={'index':'19','native_value':'19','native_wind':'0.5000000','native_text':'парус','native_ptr_low':'1985229328','array_total':'60','array_count':'3','temporary':'99','kept':'19','deleted_value':'19'}"
+      - name: Test software Vulkan rendering and native window
+        if: runner.os == 'Linux'
+        env:
+          XDG_RUNTIME_DIR: /tmp/storm-runtime
+        run: |
+          mkdir -p "$XDG_RUNTIME_DIR"
+          chmod 700 "$XDG_RUNTIME_DIR"
+          STORM_VULKAN_ICDS=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          export VK_DRIVER_FILES="${STORM_VULKAN_ICDS[0]}"
+          test -f "$VK_DRIVER_FILES"
+          xvfb-run -a vulkaninfo --summary
+          cargo test -p storm-render --locked -- --ignored
+          cargo test -p storm-runtime --locked -- --ignored
+          python rust/apps/storm-engine/fixtures/prepare_model_game.py generated-model-game
+          timeout 30s xvfb-run -a sh -c 'exec "$@" > engine-window.txt' sh cargo run -q -p storm-engine --locked -- --game-dir generated-model-game --script-encoding utf8 --backend vulkan --window --window-frames 3 --window-fixed-delta 16
+          python -c "from pathlib import Path; s=Path('engine-window.txt').read_text(encoding='utf-8-sig').splitlines(); assert s[0]=='model-loaded=1' and s[-2:]==['destroy','exit']; body=s[1:-2]; assert len(body)>=6 and len(body)%2==0; assert body[::2]==['frame='+str(i+1) for i in range(len(body)//2)] and set(body[1::2])=={'delta=16'}"
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --time 2.5 --headless ship-cleanup-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --fleet-window --time 1.75 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --time 1.25 --headless ship-stages-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --fleet-window --time 1.75 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 1.25 --headless sea-stages-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --fleet-window --time 1.75 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --time 1.25 --headless sea-weather-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --fleet-window --time 1.75 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --time 1.5 --headless native-sea-vulkan.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --fleet-window --time 1.5 --paused --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --fleet-window --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --native-sail-motion --native-sail-rolls --fleet-sail-setting 0.5 --fleet-window --paused --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-free --fleet-sail-setting 1 --fleet-free-mast 2 --time 1.5 --fleet-window --paused --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-ropes --fleet-sail-setting 1 --time 1.5 --fleet-window --paused --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-ropes --native-sail-lod --sail-lod-distance 800 --fleet-sail-setting 1 --time 1.5 --fleet-window --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 1.5 --headless native-ship-rocking-vulkan.png --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --native-ship-motion --time 1.5 --headless native-ship-motion-vulkan.png --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 1 --headless particle-fleet-vulkan.png --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --particle-fleet-demo --time 3 --headless particle-survivor-vulkan.png --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --headless first-frame.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --headless model-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --wind-speed 16 --wind-direction -90 --time 2 --headless sail-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0 --time 40 --rudder 0.6 --headless sailing-preview.png --state-json sailing-state.json --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0 --time 10 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0.15 --wave-direction 115 --time 12 --headless waves-preview.png --state-json waves-state.json --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --model tools/modding-tool/Meshes/cannon_x.gm --untextured --sail --wave-height 0.15 --time 12 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --sail-setting 0.5 --headless furled-sails.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --sail-setting 0.5 --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --sail --wave-height 0 --sail-target 0 --time 2 --headless rig-fixture.png --state-json rig-state.json --width 641 --height 361
+          python3 -c "import json; s=json.load(open('rig-state.json')); assert abs(s['sail_deployed']-0.5)<1e-10; assert s['sail_setting']==0.0"
+          cargo run -p storm-demo --locked -- --backend vulkan --rigging-demo --wind-speed 12 --time 1 --headless rigging-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --rigging-demo --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --rigging-demo --flag-nation france --flag-role merchant --time 1 --headless flag-nation-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --rigging-demo --flag-nation england --surrendered --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --ship-demo --fire --break-mast 2 --break-hull shatter1 --sail-volley 3 --time 2 --headless ship-damage-preview.png --width 641 --height 361
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --ship-demo --fire --sail-volley 3 --time 1 --paused --frames 3
+          timeout 30s xvfb-run -a cargo run -p storm-demo --locked -- --backend vulkan --ship-demo --sail --wind-speed 0 --wave-height 0 --sail-script rust/apps/storm-demo/fixtures/ship_fires.c --paused --frames 3
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --sail --wave-height 0 --time 40 --headless intact-sailing.png --state-json intact-sailing.json --width 641 --height 361
+          cargo run -p storm-demo --locked -- --backend vulkan --sail-demo --sail --sail-volley 3 --wave-height 0 --time 40 --headless holed-sailing.png --state-json holed-sailing.json --width 641 --height 361
+          python3 -c "import json; a=json.load(open('intact-sailing.json')); b=json.load(open('holed-sailing.json')); assert b['rig']['missing_weight']>0; assert b['sail_deployed']<a['sail_deployed']; assert b['speed_knots']<a['speed_knots']; assert len(b['ship']['sail_holes'])==2"
+      - name: Verify native fireplace activation and cleanup without a GPU device
+        run: |
+          cargo run -p storm-demo --locked -- --ship-demo --sail --wind-speed 0 --wind-direction 0 --wave-height 0 --ship-character 19 --sail-script rust/apps/storm-demo/fixtures/ship_fires.c --sail-script-report ship-fire-script-state.json
+          python -c "import json; s=json.load(open('ship-fire-script-state.json')); r=s['ship_sail_script']; f=s['native_fire']; assert r['sources']==['ship_fires.c'] and r['result']=={'type':'int','value':1}; assert r['original_game_scripts'] is False; assert [a['active_fires'] for a in r['advances']]==[1,0,1]; assert s['simulation_seconds']==2.125; assert len(f['places'])==1 and f['places'][0]['active'] and f['places'][0]['remaining_bits']==1065353216 and f['places'][0]['owner']==23; assert f['effects']['sound_playback'] is False; assert sum(e['op']=='create_particle' for e in f['effects']['recent'])==6; assert sum(e['op']=='pause_particle' for e in f['effects']['recent'])==4; assert [e['instance'] for e in f['emissions']]==[1,2,3,4,5,6]; assert [e['stopped_bits'] is None for e in f['emissions']]==[False]*4+[True]*2; assert {a['name']:a['value'] for a in r['ship_query_attributes']['children']}=={'index':'19','fire_places_before':'1','fire_places_cleared':'0'}; assert len(r['messages'])==9 and all(m['delivered'] and m['result']==0 for m in r['messages'])"
+      - name: Verify original sail-set metadata without a GPU device
+        run: |
+          cargo run -p storm-demo --locked -- --ship-demo --sail --wind-speed 0 --wind-direction 0 --wave-height 0 --ship-character 19 --sail-script rust/apps/storm-demo/fixtures/ship_queries.c --sail-script-report ship-queries-script-state.json
+          python -c "import json; s=json.load(open('ship-queries-script-state.json')); r=s['ship_sail_script']; assert r['original_game_scripts'] is False; assert r['sources']==['ship_queries.c']; assert r['result']=={'type':'int','value':1}; assert {a['name']:a['value'] for a in r['ship_query_attributes']['children']}=={'index':'-7','initial_index':'19','fire_place_count':'1','updated_index':'27','negative_index':'-7','deleted_index':'-7','deleted_count':'1'}; assert [(m['code'],m['delivered'],m['result']) for m in r['messages']]==[(50307,True,0),(50306,True,0),(50307,True,0),(50307,True,0),(50307,True,0),(50307,False,0),(50306,False,0)]; assert all(m['sail_request_bits']==1065353216 for m in r['messages']); assert s['simulation_seconds']==0 and s['sail_setting']==s['sail_deployed']==1"
+          cargo run -p storm-demo --locked -- --sail-demo --sail --wind-speed 0 --wind-direction 0 --wave-height 0 --sail-script rust/apps/storm-demo/fixtures/ship_sails.c --sail-script-report ship-sails-script-state.json
+          python -c "import json; s=json.load(open('ship-sails-script-state.json')); r=s['ship_sail_script']; assert r['original_game_scripts'] is False and r['native_class']=='preview_ship_sails'; assert r['sources']==['ship_sails.c']; assert r['result']=={'type':'int','value':3}; assert [a['sail_mode'] for a in r['advances']]==['normal','furled','full']; assert [(a['normal_deployed'],a['full_only_deployed']) for a in r['advances']]==[(1,0),(0,0),(1,1)]; assert [(m['code'],m['delivered'],m['result']) for m in r['messages']]==[(50305,True,0),(50325,True,0)]*3+[(50305,False,0),(50325,False,0)]; assert s['simulation_seconds']==12 and s['sail_setting']==s['sail_deployed']==1; assert s['sail_request_bits']==1065353216"
+          cargo run -p storm-demo --locked -- --ship-demo --sail-volley 3 --rig-report ship-layout.json --event-report sail-events.json --shot-owner 7 --ship-character 19
+          python -c "import json,collections; s=json.load(open('sail-events.json')); assert s['observer_entity']==4294967296; assert s['script_vm'] is True and s['original_game_scripts'] is False; assert s['script_handlers']==s['total_events']==12; assert s['script_damage_calls']==6; assert collections.Counter(e['name'] for e in s['events'])=={'DoSailHole':6,'ShpSailDamage':6}; assert all(e['format']=={'DoSailHole':'llssllllf','ShpSailDamage':'lfffl'}[e['name']] and e['owner']==7 and e['character']==19 for e in s['events']); last=[e for e in s['events'] if e['name']=='ShpSailDamage'][-1]; assert s['script_last_damage']=={k:last[k] for k in ['character','position','owner']}"
+          python -c "import json; s=json.load(open('sail-events.json')); l=json.load(open('ship-layout.json')); assert s['attribute_notifications']==6; assert s['attribute_restored_sails']==2; assert s['attribute_sail_masks']=={str(p['mesh']):p['hole_mask'] for p in l['sails']}"
+          cargo run -p storm-demo --locked -- --sail-demo --rig-report rig-layout.json
+          cargo run -p storm-demo --locked -- --rigging-demo --flag-nation spain --flag-role merchant --rig-report flags-layout.json
+      - name: Verify particle project decoding without game resources
+        run: |
+          cargo run -p storm-formats --bin storm-assets --locked -- decode rust/crates/storm-formats/reference/particle_project/project.prj > particle-project-state.json
+          python -c "import json; p=json.load(open('particle-project-state.json'))['decoded']; assert p['kind']=='particle_project' and p['texture']=='fixture.tga'; assert p['systems']==['fire','smoke']; assert p['system_bytes']==[[102,105,114,101],[115,109,111,107,101]]"
+      - name: Exercise shared particle service with two ships
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --time 3 --particle-fleet-report particle-fleet-state.json
+          python -c "import json; s=json.load(open('particle-fleet-state.json')); assert s['fixture']=='two_ship_particle_service' and s['original_gameplay'] is False; m=s['service']['manager']; assert m['cached']==3 and m['prepared']==3 and m['systems']==2 and m['owners']==[2]; a=s['snapshots'][2]['ships']; assert len(a[0]['emissions'])==4 and len(a[1]['emissions'])==2; assert [v['visible'] for v in s['ships']]==[False,True]; assert all(not e['paused'] for e in s['snapshots'][-1]['ships'][1]['emissions'])"
+      - name: Exercise retained ship movement and impulse dispatch
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --time 3 --particle-fleet-report ship-motion-state.json
+          python -c "import json,struct; s=json.load(open('ship-motion-state.json')); m=s['native_motion']; assert m['elapsed_ms']==3000 and m['speed_units']=='knots' and len(m['bodies'])==2; f=lambda bits: struct.unpack('<f',struct.pack('<I',bits))[0]; assert all(f(b['speed_bits'][2])>0 for b in m['bodies']); p=next(p for p in s['snapshots'] if p['phase']=='first_impulse_queued')['native_motion']['bodies']; assert p[0]['strengths'][1]['used'] and not p[1]['strengths'][1]['used']; assert not m['bodies'][0]['strengths'][1]['used']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise retained ship rocking over the diagnostic sea
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --time 3 --particle-fleet-report ship-rocking-state.json
+          python -c "import json,struct; s=json.load(open('ship-rocking-state.json')); m=s['native_motion']; r=m['rocking']; assert r['original_sea'] is False and r['native_to_surface_z']==-1; assert len(r['bodies'])==2; f=lambda bits: struct.unpack('<f',struct.pack('<I',bits))[0]; assert all(f(b['position_bits'][1])!=0 and f(b['angles_bits'][0])!=0 and f(b['angles_bits'][2])!=0 for b in m['bodies']); p=next(p for p in s['snapshots'] if p['phase']=='first_released')['native_motion']; assert p['rocking']['bodies'][0]==r['bodies'][0] and p['rocking']['bodies'][1]!=r['bodies'][1]; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise native immersion and waterline placement
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-placement-state.json
+          python -c "import json; s=json.load(open('ship-placement-state.json')); r=s['native_motion']['placement']; assert r['original_ship_parameters'] is False; assert r['bodies']==[{'immersion_bits':1061158912,'waterline_bits':1056964608}]*2; a=json.load(open('ship-rocking-state.json')); assert s['native_motion']['bodies']==a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise living ship presentation and script state outputs
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-presentation-state.json
+          python -c "import json; s=json.load(open('ship-presentation-state.json')); m=s['native_motion']; r=m['presentation']; assert r['living_only'] is True; a=json.load(open('ship-placement-state.json')); assert m['bodies']==a['native_motion']['bodies']; p=next(v for v in s['snapshots'] if v['phase']=='first_released')['native_motion']['presentation']['bodies']; assert p[0]==r['bodies'][0] and p[1]!=r['bodies'][1]; assert all(isinstance(v,str) for b in r['bodies'] for row in b['script'].values() for v in row)"
+      - name: Exercise native ship-type parameters and character limits
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report ship-parameters-state.json
+          python -c "import json,struct; s=json.load(open('ship-parameters-state.json')); m=s['native_motion']; p=m['parameters']; f=lambda bits:struct.unpack('<f',struct.pack('<I',bits))[0]; assert p['source']=='external_attributes' and p['original_game_scripts'] is False; assert all(b['integers']==[3,5,50,3000] for b in p['bodies']); assert all(f(b['type_bits'][0])==18 and f(b['limit_bits'][0])==10 and f(b['type_bits'][7])==0.25 for b in p['bodies']); a=json.load(open('ship-presentation-state.json')); assert m['bodies']!=a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise native sail wind, damage and sail-set drive
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --fleet-sail-setting 0.5 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-drive-state.json
+          python -c "import json; s=json.load(open('sail-drive-state.json')); d=s['native_sail_drive']; assert d['original_weather'] is False and d['rolling_geometry']=='settled_adapter'; assert [g['set'] for g in d['bodies']]==[1,1]; assert [g['deleted'] for g in d['bodies']]==[True,False]; assert all(g['sails'] for g in d['bodies']); a=json.load(open('ship-parameters-state.json')); assert s['native_motion']['bodies']!=a['native_motion']['bodies']; assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --fleet-sail-setting 1 --fleet-sail-target 0 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-motion-state.json
+          python -c "import json,struct; s=json.load(open('sail-motion-state.json')); d=s['native_sail_drive']; assert d['rolling_geometry']=='native_timing_with_preview_geometry'; assert [g['set'] for g in d['bodies']]==[0,2]; assert [g['deleted'] for g in d['bodies']]==[True,False]; m=d['motion']; assert not m['native_cloth'] and not m['rope_constrained_turning']; f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]; assert all(abs(f(v['deployment_bits'])-0.4)<0.00001 for v in m['bodies'][0]['sails']); assert all(v['deployment_bits']==1065353216 and v['transition'] is None for v in m['bodies'][1]['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-geometry --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-geometry-state.json
+          python -c "import json; s=json.load(open('sail-geometry-state.json')); g=s['native_sail_geometry']; assert g['mode']=='static_full_grid' and not g['native_waves'] and not g['native_rolling_vertices']; assert len(g['bodies'])==2; assert all(b['sails'] for b in g['bodies']); assert all(len(v['geometry_bits'])==10 and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and all(len(p)==12 for p in v['vertex_bits']) for b in g['bodies'] for v in b['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-waves --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-waves-state.json
+          python -c "import json; s=json.load(open('sail-waves-state.json')); w=s['native_sail_waves']; assert w['mode']=='attached_full_grid' and w['native_attached_waves'] and not w['native_rolled_vertices']; assert len(w['table_bits'])==60 and len(w['bodies'])==2; assert all(b['sails'] for b in w['bodies']); assert all(v['frames']==(121 if i==0 else 181) and len(v['point_bits'])==20 and len(v['rope_bits'])==4 and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and all(len(p)==12 for p in v['vertex_bits']) for i,b in enumerate(w['bodies']) for v in b['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-rolls --fleet-sail-setting 0 --fleet-sail-target 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-rolls-state.json
+          python -c "import json,struct; s=json.load(open('sail-rolls-state.json')); r=s['native_sail_rolls']; assert r['mode']=='attached_and_rolled' and r['native_rolled_vertices']; f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]; assert all(not v['rolled'] and not v['transition']['up'] and abs(f(v['transition']['delta_bits'])-0.6)<0.00001 and v['topology']['grid']==[17,13] for v in r['bodies'][0]['sails']); assert all(v['rolled'] and v['transition'] is None and v['topology']['grid']==[5,13] and v['topology']['normal_count']==(93 if v['kind']==0 else 288) and v['topology']['hole_count']==0 for v in r['bodies'][1]['sails']); assert all(v['frames']==(121 if i==0 else 181) and len(v['vertex_bits'])==(153 if v['kind']==0 else 221) and len(v['topology']['indices'])==(768 if v['kind']==0 else 1152) for i,b in enumerate(r['bodies']) for v in b['sails']); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-free --fleet-sail-setting 1 --fleet-free-mast 2 --fleet-free-at 0.75 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-free-state.json
+          python -c "import json; s=json.load(open('sail-free-state.json')); r=s['native_sail_free']; assert r['mode']=='attached_rolled_and_free' and r['native_free_vertices']; assert r['free_provider']['mast']==2 and r['free_provider']['triggered']; assert all(v['frames']==(121 if i==0 else 181) and v['free']==(i==0 and j==0) and v['free_updates']==(76 if i==0 and j==0 else 0) and v['held_updates']==0 and v['random_draws']==(1216 if i==0 and j==0 else 0) and not v['rolled'] and v['transition'] is None and v['topology']['grid']==([5,4] if i==0 and j==0 else [17,13]) and v['topology']['normal_count']==(72 if i==0 and j==0 else (768 if v['kind']==0 else 1152)) for i,b in enumerate(r['bodies']) for j,v in enumerate(b['sails'])); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-ropes --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 3 --particle-fleet-report sail-ropes-state.json
+          python -c "import json; s=json.load(open('sail-ropes-state.json')); r=s['native_sail_ropes']; d=s['native_sail_drive']['motion']; assert d['rope_constrained_turning'] and r['mode']=='attached_and_rolled'; assert all(b['rope_constraints']['ropes']==8 for b in d['bodies']); assert all(len(v['records'])==2 and all(v['records']) and v['rebuilds']>0 and v['turns']>=v['rebuilds'] and v['held_turns']==0 and c['frames']==(121 if i==0 else 181) and c['topology']['grid']==[17,13] and c['geometry_bits']==v['geometry_bits'] and all(t==p for t,p in zip(v['tie_bits'],c['rope_bits']) if t is not None) for i,b in enumerate(d['bodies']) for v,c in zip(b['rope_constraints']['sails'],r['bodies'][i]['sails'])); assert s['service']['manager']['owners']==[2]"
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-ship-placement --native-ship-presentation --native-ship-parameters --ship-parameter-file rust/apps/storm-demo/fixtures/ship_parameters.json --native-sail-drive --native-sail-motion --native-sail-rolls --native-sail-ropes --native-sail-lod --sail-lod-distance 800 --fleet-sail-setting 1 --fleet-wind-direction 135 --ship-immersion 0.75 --ship-waterline 0.5 --time 1.5 --particle-fleet-report sail-lod-state.json
+          python -c "import json,struct; s=json.load(open('sail-lod-state.json')); r=s['native_sail_lod']; d=r['presentation_lod']; f=lambda b:struct.unpack('<f',struct.pack('<I',b))[0]; assert d['canonical_simulation']=='unchanged_near_grid' and not d['native_entity_scheduling']; assert all(v['grid']==[5,4] and v['grid_changes']==1 and v['source_frame']==91 and c['frames']==91 and v['camera']['fov_bits']==1061752795 and f(v['distance_bits'])>=250 and v['sampled']['topology']['normal_count']==(48 if c['kind']==0 else 72) and v['sampled']['topology']['hole_count']==0 and len(v['sampled']['topology']['indices'])==(768 if c['kind']==0 else 1152) and all(a[3:]==b[3:] for a,b in zip(v['sampled']['vertex_bits'],c['vertex_bits'])) for i,body in enumerate(d['bodies']) for v,c in zip(body['sails'],r['bodies'][i]['sails'])); assert s['service']['manager']['owners']==[1,2]"
+      - name: Exercise retained scalar sea coupled to native rocking
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --time 3 --particle-fleet-report native-sea-state.json
+          python -c "import json; s=json.load(open('native-sea-state.json')); r=s['native_motion']['rocking']; w=r['sea']; assert r['surface']=='native_scalar_sea' and r['original_sea'] and not r['full_sea_entity'] and r['native_to_surface_z']==1; assert w['frame_source']=='synthetic_fixture' and w['frames']==64 and w['side']==128 and not w['native_entity_order']; assert len(w['prepared_fnv1a64'])>0; p=next(v for v in s['snapshots'] if v['phase']=='first_released')['native_motion']['rocking']; assert p['bodies'][0]==r['bodies'][0] and p['bodies'][1]!=r['bodies'][1]; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise script-driven scalar sea weather callbacks
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --time 3 --particle-fleet-report sea-weather-state.json
+          python -c "import json; s=json.load(open('sea-weather-state.json')); w=s['native_motion']['rocking']['sea']; r=w['weather']; assert w['weather_provider']=='script_attribute_callbacks'; assert r['delivered_events']==6 and r['pending_events']==0 and r['attribute_callbacks']==24 and r['native_class']=='sea' and not r['original_game_scripts'] and not r['full_native_entity'] and not r['stopped']; assert w['amplitude_bits']==[1061997773,1045220557]; z=[v for v in r['changes'] if v['realize_zero_requested']]; assert len(z)==5 and sum(v['realize_zero_applied'] for v in z)==4; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise native sea view and Execute-before-Realize boundaries
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --time 3 --particle-fleet-report sea-stages-state.json
+          python -c "import json; s=json.load(open('sea-stages-state.json')); w=s['native_motion']['rocking']['sea']; t=w['stages']; assert w['camera_provider']=='actual_gpu_native_build_view_transposition' and t['order']=='script_execute_realize' and not t['full_sea_entity']; assert t['sea']['dispatcher']=='storm_core_entity_manager_realize_layer' and not t['sea']['full_global_layers']; assert len(t['trace'])==181; assert all(v['realize_revision']==v['execute_revision']+int(v['applied']) for v in t['trace']); assert s['pose_math']=='pinned_TRyRxRz_adapter'; assert w['weather']['delivered_events']==6 and w['weather']['pending_events']==0; assert s['service']['manager']['owners']==[2]"
+      - name: Exercise shared ship and sea entity dispatch
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --time 3 --particle-fleet-report ship-stages-state.json
+          python -c "import json; s=json.load(open('ship-stages-state.json')); t=s['native_motion']['rocking']['sea']['stages']; r=t['ship_entities']; a,b=r['bodies']; assert t['ships']=='core_entity_execute_numeric_body' and r['dispatcher']=='shared_core_entity_manager'; assert [r['priority_execute'],r['priority_realize']]==[2,31]; assert [a['execute_calls'],a['realize_calls'],b['execute_calls'],b['realize_calls']]==[121,121,181,181]; assert not a['valid'] and not a['lookup'] and a['destroyed'] and b['valid'] and b['lookup'] and not b['destroyed']; assert not r['full_ship_entity'] and not r['original_model_draw']; assert s['service']['manager']['owners']==[2]; assert all(v['sea_revision']==t['trace'][v['frame']]['execute_revision' if v['stage']=='execute' else 'realize_revision'] for body in [a,b] for v in body['trace'])"
+      - name: Exercise retained ship destructor and cascading cleanup
+        run: |
+          cargo run -p storm-demo --locked -- --particle-fleet-demo --native-ship-motion --native-ship-rocking --native-sea --native-sea-weather --native-sea-stages --native-ship-stages --native-ship-cleanup --time 3 --particle-fleet-report ship-cleanup-state.json
+          python -c "import json; s=json.load(open('ship-cleanup-state.json')); e=s['native_motion']['rocking']['sea']['stages']['ship_entities']; c=e['cleanup']; assert c['source']=='retained_ship_destructor_and_group_marks' and not c['full_original_services'] and not c['original_buffer_compaction']; assert c['retired_owners']==[1] and c['preview_cleanup_applied']==[True,False]; assert all(g['pending'] and g['owners'][0][1] and not g['owners'][1][1] for g in c['groups']); a,b=c['models']; assert not a['model_valid'] and not a['model_lookup'] and not a['blots_lookup'] and b['model_valid']; assert c['tracks']==[b['ship']]; calls=[v for v in c['events'] if v[0]=='send']; assert [v[2] for v in calls]==[40030,40102,40201,40301,40301,40301]; assert [v[3] for v in calls]==[a['ship']]+[a['model']]*5; assert all(v[4] and v[5] and not v[6] for v in calls); assert s['service']['manager']['owners']==[2]"
+      - name: Upload engine window trace
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: engine-window-trace-${{ matrix.os }}
+          path: engine-window.txt
+          if-no-files-found: warn
+      - name: Upload native executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: storm-demo-${{ matrix.os }}
+          path: |
+            target/debug/storm-demo
+            target/debug/storm-demo.exe
+          if-no-files-found: error
+      - name: Upload script executable and attribute fixture
+        uses: actions/upload-artifact@v7
+        with:
+          name: script-state-${{ matrix.os }}
+          path: |
+            script-state.json
+            ship-script-state.json
+            timed-script-state.json
+            global-script-state.json
+            multi-script-state.json
+            static-script-state.json
+            clear-script-state.json
+            entity-script-state.json
+            creation-script-state.json
+            address-script-state.json
+            message-script-state.json
+            variable-script-state.json
+            ship-sails-script-state.json
+            ship-queries-script-state.json
+            ship-fire-script-state.json
+            particle-profile-state.json
+            particle-project-state.json
+            particle-fleet-state.json
+            ship-motion-state.json
+            ship-rocking-state.json
+            ship-placement-state.json
+            ship-presentation-state.json
+            ship-parameters-state.json
+            sail-drive-state.json
+            sail-motion-state.json
+            sail-geometry-state.json
+            sail-waves-state.json
+            sail-rolls-state.json
+            sail-free-state.json
+            sail-ropes-state.json
+            sail-lod-state.json
+            native-sea-state.json
+            sea-weather-state.json
+            sea-stages-state.json
+            ship-stages-state.json
+            ship-cleanup-state.json
+            engine-startup.txt
+            engine-window.txt
+            target/debug/storm-script
+            target/debug/storm-script.exe
+            target/debug/storm-engine
+            target/debug/storm-engine.exe
+          if-no-files-found: error
+      - name: Upload native attribute roundtrip fixture
+        uses: actions/upload-artifact@v7
+        with:
+          name: attribute-state-${{ matrix.os }}
+          path: |
+            ship-layout.json
+            sail-events.json
+          if-no-files-found: error
+      - name: Upload Vulkan frame
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: first-frame-vulkan
+          path: first-frame.png
+          if-no-files-found: error
+      - name: Upload asset inspector
+        uses: actions/upload-artifact@v7
+        with:
+          name: storm-assets-${{ matrix.os }}
+          path: |
+            target/debug/storm-assets
+            target/debug/storm-assets.exe
+          if-no-files-found: error
+      - name: Upload Vulkan model preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: original-model-vulkan
+          path: model-preview.png
+          if-no-files-found: error
+      - name: Upload Vulkan sail preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sail-preview-vulkan
+          path: sail-preview.png
+          if-no-files-found: error
+      - name: Upload sailing transform fixture and simulation state
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: sailing-vulkan
+          path: |
+            sailing-preview.png
+            sailing-state.json
+          if-no-files-found: error
+      - name: Upload wave transform fixture and simulation state
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: waves-vulkan
+          path: |
+            waves-preview.png
+            waves-state.json
+          if-no-files-found: error
+      - name: Upload furled sail fixture and rig state
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: furling-vulkan
+          path: |
+            furled-sails.png
+            rig-fixture.png
+            rig-state.json
+          if-no-files-found: error
+
+      - name: Upload procedural rigging preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rigging-vulkan
+          path: |
+            rigging-preview.png
+            flag-nation-preview.png
+            flags-layout.json
+          if-no-files-found: error
+
+      - name: Upload generated ship damage and sailing fixtures
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ship-presentation-vulkan
+          path: |
+            ship-damage-preview.png
+            ship-layout.json
+            sail-events.json
+            intact-sailing.png
+            intact-sailing.json
+            holed-sailing.png
+            holed-sailing.json
+          if-no-files-found: error
+
+      - name: Upload shared-service fleet previews
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: particle-fleet-vulkan
+          path: |
+            particle-fleet-vulkan.png
+            particle-survivor-vulkan.png
+          if-no-files-found: error
+
+      - name: Upload retained ship movement preview
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-ship-motion-vulkan
+          path: |
+            native-ship-motion-vulkan.png
+            native-ship-rocking-vulkan.png
+            native-sea-vulkan.png
+            sea-weather-vulkan.png
+            sea-stages-vulkan.png
+            ship-stages-vulkan.png
+            ship-cleanup-vulkan.png
+          if-no-files-found: error

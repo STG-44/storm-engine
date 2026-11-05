@@ -1,0 +1,20 @@
+{
+  "ship_type": {
+    "Class": 3,
+    "SpeedRate": 18,
+    "TurnRate": 44.4,
+    "Capacity": 3000,
+    "Weight": 150,
+    "WaterLine": 0.25,
+    "InertiaAccelerationX": 0.25,
+    "InertiaAccelerationY": 0.75,
+    "InertiaAccelerationZ": 1.5,
+    "InertiaBrakingX": 0.125,
+    "InertiaBrakingY": 0.5,
+    "InertiaBrakingZ": 0.375
+  },
+  "character": {
+    "Ship.MaxSpeedZ": 10,
+    "Ship.MaxSpeedY": 0.06
+  }
+}

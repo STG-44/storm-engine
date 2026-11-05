@@ -1,0 +1,6 @@
+[Textures]
+MainTexture=fixture.tga
+[Manager]
+System_0001=smoke
+System_0000=fire
+System_0003=ignored_after_gap

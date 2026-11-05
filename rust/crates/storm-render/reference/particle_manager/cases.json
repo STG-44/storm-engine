@@ -1,0 +1,305 @@
+{
+  "scope": "Unedited native manager registration/removal/validation/clear and IsAlive.\nConstruction, data-source contents, release storage and output are adapters.\nRelease callbacks retain allocations until oracle exit to keep deterministic IDs;\nthis verifies native vector/callback order, not allocator reuse or full processing.\n",
+  "retained_sha256": {
+    "void ParticleManager::RemoveResource(": "d51ec289a2c399571b1863be08a705c9f3fa5c809e001c9030d6d3e323258de2",
+    "bool ParticleManager::ValidateSystem(": "cb337d10816b0e82fe33d59837903b33c5bdffc9b43a3a1ebb4c19b29b343d19",
+    "void ParticleManager::DeleteAllSystems(": "170e81f474e164d1e8e6f90c567fd625c0797fac0b13e166f53f1a2b4a42941d",
+    "ParticleSystem *ParticleManager::CreateParticleSystemFromDataSource(": "f8bb2f388aaeeaa2e0c531f4e74c6fe20bb849f40db98261da8a7863c002a567",
+    "bool ParticleSystem::IsAlive(": "360b4527bdc06aa4ebe916d1eb649f1eb5c934875aa43a3ab0cdb66fcab17ace"
+  },
+  "actions": [
+    [
+      "create",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "release",
+      2
+    ],
+    [
+      "release",
+      1
+    ],
+    [
+      "release",
+      99
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "clear",
+      0
+    ],
+    [
+      "clear",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "release",
+      6
+    ]
+  ],
+  "snapshots": [
+    {
+      "ids": [
+        1
+      ],
+      "valid": [
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        1,
+        2
+      ],
+      "valid": [
+        true,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        1,
+        2,
+        3
+      ],
+      "valid": [
+        true,
+        true,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "valid": [
+        true,
+        true,
+        true,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        1,
+        4,
+        3
+      ],
+      "valid": [
+        true,
+        false,
+        true,
+        true
+      ],
+      "released": [
+        2
+      ]
+    },
+    {
+      "ids": [
+        3,
+        4
+      ],
+      "valid": [
+        false,
+        false,
+        true,
+        true
+      ],
+      "released": [
+        1
+      ]
+    },
+    {
+      "ids": [
+        3,
+        4
+      ],
+      "valid": [
+        false,
+        false,
+        true,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        3,
+        4,
+        5
+      ],
+      "valid": [
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [],
+      "valid": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "released": [
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "ids": [],
+      "valid": [
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "released": []
+    },
+    {
+      "ids": [
+        6
+      ],
+      "valid": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true
+      ],
+      "released": []
+    },
+    {
+      "ids": [],
+      "valid": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "released": [
+        6
+      ]
+    }
+  ],
+  "alive_inputs": [
+    [],
+    [
+      [
+        true,
+        0
+      ]
+    ],
+    [
+      [
+        true,
+        1
+      ]
+    ],
+    [
+      [
+        false,
+        0
+      ]
+    ],
+    [
+      [
+        true,
+        0
+      ],
+      [
+        true,
+        0
+      ]
+    ],
+    [
+      [
+        true,
+        1
+      ],
+      [
+        true,
+        0
+      ]
+    ],
+    [
+      [
+        true,
+        0
+      ],
+      [
+        false,
+        0
+      ]
+    ],
+    [
+      [
+        false,
+        0
+      ],
+      [
+        true,
+        0
+      ]
+    ],
+    [
+      [
+        true,
+        0
+      ],
+      [
+        true,
+        2
+      ]
+    ]
+  ],
+  "alive": [
+    false,
+    false,
+    true,
+    true,
+    false,
+    true,
+    true,
+    true,
+    true
+  ]
+}

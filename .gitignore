@@ -4,3 +4,8 @@
 .vs
 .idea
 *.user
+
+# Rust port build output and local game resources
+/target/
+/game-data/
+/captures/
