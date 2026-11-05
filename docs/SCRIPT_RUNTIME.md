@@ -1,5 +1,9 @@
 # Storm source runtime subset
 
+[Original-script prerequisites](ORIGINAL_SCRIPTS.md) add bounded switch statements,
+retained native token spacing and explicitly registered script-library requests.
+Their supported boundaries and the pinned original corpus are documented there.
+
 `storm-script` compiles a bounded subset of the retained Storm source language
 to private stack instructions and executes it natively. It has no graphics
 dependency and runs without commercial resources. This is the first executable

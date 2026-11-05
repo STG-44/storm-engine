@@ -6,6 +6,11 @@ inside one selected program directory. Ordinary `compile(text)` supports typed
 constants in memory and reports an error for includes without a loader. Runtime
 execution itself has no implicit filesystem or native library access.
 
+The original #libriary spelling now records source-located named requests and
+resolves them through explicitly registered host initializers before script
+state starts. [Original script compatibility](ORIGINAL_SCRIPTS.md) documents its
+ordering, checked failures and differences from native compile-time loading.
+
 Run the new diagnostic without game assets or a GPU:
 
 ```sh

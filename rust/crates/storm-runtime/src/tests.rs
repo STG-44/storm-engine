@@ -1,4 +1,61 @@
 use super::*;
+
+#[test]
+fn registered_script_libraries_initialize_once_before_native_calls_and_register_real_bindings()
+-> Result<()> {
+    use std::{cell::Cell, rc::Rc};
+    let count = Rc::new(Cell::new(0));
+    let seen = count.clone();
+    let mut host = NativeHost::new()?;
+    host.register_library("shared_lib", move |host| {
+        seen.set(seen.get() + 1);
+        host.register_function("Answer", |_| Ok(storm_script::Value::Int(42)))
+    })?;
+    let mut runtime = storm_script::Runtime::compile(
+        "#libriary \"SHARED_LIB\"\n#libriary \"shared_lib\"\nnative int Answer();int Main(){return Answer();}",
+    )?;
+    assert_eq!(count.get(), 0);
+    for _ in 0..3 {
+        assert_eq!(
+            runtime.call("Main", &[], &mut host, storm_script::Limits::default())?,
+            storm_script::Value::Int(42)
+        );
+    }
+    let mut fresh = storm_script::Runtime::compile(
+        "#libriary \"shared_lib\"\nnative int Answer();int Main(){return Answer();}",
+    )?;
+    assert_eq!(
+        fresh.call("Main", &[], &mut host, storm_script::Limits::default())?,
+        storm_script::Value::Int(42)
+    );
+    assert_eq!(count.get(), 1);
+    assert!(host.register_library("SHARED_LIB", |_| Ok(())).is_err());
+    Ok(())
+}
+
+#[test]
+fn library_initialization_errors_fault_engine_and_reentrant_loading_is_checked() -> Result<()> {
+    use std::{cell::Cell, rc::Rc};
+    use storm_script::Host;
+    let mut host = NativeHost::new()?;
+    let count = Rc::new(Cell::new(0));
+    let seen = count.clone();
+    host.register_library("recursive", move |host| {
+        seen.set(seen.get() + 1);
+        host.load_library("recursive")
+    })?;
+    let runtime = storm_script::Runtime::compile("#libriary \"recursive\"\nvoid Main(){}")?;
+    let mut engine = Engine::from_runtime(runtime, host);
+    let error = engine.frame(16).unwrap_err();
+    assert!(format!("{error:#}").contains("initialization reentry"));
+    assert_eq!(engine.phase(), Phase::Faulted);
+    assert!(engine.frame(16).is_err());
+    engine.shutdown()?;
+    engine.shutdown()?;
+    assert_eq!(count.get(), 1);
+    assert_eq!(engine.phase(), Phase::Stopped);
+    Ok(())
+}
 use anyhow::{Result, ensure};
 use std::{
     cell::RefCell,

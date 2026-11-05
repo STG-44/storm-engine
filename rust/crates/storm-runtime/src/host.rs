@@ -1,10 +1,11 @@
 use anyhow::{Context, Result, ensure};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
 use storm_script::{Host, Value, World};
 
 type NativeFunction = Box<dyn FnMut(&[Value]) -> Result<Value>>;
 type TraceSink = Box<dyn FnMut(&str) -> Result<()>>;
+type LibraryInitializer = Box<dyn FnMut(&mut NativeHost) -> Result<()>>;
 
 /// The same World supplies script objects and native entity attribute bindings.
 /// Native classes/functions are explicitly registered by production subsystems.
@@ -12,6 +13,9 @@ pub struct NativeHost {
     world: World,
     pub entities: EntityManager,
     functions: BTreeMap<String, NativeFunction>,
+    libraries: BTreeMap<String, LibraryInitializer>,
+    loaded_libraries: BTreeSet<String>,
+    loading_libraries: BTreeSet<String>,
     trace: TraceSink,
     pub(crate) delta_ms: u32,
 }
@@ -31,6 +35,9 @@ impl NativeHost {
             world: World::default(),
             entities,
             functions: BTreeMap::new(),
+            libraries: BTreeMap::new(),
+            loaded_libraries: BTreeSet::new(),
+            loading_libraries: BTreeSet::new(),
             trace: Box::new(|text| {
                 eprintln!("{text}");
                 Ok(())
@@ -65,8 +72,53 @@ impl NativeHost {
     pub fn set_trace_sink(&mut self, sink: impl FnMut(&str) -> Result<()> + 'static) {
         self.trace = Box::new(sink);
     }
+    pub fn register_library(
+        &mut self,
+        name: &str,
+        initializer: impl FnMut(&mut NativeHost) -> Result<()> + 'static,
+    ) -> Result<()> {
+        ensure!(
+            !name.is_empty()
+                && name.len() <= 128
+                && name.is_ascii()
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+            "invalid native library name"
+        );
+        let name = name.to_ascii_lowercase();
+        ensure!(
+            self.libraries.len() + self.loading_libraries.len() < 64,
+            "native library registration budget"
+        );
+        ensure!(
+            !self.libraries.contains_key(&name) && !self.loading_libraries.contains(&name),
+            "duplicate native library: {name}"
+        );
+        self.libraries.insert(name, Box::new(initializer));
+        Ok(())
+    }
 }
 impl Host for NativeHost {
+    fn load_library(&mut self, name: &str) -> Result<()> {
+        let name = name.to_ascii_lowercase();
+        if self.loaded_libraries.contains(&name) {
+            return Ok(());
+        }
+        ensure!(
+            !self.loading_libraries.contains(&name),
+            "native library initialization reentry: {name}"
+        );
+        let mut initializer = self
+            .libraries
+            .remove(&name)
+            .with_context(|| format!("native script library is not registered: {name}"))?;
+        self.loading_libraries.insert(name.clone());
+        let result = initializer(self);
+        self.loading_libraries.remove(&name);
+        self.libraries.insert(name.clone(), initializer);
+        result?;
+        self.loaded_libraries.insert(name);
+        Ok(())
+    }
     fn world(&self) -> World {
         self.world.clone()
     }

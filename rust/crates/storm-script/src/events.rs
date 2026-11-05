@@ -138,6 +138,7 @@ pub struct Runtime {
     program: Program,
     handlers: Handlers,
     state: Option<crate::State>,
+    initialization_error: Option<String>,
 }
 impl Runtime {
     pub fn compile(source: &str) -> Result<Self> {
@@ -151,10 +152,17 @@ impl Runtime {
             handlers: Handlers::for_program(&program)?,
             program,
             state: None,
+            initialization_error: None,
         })
     }
     pub fn sources(&self) -> &[String] {
         self.program.sources()
+    }
+    pub fn libraries(&self) -> &[crate::LibraryRequest] {
+        self.program.libraries()
+    }
+    pub fn is_initialized(&self) -> bool {
+        self.state.is_some()
     }
     pub fn call(
         &mut self,
@@ -173,9 +181,18 @@ impl Runtime {
             self.state.as_ref().unwrap(),
         )
     }
-    fn prepare(&mut self, host: &impl Host) -> Result<()> {
+    fn prepare(&mut self, host: &mut impl Host) -> Result<()> {
+        if let Some(error) = &self.initialization_error {
+            anyhow::bail!("script initialization failed previously: {error}");
+        }
         if self.state.is_none() {
-            self.state = Some(crate::State::new(&self.program, host)?);
+            match crate::State::new(&self.program, host) {
+                Ok(state) => self.state = Some(state),
+                Err(error) => {
+                    self.initialization_error = Some(format!("{error:#}"));
+                    return Err(error);
+                }
+            }
         }
         Ok(())
     }

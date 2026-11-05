@@ -159,7 +159,15 @@ pub(crate) struct State {
     pub entity_update: Cell<bool>,
 }
 impl State {
-    pub fn new(program: &Program, host: &impl Host) -> Result<Self> {
+    pub fn new(program: &Program, host: &mut impl Host) -> Result<Self> {
+        for library in &program.libraries {
+            host.load_library(&library.name).with_context(|| {
+                format!(
+                    "{}:{}:{}: #libriary {}",
+                    library.file, library.line, library.column, library.name
+                )
+            })?;
+        }
         let world = host.world();
         let budget = Budget::default();
         let globals = program

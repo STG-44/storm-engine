@@ -2,8 +2,8 @@
 
 The [shared runtime foundation](../docs/ENGINE_RUNTIME.md) adds a separate
 `storm-engine` entry point, configured source loading and common script/entity
-frames. Its initial path is headless; production game classes, window/services
-and full original program compatibility remain pending. From the repository root:
+frames, with headless and native window adapters. Full production classes,
+services and original program compatibility remain pending. From the repository root:
 
 ```sh
 cargo run -p storm-engine --locked -- --game-dir rust/apps/storm-engine/fixtures/startup --script-encoding utf8 --frame-ms 0,9,1,0
@@ -16,12 +16,17 @@ language and syntax as the engine/runtime/API move to Rust. See the
 The shared executable also supports [original MODELR static messages](../docs/STATIC_MODELS.md).
 With a configured script creating/loading models, add `--headless model.png` to
 render their final frame. This path adds no preview rig/crew/effects or ocean;
-native window, sea/camera and full game services remain pending.
+native sea/camera and full game services remain pending.
 
 The [desktop engine window](../docs/NATIVE_WINDOW.md) now uses the same script /
 model host. Add `--window`, or `--window --window-frames 3 --window-fixed-delta 16`
 for a native presentation check. Window settings come from engine.ini; complete
 game controls/audio, native camera/sea and game startup remain pending.
+
+[Original-script compatibility prerequisites](../docs/ORIGINAL_SCRIPTS.md) now
+include bounded switch, original token spacing and explicit native library
+registration. The separate public upstream scripts remain unchanged; their full
+compilation and original game startup are still pending.
 
 This native application is the first executable part of the Storm Engine Rust
 port. It previews original static GM geometry and TX textures using wgpu, or

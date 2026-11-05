@@ -173,7 +173,10 @@ impl Engine {
         if self.phase == Phase::Stopped {
             return Ok(());
         }
-        let event = if self.phase != Phase::Ready && !self.exit_event_emitted {
+        let event = if self.phase != Phase::Ready
+            && self.runtime.is_initialized()
+            && !self.exit_event_emitted
+        {
             self.exit_event_emitted = true;
             self.event("ExitApplication")
         } else {

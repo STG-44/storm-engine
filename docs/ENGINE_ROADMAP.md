@@ -16,8 +16,10 @@ does not establish the engine's completion percentage.
 
 Original game programs remain compatibility inputs. The engine, native services,
 compiler/runtime and API move to Rust; game scripts are not being rewritten in
-Rust. Original PROGRAM resources are required for unchanged-script acceptance,
-but their absence does not block shared runtime or subsystem implementation.
+Rust. [Original PROGRAM inputs](ORIGINAL_SCRIPTS.md) are now available from the
+separate public upstream script repository. They remain unchanged compatibility
+inputs; compilation, native API coverage and installed resource-version matching
+are still acceptance work.
 Raising source limits alone does not establish language/API compatibility.
 
 Existing arithmetic references and GPU tests remain regression foundations.

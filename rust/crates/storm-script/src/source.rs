@@ -19,6 +19,15 @@ pub trait SourceLoader {
     fn load(&mut self, path: &str) -> Result<String>;
 }
 
+/// A named native script-library request, never a filesystem or FFI path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LibraryRequest {
+    pub name: String,
+    pub file: String,
+    pub line: usize,
+    pub column: usize,
+}
+
 /// UTF-8 source files below one explicit directory. Lookup folds ASCII case on
 /// every platform and accepts Windows separators. Ambiguous names fail.
 pub struct DirectorySource {
@@ -106,6 +115,7 @@ pub(crate) fn normalized(path: &str) -> Result<String> {
 pub(crate) struct Sources {
     pub tokens: Vec<Lexeme>,
     pub files: Vec<String>,
+    pub libraries: Vec<LibraryRequest>,
 }
 pub(crate) fn memory(text: &str) -> Result<Sources> {
     let mut builder = Builder::default();
@@ -137,6 +147,7 @@ struct Builder {
     end: Option<Lexeme>,
     bytes: usize,
     raw_tokens: usize,
+    libraries: Vec<LibraryRequest>,
 }
 impl Builder {
     fn queue(&mut self, path: &str, origin: Option<String>) -> Result<()> {
@@ -167,6 +178,38 @@ impl Builder {
             if let Token::Directive(command) = &item.token {
                 let context = format!("{}:{}:{}: #{command}", item.file, item.line, item.column);
                 match command.as_str() {
+                    "libriary" => {
+                        let argument = input
+                            .next()
+                            .with_context(|| format!("{context}: missing name"))?;
+                        let Token::Literal(crate::Value::String(name)) = argument.token else {
+                            bail!("{context}: expected quoted native library name");
+                        };
+                        ensure!(
+                            !name.is_empty()
+                                && name.len() <= 128
+                                && name.is_ascii()
+                                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
+                            "{context}: invalid native library name"
+                        );
+                        if !self
+                            .libraries
+                            .iter()
+                            .any(|library| library.name.eq_ignore_ascii_case(&name))
+                        {
+                            ensure!(
+                                self.libraries.len() < 64,
+                                "{context}: native library request limit"
+                            );
+                            self.libraries.push(LibraryRequest {
+                                name,
+                                file: item.file.to_string(),
+                                line: item.line,
+                                column: item.column,
+                            });
+                        }
+                        continue;
+                    }
                     "include" => {
                         let argument = input
                             .next()
@@ -224,6 +267,7 @@ impl Builder {
         Sources {
             tokens: self.tokens,
             files: self.files,
+            libraries: self.libraries,
         }
     }
 }

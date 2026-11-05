@@ -38,8 +38,11 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
     while p < bytes.len() {
         let start = p;
         let location = (line, column);
-        let token = if bytes[p].is_ascii_whitespace() {
-            p += 1;
+        let token = if bytes[p] <= b' ' || !bytes[p].is_ascii() {
+            // Original TOKEN::StartArgument tests signed char <= ' ', skipping
+            // high-bit UTF-8 bytes at boundaries, including the NBSP used by
+            // unchanged game scripts. Quoted/comment contents stay untouched.
+            p += source[p..].chars().next().unwrap().len_utf8();
             None
         } else if source[p..].starts_with("//") {
             while p < bytes.len() && !matches!(bytes[p], b'\r' | b'\n') {
@@ -133,7 +136,7 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
                 p += 2;
             } else {
                 ensure!(
-                    b"{}[]();.,+-*/%^=!<>&".contains(&bytes[p]),
+                    b"{}[]();.,:+-*/%^=!<>&".contains(&bytes[p]),
                     "{line}:{column}: unsupported character"
                 );
                 p += 1;
@@ -171,7 +174,8 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
 }
 
 struct Loop {
-    start: usize,
+    // A switch owns a retained operand but supplies no continue target.
+    start: Option<usize>,
     breaks: Vec<usize>,
 }
 
@@ -319,7 +323,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         } else {
             c.expect("{")?;
             c.block()?;
-            c.emit(Instruction::Return(false));
+            c.emit(Instruction::Return(false, 0));
         }
         functions.insert(
             name,
@@ -398,6 +402,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         globals: c.declarations,
         sources: sources.files,
         static_handlers: initial_handlers,
+        libraries: sources.libraries,
     })
 }
 
@@ -463,7 +468,7 @@ impl Compiler {
             ![
                 "int", "bool", "float", "string", "void", "native", "return", "if", "else",
                 "while", "break", "continue", "for", "object", "ref", "aref", "ptr", "switch",
-                "goto", "call", "makeref", "makearef", "extern"
+                "goto", "call", "makeref", "makearef", "extern", "case"
             ]
             .contains(&s.as_str()),
             "{}",
@@ -610,7 +615,12 @@ impl Compiler {
                 self.expression(1)?;
             }
             self.expect(";")?;
-            self.emit(Instruction::Return(value));
+            let switches = self
+                .loops
+                .iter()
+                .filter(|control| control.start.is_none())
+                .count();
+            self.emit(Instruction::Return(value, switches));
             return Ok(());
         }
         if self.take("if") {
@@ -636,7 +646,7 @@ impl Compiler {
             self.expect(")")?;
             let end = self.emit(Instruction::JumpFalse(0));
             self.loops.push(Loop {
-                start,
+                start: Some(start),
                 breaks: Vec::new(),
             });
             self.statement()?;
@@ -647,6 +657,9 @@ impl Compiler {
             }
             return Ok(());
         }
+        if self.take("switch") {
+            return self.switch_statement();
+        }
         if self.is("break") || self.is("continue") {
             let breaking = self.take("break");
             if !breaking {
@@ -655,13 +668,25 @@ impl Compiler {
             ensure!(
                 !self.loops.is_empty(),
                 "{}",
-                self.error("loop control outside loop")
+                self.error("control statement outside loop or switch")
             );
             self.expect(";")?;
-            let target = self.loops.last().unwrap().start;
-            let index = self.emit(Instruction::Jump(if breaking { 0 } else { target }));
             if breaking {
+                let index = self.emit(Instruction::Jump(0));
                 self.loops.last_mut().unwrap().breaks.push(index);
+            } else {
+                let index = self
+                    .loops
+                    .iter()
+                    .rposition(|control| control.start.is_some())
+                    .with_context(|| self.error("continue outside loop"))?;
+                let target = self.loops[index].start.unwrap();
+                // Native switch propagates continue fixups to the enclosing
+                // loop. Our private VM must also release retained operands.
+                for _ in index + 1..self.loops.len() {
+                    self.emit(Instruction::Drop);
+                }
+                self.emit(Instruction::Jump(target));
             }
             return Ok(());
         }
@@ -747,6 +772,75 @@ impl Compiler {
         }
         self.expression(1)?;
         self.expect(";")?;
+        self.emit(Instruction::Drop);
+        Ok(())
+    }
+    fn switch_statement(&mut self) -> Result<()> {
+        self.expect("(")?;
+        self.expression(1)?;
+        self.expect(")")?;
+        self.expect("{")?;
+        self.loops.push(Loop {
+            start: None,
+            breaks: Vec::new(),
+        });
+        let mut default_seen = false;
+        let mut branches = 0;
+        while !self.take("}") {
+            branches += 1;
+            ensure!(branches <= 256, "{}", self.error("switch branch limit"));
+            ensure!(
+                !default_seen,
+                "{}",
+                self.error("only a trailing default label is supported")
+            );
+            let guard = if self.take("case") {
+                // Original first-pass CASE_COMMAND accepts one token followed
+                // by ':'. Case expressions/fallthrough require a separate port.
+                let start = self.p;
+                ensure!(
+                    matches!(self.current(), Token::Literal(_) | Token::Boolean(_))
+                        || matches!(self.current(), Token::Word(name) if self.constants.contains_key(name)),
+                    "{}",
+                    self.error("case requires a literal or define")
+                );
+                self.expression(1)?;
+                ensure!(
+                    self.p == start + 1,
+                    "{}",
+                    self.error("case requires one token")
+                );
+                self.expect(":")?;
+                self.emit(Instruction::CompareSwitch);
+                Some(self.emit(Instruction::JumpFalse(0)))
+            } else {
+                self.expect("default")?;
+                self.expect(":")?;
+                default_seen = true;
+                None
+            };
+            loop {
+                let end = self.is("break");
+                ensure!(
+                    !self.is("}")
+                        && !self.is("case")
+                        && !self.is("default")
+                        && self.current() != &Token::End,
+                    "{}",
+                    self.error("switch branch requires an explicit final break")
+                );
+                self.statement()?;
+                if end {
+                    break;
+                }
+            }
+            if let Some(guard) = guard {
+                self.patch(guard);
+            }
+        }
+        for index in self.loops.pop().unwrap().breaks {
+            self.patch(index);
+        }
         self.emit(Instruction::Drop);
         Ok(())
     }

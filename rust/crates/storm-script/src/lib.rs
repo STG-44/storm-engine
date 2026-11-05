@@ -9,7 +9,7 @@ mod objects;
 pub mod preview;
 mod source;
 mod storage;
-pub use source::{DirectorySource, SourceLoader};
+pub use source::{DirectorySource, LibraryRequest, SourceLoader};
 mod value;
 pub use storage::Array;
 use storage::{Declaration, Slot, State};
@@ -26,6 +26,11 @@ pub use value::{Type, Value};
 /// use explicit hooks below; scripts have no implicit filesystem, network or FFI API.
 pub trait Host {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value>;
+    /// Resolve a #libriary name through explicit registrations. Called before
+    /// fresh script state; the embedding owns idempotence and native bindings.
+    fn load_library(&mut self, name: &str) -> Result<()> {
+        bail!("native script library {name} is not registered")
+    }
     fn world(&self) -> World {
         World::default()
     }
@@ -109,6 +114,7 @@ pub struct Program {
     globals: Vec<Declaration>,
     sources: Vec<String>,
     static_handlers: Vec<(String, String)>,
+    libraries: Vec<LibraryRequest>,
 }
 struct Function {
     parameters: usize,
@@ -136,6 +142,7 @@ enum Instruction {
     WriteAttribute,
     Increment(bool),
     Binary(Op),
+    CompareSwitch,
     Negate,
     Not,
     Drop,
@@ -143,7 +150,7 @@ enum Instruction {
     JumpFalse(usize),
     Short(usize, bool),
     Call(String, usize),
-    Return(bool),
+    Return(bool, usize),
 }
 enum Access {
     Literal(String),
@@ -179,6 +186,9 @@ impl Program {
     /// Normalized file names in original append order; in-memory source has one synthetic name.
     pub fn sources(&self) -> &[String] {
         &self.sources
+    }
+    pub fn libraries(&self) -> &[LibraryRequest] {
+        &self.libraries
     }
 
     /// Execute with fresh globals and temporary event state. Use Runtime to persist them.
@@ -415,6 +425,16 @@ impl Program {
                         let lhs = pop(&mut stack)?;
                         stack.push(lhs.apply_binary(*op, rhs, &mut execution.fuel)?);
                     }
+                    Instruction::CompareSwitch => {
+                        let case = pop(&mut stack)?;
+                        let selector = stack
+                            .last()
+                            .context("script switch stack underflow")?
+                            .clone();
+                        // Native STACK_COMPARE uses the case expression as the
+                        // left operand and retains the selector on SStack.
+                        stack.push(case.apply_binary(Op::Eq, selector, &mut execution.fuel)?);
+                    }
                     Instruction::Negate => {
                         let v = pop(&mut stack)?;
                         stack.push(v.apply_negate()?);
@@ -451,7 +471,7 @@ impl Program {
                         let result = self.invoke(callee, &args, execution, depth + 1)?;
                         stack.push(result);
                     }
-                    Instruction::Return(value) => {
+                    Instruction::Return(value, switch_depth) => {
                         ensure!(
                             *value == (function.returns != Type::Void),
                             "{name} return value presence does not match declaration"
@@ -473,7 +493,7 @@ impl Program {
                             result.kind()
                         );
                         ensure!(
-                            stack.is_empty() && targets.is_empty(),
+                            stack.len() == *switch_depth && targets.is_empty(),
                             "script return stack is not balanced"
                         );
                         return Ok(Some(result));
