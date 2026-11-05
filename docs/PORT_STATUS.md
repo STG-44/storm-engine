@@ -13,6 +13,12 @@ complete original game running through the Rust engine with its original assets
 and scripts. The full-game estimate gives considerable weight to the large
 subsystems still pending; completing a ship milestone does not imply a fixed
 percentage gain. About 80% of that scope remains, with the same uncertainty.
+The [latest native-window validation](NATIVE_WINDOW.md#four-host-evidence-2026-11-05)
+passes Windows, Linux and both macOS architectures: 429 CPU tests per host,
+26 Linux Vulkan tests, the actual shared-engine window, four verified ZIP digests,
+144 exact scenario reports and four unchanged startup traces. Physical
+GPU/input/audio and full original gameplay remain separate acceptance work.
+
 The [milestone checklist](RUST_PORT.md#milestones) and reproducible checks describe
 the actual implemented scope.
 

@@ -2,9 +2,12 @@
 
 Started: 2026-10-17.
 
-Current increment: [shared desktop window and retained TIMER](NATIVE_WINDOW.md).
+Current validated increment: [shared desktop window and retained TIMER](NATIVE_WINDOW.md).
 The native window drives the same configured script/entity/model host, with
-original timing, window settings and close-event boundaries. Input/audio, native
+original timing, window settings and close-event boundaries. All four native CI
+hosts pass 429 CPU tests; Linux adds 26 Vulkan tests and the actual engine
+window. Four verified archives contain 144 exact preceding reports and four
+unchanged startup traces. Input/audio, native
 camera/sea and complete game services remain pending.
 Preceding [script-created static models](STATIC_MODELS.md) have three native CI
 hosts and an ARM cross-build; hosted ARM execution has a documented capacity gap.

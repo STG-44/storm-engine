@@ -81,8 +81,7 @@ game programs/resources. A local Metal run presents three model frames and check
 one load plus sequential fixed-delta frame callbacks, DestroyWindow and
 ExitApplication. Local checks pass 429 CPU tests and 26 Metal GPU tests; all 36
 preceding complete scenario reports and the twelve-line configured startup trace
-remain unchanged. The TIMER oracle regenerates byte-identically. Four-host CI
-for this increment has not yet completed. The Linux workflow adds the same model/window path under Xvfb
+remain unchanged. The TIMER oracle regenerates byte-identically. Four-host CI for this increment is complete (see below). The Linux workflow adds the same model/window path under Xvfb
 and software Vulkan. Windows/macOS physical input, focus, suspend and surface
 recovery coverage remains pending beyond documented local checks.
 
@@ -90,3 +89,32 @@ This extends [shared startup](ENGINE_RUNTIME.md) and [static models](STATIC_MODE
 The next scene integration is original sea/camera through this same host, while
 full script/native API work continues toward sea and land gameplay. Whole-engine
 coverage remains about 20% (roughly 15–25%).
+
+
+## Four-host evidence, 2026-11-05
+
+Source 3c1f709d649963d456c068125e28cf0699a25a48 passes all four native jobs in
+[PR run 42073388748](https://github.com/STG-44/storm-engine/actions/runs/42073388748): Windows
+x86_64, Linux x86_64, macOS Apple Silicon and macOS Intel. Logs confirm formatting,
+warnings-denied Clippy, builds and 429 CPU tests per host (135 interpreter,
+15 runtime). Four original artifact ZIP SHA256 digests are verified; all 144
+complete reports over the existing 36 scenarios and all four twelve-line startup
+traces match the local baseline. The TIMER oracle regenerates byte-identically.
+
+Linux additionally passes 26 software Vulkan tests, three actual shared-engine
+window presentations and 30 fleet-window presentations. Thirty other existing
+preview-window presentations also pass. The archived engine trace checks model
+load, three sequential delta=16 callbacks and one DestroyWindow/ExitApplication
+pair. Local Metal passes 26 GPU tests and three actual engine presentations;
+surface readiness permits more logical updates than presentations.
+
+The first window run 41930273608 passed three hosts but failed the Linux trace
+assertion because xvfb-run combined diagnostics with script stdout. The follow-up
+isolates child stdout before that wrapper and always archives the trace. This
+correction is included in the passing source above. Script lines are validated
+without filtering. Native ARM CPU tests now execute successfully for this source;
+the earlier model source retains its separate historical hosted-runner gap.
+
+Physical Windows/ARM GPU, input/audio and full-game acceptance remain pending,
+along with native sea/camera and complete game services. Subsequent local
+compiler/library work is excluded from this validation cohort.
