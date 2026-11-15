@@ -5,6 +5,16 @@ fn run(source: &str) -> Result<Value> {
 }
 
 #[test]
+fn numeric_attribute_components_preserve_leading_zeros_in_fixed_and_dynamic_paths() -> Result<()> {
+    let result = run(
+        "int main(){object ship;string rank=\"ranks.rank1\";ship.(rank).1=7;ship.(rank).01=11;ship.1x0.icon=9;return sti(ship.ranks.rank1.1)*100+sti(ship.(rank).01)+sti(ship.1X0.icon);}",
+    )?;
+    assert_eq!(result, Value::Int(720));
+    assert!(Program::compile("int main(){object a; return sti(a.1.2);}").is_err());
+    Ok(())
+}
+
+#[test]
 fn scalar_assignment_converts_to_current_type_but_compound_operations_can_promote() -> Result<()> {
     assert_eq!(run("int main(){int n=3.9; return n;}")?, Value::Int(3));
     assert_eq!(

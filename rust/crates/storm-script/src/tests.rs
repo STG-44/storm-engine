@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn value_returns_preserve_native_handling_of_trailing_closing_parentheses() -> Result<()> {
+    let program = Program::compile(
+        "int values[2]={0,7}; ref select(int index){return &values[index]);} int main(){ref result=select(1);return sti(result);}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
+    assert!(Program::compile("int main(){return );}").is_err());
+    assert!(Program::compile("int main(){if(1) return 7); return 0;}").is_err());
+    Ok(())
+}
+
+#[test]
+fn if_body_can_start_after_the_extra_closing_token_used_by_the_game_scripts() -> Result<()> {
+    let program = Program::compile(
+        "int main(){int n=1;if(n==1)) n=7;else n=8;if(n==8)) return 0;return n;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
+    assert!(Program::compile("void main(){if()) return;}").is_err());
+    Ok(())
+}
+
+#[test]
+fn plain_assignment_in_blocks_hands_control_tokens_back_to_the_statement_parser() -> Result<()> {
+    let program = Program::compile(
+        "int main(){int n=0;switch(1){case 1:n=(0)||(1)||(0) if(n==1){n=6}break;}bool ready=n==6 if(ready){int step=(2-1));n=n+step}return n;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
+    assert!(Program::compile("void main(){int n; if(n==0) n=1 if(n==1) n=2;}").is_err());
+    assert!(Program::compile("void main(){int n; for(n=1 n<2; n++) {}}").is_err());
+    assert!(Program::compile("void main(){int n; n=1 2;}").is_err());
+    Ok(())
+}
+
+#[test]
 fn native_counted_for_updates_on_continue_and_skips_update_on_break() -> Result<()> {
     let program = Program::compile(
         "int main(){int sum=0;for(int i=5;i>0;i--){switch(i){case 4:continue;break;}if(i==1)break;sum+=i;}int j=3;for(;j<3;j++)sum+=100;return sum+j;}",

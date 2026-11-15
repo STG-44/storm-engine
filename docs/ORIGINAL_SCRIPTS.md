@@ -86,6 +86,19 @@ Counted `for` loops use a postfix increment or decrement of the named
 variable, following the original compiler. A `continue` runs the update
 before reevaluating the condition. A `break` exits the loop immediately.
 
+Attributes can use digit-leading names such as `.1`, `.01` and `.1x0`.
+Leading zeros are part of the key, and alphabetic characters use the same
+case folding as other attribute names. The compiler accepts plain assignments
+and local initializers at unambiguous control boundaries inside blocks, as
+well as surplus closing parentheses in the assignment, return and `if` forms
+used by the original scripts.
+
+The shared-header, `extern` and counted-loop revision passed 450 CPU tests on
+each of the four CI hosts. Linux also passed 26 software Vulkan tests and the
+native-window fixture. All four archive digests, 144 scenario reports and
+startup traces were verified against the baseline.
+[GitHub Actions run 43689748635](https://github.com/STG-44/storm-engine/actions/runs/43689748635)
+
 The preceding switch, lexer and library registration changes passed 439 CPU
 tests on each of the four CI hosts, plus 26 Vulkan tests on Linux. The archived
 reports match the 36 baseline scenarios on all four hosts.
@@ -107,7 +120,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-On the pinned Russian checkout, compilation currently reaches the
-`Dolly` branch in `seadogs.c` at line 1353. The assignment immediately before
-that line ends without a semicolon. The script compiler still needs the
-original statement termination behavior, and full game startup remains open.
+The pinned Russian checkout progresses through the main script, encounters
+and character code to `store/storeutilite.c:640`. The compiler currently
+stops at an `if` following an unterminated local declaration without an
+initializer. Full compilation and game startup remain in progress.

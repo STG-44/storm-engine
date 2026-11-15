@@ -12,6 +12,7 @@ pub(crate) const MAX_LOCALS: usize = 128;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Token {
     Word(String),
+    AttributeName(String),
     Literal(Value),
     Boolean(bool),
     Symbol(String),
@@ -37,7 +38,7 @@ pub(crate) fn lex(
         source.len() <= limits.file_bytes && !source.contains('\0'),
         "script source limit or NUL"
     );
-    let mut result = Vec::new();
+    let mut result: Vec<Lexeme> = Vec::new();
     let bytes = source.as_bytes();
     let (mut p, mut line, mut column) = (0, 1, 1);
     let mut previous_cr = false;
@@ -102,6 +103,24 @@ pub(crate) fn lex(
                 "false" => Token::Boolean(false),
                 _ => Token::Word(word),
             })
+        } else if bytes[p].is_ascii_digit()
+            && result.last().is_some_and(
+                |previous| matches!(&previous.token, Token::Symbol(symbol) if symbol == "."),
+            )
+        {
+            while p < bytes.len() && bytes[p].is_ascii_digit() {
+                p += 1;
+            }
+            ensure!(
+                bytes.get(p) != Some(&b'.'),
+                "{line}:{column}: unsupported adjacent dot after numeric attribute name"
+            );
+            while p < bytes.len() && (bytes[p].is_ascii_alphanumeric() || bytes[p] == b'_') {
+                p += 1;
+            }
+            // The native compiler passes the token text to the attribute
+            // codec, so leading zeros are significant.
+            Some(Token::AttributeName(source[start..p].to_ascii_lowercase()))
         } else if bytes[p].is_ascii_digit() {
             while p < bytes.len() && bytes[p].is_ascii_digit() {
                 p += 1;
@@ -641,16 +660,16 @@ impl Compiler {
                 "{}",
                 self.error("unterminated block")
             );
-            self.statement()?;
+            self.statement(true)?;
         }
     }
-    fn statement(&mut self) -> Result<()> {
+    fn statement(&mut self, in_block: bool) -> Result<()> {
         self.enter()?;
-        self.statement_inner()?;
+        self.statement_inner(in_block)?;
         self.nesting -= 1;
         Ok(())
     }
-    fn statement_inner(&mut self) -> Result<()> {
+    fn statement_inner(&mut self, in_block: bool) -> Result<()> {
         // Directives emit no instruction and do not supply a control-flow body.
         // Preserve the following semicolon as the actual empty statement.
         while self.is_static_handler() {
@@ -696,6 +715,12 @@ impl Compiler {
             let value = !self.is(";");
             if value {
                 self.expression(1)?;
+                // FUNCTION_RETURN emits the return before handing its
+                // lookahead back to CompileBlock. Unmatched closing tokens
+                // after that value are unreachable in a surrounding block.
+                if in_block {
+                    while self.take(")") {}
+                }
             }
             self.expect(";")?;
             let switches = self
@@ -710,12 +735,15 @@ impl Compiler {
             self.expect("(")?;
             self.expression(1)?;
             self.expect(")")?;
+            // Native CompileBlock treats additional closing tokens at the
+            // start of the body as no-ops. The first ')' ends the condition.
+            while self.take(")") {}
             let conditional = self.emit(Instruction::JumpFalse(0));
-            self.statement()?;
+            self.statement(false)?;
             if self.take("else") {
                 let end = self.emit(Instruction::Jump(0));
                 self.patch(conditional);
-                self.statement()?;
+                self.statement(false)?;
                 self.patch(end);
             } else {
                 self.patch(conditional);
@@ -732,7 +760,7 @@ impl Compiler {
                 start: Some(start),
                 breaks: Vec::new(),
             });
-            self.statement()?;
+            self.statement(false)?;
             self.emit(Instruction::Jump(start));
             self.patch(end);
             for index in self.loops.pop().unwrap().breaks {
@@ -787,17 +815,17 @@ impl Compiler {
                 let name = self.word()?;
                 let elements = self.elements()?;
                 let index = self.local(name, kind, elements)?;
-                if self.take("=") {
+                let initialized = self.take("=");
+                if initialized {
                     ensure!(elements <= 1, "local array initializer is not supported");
                     self.emit(Instruction::Select(Slot::Local(index)));
                     self.expression(1)?;
                     self.emit(Instruction::Store(true));
                 }
                 if !self.take(",") {
-                    break;
+                    return self.assignment_end(in_block && initialized);
                 }
             }
-            return self.expect(";");
         }
         if let Token::Word(name) = self.current() {
             let next = &self.tokens[self.p + 1].token;
@@ -822,6 +850,7 @@ impl Compiler {
                     self.emit(Instruction::Drop);
                     return Ok(());
                 }
+                let plain_assignment = self.is("=");
                 if let Some(path) = path {
                     self.emit(Instruction::Attribute(path, true));
                     self.expect("=")?;
@@ -853,13 +882,30 @@ impl Compiler {
                     }
                     self.emit(Instruction::Store(op.is_none()));
                 }
-                return self.expect(";");
+                return self.assignment_end(in_block && plain_assignment);
             }
         }
         self.expression(1)?;
         self.expect(";")?;
         self.emit(Instruction::Drop);
         Ok(())
+    }
+    fn assignment_end(&mut self, allow_control_token: bool) -> Result<()> {
+        // Native OP_EQUAL hands expression lookahead back to CompileBlock.
+        // In for headers and unbraced bodies the separator also ends the
+        // enclosing native CompileBlock call.
+        if allow_control_token {
+            while self.take(")") {}
+            if [
+                "if", "while", "for", "switch", "return", "break", "continue", "}",
+            ]
+            .iter()
+            .any(|token| self.is(token))
+            {
+                return Ok(());
+            }
+        }
+        self.expect(";")
     }
     fn for_statement(&mut self) -> Result<()> {
         self.expect("(")?;
@@ -874,7 +920,7 @@ impl Compiler {
             "{}",
             self.error("invalid for initializer")
         );
-        self.statement()?;
+        self.statement(false)?;
         let condition = self.code.len();
         self.expression(1)?;
         self.expect(";")?;
@@ -901,7 +947,7 @@ impl Compiler {
             start: Some(update),
             breaks: Vec::new(),
         });
-        self.statement()?;
+        self.statement(false)?;
         self.emit(Instruction::Jump(update));
         self.patch(end);
         for index in self.loops.pop().unwrap().breaks {
@@ -964,7 +1010,7 @@ impl Compiler {
                     "{}",
                     self.error("switch branch requires an explicit final break")
                 );
-                self.statement()?;
+                self.statement(true)?;
                 if end {
                     break;
                 }
@@ -1137,7 +1183,7 @@ impl Compiler {
                 self.expect(")")?;
                 Access::Dynamic(index)
             } else {
-                let Token::Word(name) = self.current() else {
+                let (Token::Word(name) | Token::AttributeName(name)) = self.current() else {
                     return Err(self.error("expected attribute word or dynamic variable"));
                 };
                 let name = name.clone();
