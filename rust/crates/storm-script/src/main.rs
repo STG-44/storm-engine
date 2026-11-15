@@ -49,6 +49,7 @@ fn main() -> Result<()> {
     )
     .context("compile source-language subset")?;
     let mut host = AttributeHost::new()?;
+    host.set_source(loader);
     let result = program.call(
         &options.entry,
         &[],

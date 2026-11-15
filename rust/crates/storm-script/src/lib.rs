@@ -10,6 +10,7 @@ mod events;
 mod objects;
 pub mod preview;
 mod retained_builtins;
+mod segments;
 mod source;
 mod storage;
 pub use source::{DirectorySource, LibraryRequest, SourceLoader};
@@ -20,15 +21,21 @@ use storage::{Declaration, Slot, State};
 use anyhow::{Context, Result, bail, ensure};
 pub use events::Runtime;
 pub use objects::{AttributeReference, Object, Reference, Variable, World};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
 use storm_core::{AttributeId, AttributeStore, EntityId};
 use value::Op;
 pub use value::{MAX_STRING, Type, Value};
 
 /// External native functions must be declared in source. Internal builtins
-/// use explicit hooks below; scripts have no implicit filesystem, network or FFI API.
+/// use explicit hooks below; segment loading requires a host-provided source.
 pub trait Host {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value>;
+    /// Read a normalized, root-relative source path from the configured program.
+    fn load_script_source(&mut self, _path: &str) -> Result<String> {
+        bail!("runtime script source is not bound by this host")
+    }
+    /// A failed LoadSegment returns false and reports its source error here.
+    fn script_diagnostic(&mut self, _message: &str) {}
     /// Resolve a #libriary name through explicit registrations. Called before
     /// fresh script state; the embedding owns idempotence and native bindings.
     fn load_library(&mut self, name: &str) -> Result<()> {
@@ -113,12 +120,16 @@ impl Default for Limits {
 }
 
 pub struct Program {
-    functions: BTreeMap<String, Function>,
-    globals: Vec<Declaration>,
+    functions: BTreeMap<String, Rc<Function>>,
+    globals: Vec<segments::GlobalDeclaration>,
+    defines: BTreeMap<String, Value>,
     sources: Vec<String>,
     static_handlers: Vec<(String, String)>,
-    event_limits: events::EventLimits,
     libraries: Vec<LibraryRequest>,
+    entry: Option<String>,
+    limits: CompileLimits,
+    bytes: usize,
+    raw_tokens: usize,
 }
 struct Function {
     parameters: usize,
@@ -126,6 +137,19 @@ struct Function {
     kind: FunctionKind,
     locals: Vec<Declaration>,
     code: Vec<Located>,
+}
+impl Function {
+    fn signature(&self) -> FunctionSignature {
+        FunctionSignature {
+            parameters: self.parameters,
+            kind: self.kind,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) struct FunctionSignature {
+    parameters: usize,
+    kind: FunctionKind,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FunctionKind {
@@ -362,20 +386,19 @@ impl Program {
         }
         if let Some((arity, returns)) = retained_builtins::signature(name) {
             ensure!(arguments.len() == arity, "{name} expects {arity} arguments");
+            if matches!(
+                name,
+                "loadsegment" | "unloadsegment" | "segmentisloaded" | "checkfunction"
+            ) {
+                return segments::call(name, &arguments[0], self, execution);
+            }
             return execution.call_native(name, arguments, returns);
         }
-        let function = self
-            .functions
-            .get(name)
-            .with_context(|| format!("unknown function {name}"))?;
+        let (_, function) = execution.state.segments.borrow().function(name)?;
         ensure!(
             arguments.len() == function.parameters,
             "{name} expects {} arguments",
             function.parameters
-        );
-        ensure!(
-            function.kind != FunctionKind::Extern,
-            "extern script function {name} is not loaded"
         );
         if function.kind == FunctionKind::Native {
             return execution.call_native(name, arguments, Some(function.returns));
@@ -410,7 +433,7 @@ impl Program {
                 match &located.op {
                     Instruction::Push(value) => stack.push(value.clone()),
                     Instruction::Select(slot) => targets.push(SelectedVariable {
-                        variable: slot.variable(&locals, &execution.state.globals).clone(),
+                        variable: slot.variable(&locals, execution.state)?,
                         indirect: false,
                         slot: *slot,
                         index: None,
@@ -462,7 +485,7 @@ impl Program {
                             .context("no previous script assignment target")?
                         {
                             LeftOperand::Variable(slot, index) => {
-                                let variable = slot.variable(&locals, &execution.state.globals);
+                                let variable = slot.variable(&locals, execution.state)?;
                                 if let Some(index) = index {
                                     let Value::Array(array) = variable.value()? else {
                                         bail!("index on scalar");
@@ -473,7 +496,7 @@ impl Program {
                                         true,
                                     )?;
                                 } else {
-                                    execution.store_variable(variable, value, true)?;
+                                    execution.store_variable(&variable, value, true)?;
                                 }
                             }
                             LeftOperand::Attribute(attribute) => {
@@ -510,9 +533,8 @@ impl Program {
                                 Ok(match access {
                                     Access::Literal(s) => (s.clone(), false),
                                     Access::Dynamic(slot) => {
-                                        let value = slot
-                                            .variable(&locals, &execution.state.globals)
-                                            .load()?;
+                                        let value =
+                                            slot.variable(&locals, execution.state)?.load()?;
                                         let key = value.clone().path_text()?;
                                         // ADVANCE_AP and VERIFY_AP convert the key in EX.
                                         // Assignment targets use ACCESS_VAR instead.
@@ -625,7 +647,7 @@ impl Program {
                                 // CALL reads the name after evaluating the
                                 // arguments, including any mutations they make.
                                 let Value::String(name) =
-                                    slot.variable(&locals, &execution.state.globals).value()?
+                                    slot.variable(&locals, execution.state)?.value()?
                                 else {
                                     bail!("dynamic call requires a string variable");
                                 };

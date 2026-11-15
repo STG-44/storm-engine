@@ -1,5 +1,5 @@
 //! Persistent declarations and bounded array storage. References never own cells.
-use crate::{Host, Program, Type, Value, Variable, World};
+use crate::{Host, Program, Type, Value, Variable, World, segments::Segments};
 use anyhow::{Context, Result, ensure};
 use std::{
     cell::{Cell, RefCell},
@@ -158,14 +158,14 @@ fn initial(kind: Type, world: &World) -> Result<Value> {
 pub(crate) struct State {
     pub world: World,
     pub budget: Budget,
-    pub globals: Vec<Variable>,
+    pub segments: RefCell<Segments>,
     // Native COMPILER shares EX across script invocations and events.
     expression: RefCell<Value>,
     // COMPILER starts with bEntityUpdate=true; calls/events share the flag.
     pub entity_update: Cell<bool>,
 }
 impl State {
-    pub fn new(program: &Program, host: &mut impl Host) -> Result<Self> {
+    pub fn load_libraries(program: &Program, host: &mut impl Host) -> Result<()> {
         for library in &program.libraries {
             host.load_library(&library.name).with_context(|| {
                 format!(
@@ -174,17 +174,19 @@ impl State {
                 )
             })?;
         }
+        Ok(())
+    }
+
+    pub fn new(program: &Program, host: &mut impl Host) -> Result<Self> {
+        Self::load_libraries(program, host)?;
         let world = host.world();
         let budget = Budget::default();
-        let globals = program
-            .globals
-            .iter()
-            .map(|decl| decl.allocate(&world, &budget))
-            .collect::<Result<_>>()?;
+        let mut segments = Segments::default();
+        segments.insert(program, Segments::allocate(program, &world, &budget)?);
         Ok(Self {
             world,
             budget,
-            globals,
+            segments: RefCell::new(segments),
             expression: RefCell::new(Value::Void),
             entity_update: Cell::new(true),
         })
@@ -213,13 +215,13 @@ impl State {
 #[derive(Clone, Copy)]
 pub(crate) enum Slot {
     Local(usize),
-    Global(usize),
+    Global(usize, Type),
 }
 impl Slot {
-    pub fn variable<'a>(&self, locals: &'a [Variable], globals: &'a [Variable]) -> &'a Variable {
+    pub fn variable(&self, locals: &[Variable], state: &State) -> Result<Variable> {
         match self {
-            Self::Local(i) => &locals[*i],
-            Self::Global(i) => &globals[*i],
+            Self::Local(i) => Ok(locals[*i].clone()),
+            Self::Global(i, _) => state.segments.borrow().variable(*i),
         }
     }
 }

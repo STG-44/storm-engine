@@ -1,6 +1,6 @@
 //! Explicit diagnostic bindings; these are not original game native functions.
-use crate::{Host, Value, Variable, World};
-use anyhow::{Result, bail, ensure};
+use crate::{DirectorySource, Host, SourceLoader, Value, Variable, World};
+use anyhow::{Context, Result, bail, ensure};
 use serde_json::{Value as Json, json};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 use storm_core::{
@@ -141,6 +141,7 @@ pub struct AttributeHost {
     notifications: Rc<RefCell<Notifications>>,
     messages: Rc<RefCell<Notifications>>,
     ship_used: bool,
+    source: Option<DirectorySource>,
 }
 
 impl AttributeHost {
@@ -179,7 +180,12 @@ impl AttributeHost {
             notifications,
             messages,
             ship_used: false,
+            source: None,
         })
+    }
+
+    pub fn set_source(&mut self, source: DirectorySource) {
+        self.source = Some(source);
     }
 
     pub fn report(&self, result: &Value) -> Json {
@@ -221,6 +227,15 @@ impl AttributeHost {
 }
 
 impl Host for AttributeHost {
+    fn load_script_source(&mut self, path: &str) -> Result<String> {
+        self.source
+            .as_mut()
+            .context("preview script source is not configured")?
+            .load(path)
+    }
+    fn script_diagnostic(&mut self, message: &str) {
+        eprintln!("{message}");
+    }
     fn world(&self) -> World {
         self.world.clone()
     }

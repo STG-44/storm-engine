@@ -126,6 +126,9 @@ pub(crate) struct Sources {
     pub files: Vec<String>,
     pub libraries: Vec<LibraryRequest>,
     pub limits: CompileLimits,
+    pub entry: Option<String>,
+    pub bytes: usize,
+    pub raw_tokens: usize,
 }
 pub(crate) fn memory(text: &str) -> Result<Sources> {
     memory_with_limits(text, CompileLimits::default())
@@ -141,7 +144,7 @@ pub(crate) fn memory_with_limits(text: &str, limits: CompileLimits) -> Result<So
         builder.pending.is_empty(),
         "#include requires an explicit SourceLoader"
     );
-    Ok(builder.finish())
+    Ok(builder.finish(None))
 }
 pub(crate) fn load(entry: &str, loader: &mut impl SourceLoader) -> Result<Sources> {
     load_with_limits(entry, loader, CompileLimits::default())
@@ -163,7 +166,7 @@ pub(crate) fn load_with_limits(
             .with_context(|| origin.unwrap_or_else(|| format!("load script {path}")))?;
         builder.add(&path, &text)?;
     }
-    Ok(builder.finish())
+    Ok(builder.finish(Some(entry.to_owned())))
 }
 
 #[derive(Default)]
@@ -307,13 +310,16 @@ impl Builder {
         }
         Ok(())
     }
-    fn finish(mut self) -> Sources {
+    fn finish(mut self, entry: Option<String>) -> Sources {
         self.tokens.push(self.end.expect("a source was lexed"));
         Sources {
             tokens: self.tokens,
             files: self.files,
             libraries: self.libraries,
             limits: self.limits,
+            entry,
+            bytes: self.bytes,
+            raw_tokens: self.raw_tokens,
         }
     }
 }

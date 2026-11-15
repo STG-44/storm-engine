@@ -328,6 +328,7 @@ fn static_lifetimes_match_unedited_cpp_and_its_confirmed_frame_hang_becomes_an_e
                 "add" => handlers.add(
                     operation[1].as_str().unwrap(),
                     &operation[2].to_string(),
+                    0,
                     operation[3].as_i64().unwrap() as i32,
                     operation[4].as_bool().unwrap(),
                 )?,

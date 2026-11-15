@@ -20,6 +20,7 @@ fn retained_clear_routing_and_table_states_match_including_the_bounded_hang() ->
                 "add" => handlers.add(
                     op[1].as_str().unwrap(),
                     &op[2].to_string(),
+                    0,
                     op[3].as_i64().unwrap() as i32,
                     op[4].as_bool().unwrap(),
                 )?,
@@ -286,23 +287,23 @@ fn clearing_reclaims_dynamic_slots_but_retains_event_names_and_original_skipped_
 -> Result<()> {
     let mut handlers = Handlers::default();
     for n in 0..MAX_HANDLERS {
-        handlers.register("E", &format!("H{n}"), 0)?;
+        handlers.register("E", &format!("H{n}"), 0, 0)?;
     }
     handlers.clear()?;
     assert_eq!(handlers.entries["e"].len(), 1);
     assert!(handlers.entries["e"][0].status == Status::Deleted);
     for n in 0..MAX_HANDLERS - 1 {
-        handlers.register("E", &format!("New{n}"), 0)?;
+        handlers.register("E", &format!("New{n}"), 0, 0)?;
     }
-    assert!(handlers.register("E", "Overflow", 0).is_err());
+    assert!(handlers.register("E", "Overflow", 0, 0).is_err());
     let mut handlers = Handlers::default();
     for n in 0..MAX_EVENTS {
-        handlers.register(&format!("E{n}"), "H", 0)?;
+        handlers.register(&format!("E{n}"), "H", 0, 0)?;
     }
     handlers.clear()?;
     assert!(handlers.entries.values().all(Vec::is_empty));
-    assert!(handlers.register("Overflow", "H", 0).is_err());
-    handlers.register("E0", "H", 0)?;
+    assert!(handlers.register("Overflow", "H", 0, 0).is_err());
+    handlers.register("E0", "H", 0, 0)?;
     Ok(())
 }
 

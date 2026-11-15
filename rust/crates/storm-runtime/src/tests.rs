@@ -1,6 +1,134 @@
 use super::*;
 
 #[test]
+fn configured_segments_link_globals_and_externs_and_unload_at_frame_boundaries() -> Result<()> {
+    let temp = Temporary::new()?;
+    let program = temp.0.join("PROGRAM");
+    std::fs::create_dir_all(program.join("Controls"))?;
+    std::fs::write(
+        temp.0.join("engine.ini"),
+        "program_directory=program\nrun=main.c\n",
+    )?;
+    std::fs::write(
+        program.join("main.c"),
+        r#"
+        #define INITIAL_COUNT 7
+        #define ON_PING "ping"
+        #event_handler("reload", "Reload");
+        #event_handler("probe-unloaded", "ProbeUnloaded");
+        #event_handler(ON_PING, "BaseHook");
+        int total = 10;
+        extern void ExternControlsInit();
+        extern void StopControls();
+        void BaseHook() { Trace("base="+total); }
+        void RecordControl(int count) { total += count; }
+        void Main() {
+            string file = "controls\init_pc.c";
+            Trace("main="+SegmentIsLoaded("main.c"));
+            Trace("before="+SegmentIsLoaded(file));
+            Trace("nil="+LoadSegment("missing.c"));
+            Trace("invalid="+LoadSegment("../outside.c"));
+            Trace("conflict="+LoadSegment("broken.c"));
+            Trace("rejected="+CheckFunction("Rejected"));
+            Trace("loaded="+LoadSegment(file));
+            Trace("repeat="+LoadSegment(file));
+            ExternControlsInit();
+            ExternControlsInit();
+            Event(ON_PING);
+            Event("dynamic");
+            StopControls();
+            Trace("pending="+SegmentIsLoaded(file));
+            Trace("queued="+LoadSegment(file));
+            Trace("remembered="+CheckFunction("ExternControlsInit"));
+            Event(ON_PING);
+            Event("dynamic");
+        }
+        void Reload() {
+            string file = "controls\init_pc.c";
+            Trace("reaped="+SegmentIsLoaded(file));
+            Trace("reload="+LoadSegment(file));
+            ExternControlsInit();
+            Event(ON_PING);
+            StopControls();
+        }
+        void ProbeUnloaded() { ExternControlsInit(); }
+        "#,
+    )?;
+    std::fs::write(
+        program.join("Controls/Init_PC.c"),
+        r#"
+        #include "CONTROLS\helper.c"
+        #libriary "script_libriary_test"
+        #event_handler(ON_PING, "ModuleHook");
+        native float Clampf(float value);
+        int counter[INITIAL_COUNT];
+        void ExternControlsInit() {
+            counter[0] += StartCounter();
+            if (Clampf(2.0) == 1.0) RecordControl(counter[0]);
+            SetEventHandler("dynamic","ModuleHook",0);
+            Trace("run="+counter[0]);
+        }
+        void ModuleHook() { Trace("module="+counter[0]); }
+        void StopControls() {
+            UnloadSegment("controls\init_pc.c");
+            Trace("return from unloaded function");
+        }
+        "#,
+    )?;
+    std::fs::write(
+        program.join("Controls/helper.c"),
+        "int StartCounter() { return INITIAL_COUNT; }",
+    )?;
+    std::fs::write(
+        program.join("broken.c"),
+        "void Rejected() {} void BaseHook() {}",
+    )?;
+    std::fs::write(temp.0.join("outside.c"), "void Rejected() {}")?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    engine.emit_event("reload", &mut Message::new("", vec![])?)?;
+    let error = engine
+        .emit_event("probe-unloaded", &mut Message::new("", vec![])?)
+        .expect_err("unloaded extern must be unavailable immediately");
+    assert!(
+        format!("{error:#}").contains("extern script function externcontrolsinit is not loaded")
+    );
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:main=1",
+            "script:before=0",
+            "script:nil=0",
+            "script:invalid=0",
+            "script:conflict=0",
+            "script:rejected=0",
+            "script:loaded=1",
+            "script:repeat=1",
+            "script:run=7",
+            "script:run=14",
+            "script:base=31",
+            "script:module=14",
+            "script:module=14",
+            "script:return from unloaded function",
+            "script:pending=1",
+            "script:queued=1",
+            "script:remembered=1",
+            "script:base=31",
+            "script:reaped=0",
+            "script:reload=1",
+            "script:run=7",
+            "script:base=38",
+            "script:module=7",
+            "script:return from unloaded function",
+        ],
+    );
+    Ok(())
+}
+
+#[test]
 fn configured_rigging_formats_attributes_and_uses_original_sail_power() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

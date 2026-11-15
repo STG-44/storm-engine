@@ -31,6 +31,7 @@ fn retained_event_table_status_snapshots_match() -> Result<()> {
                 "add" => handlers.register(
                     operation[1].as_str().unwrap(),
                     &operation[2].to_string(),
+                    0,
                     operation[3].as_i64().unwrap() as i32,
                 )?,
                 "delete" => {

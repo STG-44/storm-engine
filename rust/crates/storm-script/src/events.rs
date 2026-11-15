@@ -33,8 +33,10 @@ enum Status {
     New,
     Deleted,
 }
+#[derive(Clone)]
 struct Handler {
     function: String,
+    segment: usize,
     status: Status,
     is_static: bool,
 }
@@ -62,19 +64,52 @@ impl Handlers {
         }
     }
     pub(crate) fn for_program(program: &Program) -> Result<Self> {
-        let mut handlers = Self::with_limits(program.event_limits);
+        let mut handlers = Self::with_limits(program.limits.into());
         for (event, function) in &program.static_handlers {
-            handlers.register_static(event, function)?;
+            handlers.register_static(event, function, 0)?;
         }
         Ok(handlers)
     }
-    pub(crate) fn register_static(&mut self, event: &str, function: &str) -> Result<()> {
-        self.add(event, function, 0, true)
+    pub(crate) fn register_static(
+        &mut self,
+        event: &str,
+        function: &str,
+        segment: usize,
+    ) -> Result<()> {
+        self.add(event, function, segment, 0, true)
     }
-    fn register(&mut self, event: &str, function: &str, flag: i32) -> Result<()> {
-        self.add(event, function, flag, false)
+    pub(crate) fn register_segment(
+        &mut self,
+        handlers: &[(String, String)],
+        owner: impl Fn(&str) -> Result<usize>,
+    ) -> Result<()> {
+        if handlers.is_empty() {
+            return Ok(());
+        }
+        let mut staged = Self::with_limits(self.limits);
+        staged.entries = self.entries.clone();
+        for (event, function) in handlers {
+            staged.register_static(event, function, owner(function)?)?;
+        }
+        self.entries = staged.entries;
+        Ok(())
     }
-    fn add(&mut self, event: &str, function: &str, flag: i32, is_static: bool) -> Result<()> {
+    pub(crate) fn unload_segment(&mut self, segment: usize) {
+        for handlers in self.entries.values_mut() {
+            handlers.retain(|handler| handler.segment != segment);
+        }
+    }
+    fn register(&mut self, event: &str, function: &str, segment: usize, flag: i32) -> Result<()> {
+        self.add(event, function, segment, flag, false)
+    }
+    fn add(
+        &mut self,
+        event: &str,
+        function: &str,
+        segment: usize,
+        flag: i32,
+        is_static: bool,
+    ) -> Result<()> {
         let event = event_name(event)?;
         if let Some(handler) = self
             .entries
@@ -95,6 +130,7 @@ impl Handlers {
         );
         self.entries.entry(event).or_default().push(Handler {
             function: function.into(),
+            segment,
             is_static,
             status: if flag == 0 {
                 Status::Normal
@@ -234,10 +270,13 @@ impl Runtime {
         }
         Ok(())
     }
-    /// Advance statuses using S_EVENTTAB::ProcessFrame, including its index quirk.
-    /// This legacy method advances handler statuses only. Use advance_frame for posted events.
+    /// Apply segment cleanup and advance handler statuses. Use advance_frame
+    /// to dispatch posted events.
     /// Returns an error if deleted static entries would trap the retained loop.
     pub fn process_frame(&mut self) -> Result<()> {
+        if let Some(state) = &self.state {
+            state.segments.borrow_mut().reap();
+        }
         self.handlers.frame()
     }
     /// Apply the original ClearEvents table cleanup without changing posted
@@ -300,6 +339,7 @@ impl Runtime {
             self.state.as_ref().unwrap(),
         )?;
         let result = (|| {
+            execution.state.segments.borrow_mut().reap();
             execution.events.frame()?;
             let mut fired = 0;
             let mut index = 0;
@@ -502,9 +542,9 @@ impl Program {
             "seteventhandler" | "deleventhandler" => {
                 let event = arguments[0].resolved()?;
                 let function = arguments[1].resolved()?.text()?.to_ascii_lowercase();
-                let definition = self
-                    .functions
-                    .get(&function)
+                let segments = execution.state.segments.borrow();
+                let definition = segments
+                    .signature(&function)
                     .context("unknown event handler function")?;
                 ensure!(
                     definition.parameters == 0,
@@ -515,7 +555,10 @@ impl Program {
                     let Value::Int(flag) = flag else {
                         anyhow::bail!("event handler flag must be int");
                     };
-                    execution.events.register(event.text()?, &function, flag)?;
+                    let (segment, _) = segments.function(&function)?;
+                    execution
+                        .events
+                        .register(event.text()?, &function, segment, flag)?;
                 } else {
                     execution.events.delete(event.text()?, &function)?;
                 }

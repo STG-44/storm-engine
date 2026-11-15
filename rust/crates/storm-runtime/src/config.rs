@@ -98,6 +98,7 @@ impl Startup {
         for library in runtime.libraries() {
             host.register_game_library(&library.name, game)?;
         }
+        host.configure_script_source(source, game.clone());
         Ok(Engine::from_runtime(runtime, host))
     }
 }

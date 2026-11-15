@@ -6,7 +6,7 @@ use std::{
 };
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
 use storm_render::texture_paths::TexturePaths;
-use storm_script::{Host, Value, World};
+use storm_script::{Host, SourceLoader, Value, World};
 
 type NativeCallback = dyn FnMut(&[Value], &World, &EntityManager) -> Result<Value>;
 pub(crate) struct NativeFunction(Box<NativeCallback>);
@@ -34,6 +34,7 @@ pub struct NativeHost {
     libraries: BTreeMap<String, LibraryInitializer>,
     loaded_libraries: BTreeSet<String>,
     loading_libraries: BTreeSet<String>,
+    script_source: Option<(crate::GameSource, crate::GameDirectory)>,
     trace: TraceSink,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) delta_ms: u32,
@@ -57,6 +58,7 @@ impl NativeHost {
             libraries: BTreeMap::new(),
             loaded_libraries: BTreeSet::new(),
             loading_libraries: BTreeSet::new(),
+            script_source: None,
             trace: Box::new(|text| {
                 eprintln!("{text}");
                 Ok(())
@@ -91,6 +93,13 @@ impl NativeHost {
     }
     pub fn set_trace_sink(&mut self, sink: impl FnMut(&str) -> Result<()> + 'static) {
         self.trace = Box::new(sink);
+    }
+    pub(crate) fn configure_script_source(
+        &mut self,
+        source: crate::GameSource,
+        game: crate::GameDirectory,
+    ) {
+        self.script_source = Some((source, game));
     }
     pub fn register_library(
         &mut self,
@@ -180,6 +189,16 @@ impl NativeHost {
     }
 }
 impl Host for NativeHost {
+    fn load_script_source(&mut self, path: &str) -> Result<String> {
+        let (source, _) = self
+            .script_source
+            .as_mut()
+            .context("runtime script source is not configured")?;
+        source.load(path)
+    }
+    fn script_diagnostic(&mut self, message: &str) {
+        eprintln!("{message}");
+    }
     fn load_library(&mut self, name: &str) -> Result<()> {
         let name = name.to_ascii_lowercase();
         if self.loaded_libraries.contains(&name) {
@@ -189,6 +208,9 @@ impl Host for NativeHost {
             !self.loading_libraries.contains(&name),
             "native library initialization reentry: {name}"
         );
+        if let Some(game) = self.script_source.as_ref().map(|(_, game)| game.clone()) {
+            self.register_game_library(&name, &game)?;
+        }
         let mut initializer = self
             .libraries
             .remove(&name)

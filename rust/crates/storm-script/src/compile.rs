@@ -1,3 +1,4 @@
+use crate::segments::{GlobalDeclaration, Segments};
 use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
 use crate::{
     Access, AttributeMode, CallSite, Function, FunctionKind, Instruction, Located, Program, Type,
@@ -222,21 +223,30 @@ struct Loop {
     breaks: Vec<usize>,
 }
 
-struct Compiler {
+struct Compiler<'a> {
     limits: crate::CompileLimits,
     tokens: Vec<Lexeme>,
     p: usize,
     code: Vec<Located>,
     locals: BTreeMap<String, usize>,
     types: Vec<Declaration>,
-    globals: BTreeMap<String, usize>,
-    declarations: Vec<Declaration>,
+    globals: BTreeMap<String, Slot>,
+    declarations: Vec<GlobalDeclaration>,
+    next_global: usize,
     constants: BTreeMap<String, (Value, usize)>,
+    inherited: &'a Segments,
     loops: Vec<Loop>,
     nesting: usize,
 }
 
 pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
+    compile_segment(sources, &Segments::default())
+}
+
+pub(crate) fn compile_segment(
+    sources: crate::source::Sources,
+    inherited: &Segments,
+) -> Result<Program> {
     let mut c = Compiler {
         limits: sources.limits,
         tokens: sources.tokens,
@@ -246,7 +256,9 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         types: Vec::new(),
         globals: BTreeMap::new(),
         declarations: Vec::new(),
+        next_global: inherited.global_count(),
         constants: BTreeMap::new(),
+        inherited,
         loops: Vec::new(),
         nesting: 0,
     };
@@ -263,11 +275,11 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         }
         if let Token::Definition(name, value) = c.current().clone() {
             ensure!(
-                c.constants.len() < c.limits.constants,
+                c.constants.len() + inherited.define_count() < c.limits.constants,
                 "script constant limit"
             );
             ensure!(
-                !c.constants.contains_key(&name),
+                c.constant(&name).is_none(),
                 "{}",
                 c.error("define redefinition")
             );
@@ -311,6 +323,12 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
             ensure!(
                 builtins::arity(&name).is_none(),
                 "builtin function cannot be redeclared: {name}"
+            );
+            ensure!(
+                inherited
+                    .signature(&name)
+                    .is_none_or(|signature| signature.kind == FunctionKind::Extern),
+                "duplicate function {name}"
             );
             // The original function table can replace an unloaded extern
             // entry with another declaration or a loaded definition.
@@ -361,15 +379,29 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
             );
             let mut name = name;
             loop {
-                ensure!(c.globals.len() < c.limits.globals, "script global limit");
                 let elements = c.elements()?;
                 let initial = c.initializer(kind, elements)?;
-                ensure!(!c.globals.contains_key(&name), "duplicate global {name}");
-                c.globals.insert(name, c.declarations.len());
-                c.declarations.push(Declaration {
-                    kind,
-                    elements,
-                    initial,
+                ensure!(
+                    !c.globals.contains_key(&name) && inherited.global(&name).is_none(),
+                    "duplicate global {name}"
+                );
+                let index = if let Some(index) = inherited.global_index(&name) {
+                    index
+                } else {
+                    ensure!(c.next_global < c.limits.globals, "script global limit");
+                    let index = c.next_global;
+                    c.next_global += 1;
+                    index
+                };
+                c.globals.insert(name.clone(), Slot::Global(index, kind));
+                c.declarations.push(GlobalDeclaration {
+                    name,
+                    index,
+                    declaration: Declaration {
+                        kind,
+                        elements,
+                        initial,
+                    },
                 });
                 if !c.take(",") {
                     break;
@@ -410,13 +442,13 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         }
         functions.insert(
             name,
-            Function {
+            Rc::new(Function {
                 parameters,
                 returns,
                 kind,
                 locals: std::mem::take(&mut c.types),
                 code: std::mem::take(&mut c.code),
-            },
+            }),
         );
         c.locals.clear();
     }
@@ -438,12 +470,16 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 let (expected, defer_arity) = if let Some(count) = builtins::arity(callee) {
                     (count, false)
                 } else {
-                    let function = functions.get(callee).with_context(|| {
-                        format!(
-                            "{name} {}:{}:{}: undeclared function {callee}",
-                            instruction.file, instruction.line, instruction.column
-                        )
-                    })?;
+                    let function = functions
+                        .get(callee)
+                        .map(|function| function.signature())
+                        .or_else(|| inherited.signature(callee))
+                        .with_context(|| {
+                            format!(
+                                "{name} {}:{}:{}: undeclared function {callee}",
+                                instruction.file, instruction.line, instruction.column
+                            )
+                        })?;
                     // CompileExpression_L7 only enforces the empty argument
                     // list for zero-parameter functions. The Rust VM checks
                     // nonzero parameter lists before entering a frame.
@@ -470,8 +506,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         }
     }
     let mut initial_handlers = Vec::new();
-    let event_limits = c.limits.into();
-    let mut registered = crate::events::Handlers::with_limits(event_limits);
+    let mut registered = crate::events::Handlers::with_limits(c.limits.into());
     for (event, function, origin) in static_handlers {
         let location = format!(
             "{}:{}:{}: #event_handler",
@@ -479,7 +514,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         );
         let event = match event {
             Token::Literal(Value::String(event)) => event,
-            Token::Word(name) => match c.constants.get(&name) {
+            Token::Word(name) => match c.constant(&name) {
                 Some((Value::String(event), _)) => event.clone(),
                 _ => anyhow::bail!("{location}: event name requires a string define"),
             },
@@ -487,27 +522,37 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         };
         let handler = functions
             .get(&function)
+            .map(|function| function.signature())
+            .or_else(|| inherited.signature(&function))
             .with_context(|| format!("{location}: unknown event handler function {function}"))?;
         ensure!(
             handler.parameters == 0,
             "{location}: event handler must take no parameters"
         );
         registered
-            .register_static(&event, &function)
+            .register_static(&event, &function, 0)
             .with_context(|| location.clone())?;
         initial_handlers.push((event, function));
     }
     Ok(Program {
         functions,
         globals: c.declarations,
+        defines: c
+            .constants
+            .into_iter()
+            .map(|(name, (value, _))| (name, value))
+            .collect(),
         sources: sources.files,
         static_handlers: initial_handlers,
-        event_limits,
         libraries: sources.libraries,
+        entry: sources.entry,
+        bytes: sources.bytes,
+        raw_tokens: sources.raw_tokens,
+        limits: sources.limits,
     })
 }
 
-impl Compiler {
+impl Compiler<'_> {
     fn function_body_start(&mut self) -> Result<()> {
         // SEPARATOR leaves the original function declaration open until its
         // body starts, as in GetColonyByIndex in the upstream game.
@@ -1216,7 +1261,7 @@ impl Compiler {
                 let start = self.p;
                 ensure!(
                     matches!(self.current(), Token::Literal(_) | Token::Boolean(_))
-                        || matches!(self.current(), Token::Word(name) if self.constants.contains_key(name)),
+                        || matches!(self.current(), Token::Word(name) if self.constant(name).is_some()),
                     "{}",
                     self.error("case requires a literal or define")
                 );
@@ -1286,7 +1331,14 @@ impl Compiler {
         self.locals
             .get(name)
             .map(|i| Slot::Local(*i))
-            .or_else(|| self.globals.get(name).map(|i| Slot::Global(*i)))
+            .or_else(|| self.globals.get(name).copied())
+            .or_else(|| self.inherited.global(name))
+    }
+    fn constant(&self, name: &str) -> Option<(&Value, Option<usize>)> {
+        self.constants
+            .get(name)
+            .map(|(value, position)| (value, Some(*position)))
+            .or_else(|| self.inherited.define(name).map(|value| (value, None)))
     }
     fn variable(&mut self) -> Result<Slot> {
         let name = self.word()?;
@@ -1296,7 +1348,7 @@ impl Compiler {
     fn slot_type(&self, slot: Slot) -> Type {
         match slot {
             Slot::Local(i) => self.types[i].kind,
-            Slot::Global(i) => self.declarations[i].kind,
+            Slot::Global(_, kind) => kind,
         }
     }
     fn target(&mut self) -> Result<Slot> {
@@ -1321,11 +1373,10 @@ impl Compiler {
             Token::Literal(Value::Int(n)) => *n,
             Token::Word(name) => {
                 let (value, position) = self
-                    .constants
-                    .get(name)
+                    .constant(name)
                     .with_context(|| format!("{}", self.error("unknown array dimension")))?;
                 ensure!(
-                    *position < self.p,
+                    position.is_none_or(|position| position < self.p),
                     "{}",
                     self.error("array dimension define must precede declaration")
                 );
@@ -1357,7 +1408,7 @@ impl Compiler {
                 self.p += 1;
                 return Ok((kind == Type::Int).then_some(Value::Int(i32::from(value))));
             }
-            Token::Word(name) if scalar && self.constants.contains_key(name) => {
+            Token::Word(name) if scalar && self.constant(name).is_some() => {
                 // The original scalar initializer consumes UNKNOWN without
                 // assigning a value, even when the name is an existing define.
                 self.p += 1;
@@ -1515,7 +1566,7 @@ impl Compiler {
         } else {
             let slot = if let Some(slot) = self.lookup(&name) {
                 slot
-            } else if let Some((value, _)) = self.constants.get(&name) {
+            } else if let Some((value, _)) = self.constant(&name) {
                 ensure!(
                     value.kind() != Type::Void,
                     "{}",

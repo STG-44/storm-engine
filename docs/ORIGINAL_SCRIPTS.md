@@ -187,6 +187,15 @@ the initial 1.0 hole dependence.
 exists. Live SAIL state, configured dependence and script-driven changes to
 sail hole masks still need the native SAIL service.
 
+`LoadSegment` links source from the configured program directory into the
+running script. A segment can use existing globals, defines and functions,
+and supply definitions for outstanding `extern` declarations. Failed loads
+return zero and leave the linked script symbols and handlers intact.
+`UnloadSegment` invalidates functions and globals and removes their event
+handlers immediately. `SegmentIsLoaded` continues to recognize the segment
+until frame cleanup, after which it can be loaded again. Function names
+and global slot indices stay reserved for code that already linked to them.
+
 The common-translations revision passed 474 CPU tests on Windows, Linux,
 and both macOS architectures. Linux passed another 26 software Vulkan
 tests and the native-window check. All four archive digests, 144 scenario
@@ -237,6 +246,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 ~~~
 
 The pinned Russian checkout compiles all 201 startup source files and enters
-`Main` in `seadogs.c`. `Main` reaches `ControlsInit` and then stops at
-`LoadSegment("controls\init_pc.c")` in `controls/controls.c:62`. Loading and
-unloading script segments at runtime is still pending.
+`Main` in `seadogs.c`. `ControlsInit` loads the unchanged
+`controls\init_pc.c` and invokes `ExternControlsInit`. The script registers
+the key codes and then reaches its first native `CreateControl` call in
+`controls/controls.c:141`. The native controls service is still pending.
