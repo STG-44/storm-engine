@@ -681,6 +681,12 @@ impl Compiler {
         if self.take(";") {
             return Ok(());
         }
+        if self.take("call") {
+            self.dynamic_call(false)?;
+            self.statement_end(in_block)?;
+            self.emit(Instruction::Drop);
+            return Ok(());
+        }
         if self.is("makeref") || self.is("makearef") {
             let attribute = self.take("makearef");
             if !attribute {
@@ -804,26 +810,20 @@ impl Compiler {
             }
             return Ok(());
         }
-        if [
-            "int", "bool", "float", "string", "object", "ref", "aref", "ptr",
-        ]
-        .iter()
-        .any(|s| self.is(s))
-        {
+        if self.starts_local_declaration() {
             let kind = self.kind()?;
             loop {
                 let name = self.word()?;
                 let elements = self.elements()?;
                 let index = self.local(name, kind, elements)?;
-                let initialized = self.take("=");
-                if initialized {
+                if self.take("=") {
                     ensure!(elements <= 1, "local array initializer is not supported");
                     self.emit(Instruction::Select(Slot::Local(index)));
                     self.expression(1)?;
                     self.emit(Instruction::Store(true));
                 }
                 if !self.take(",") {
-                    return self.assignment_end(in_block && initialized);
+                    return self.statement_end(in_block);
                 }
             }
         }
@@ -882,30 +882,47 @@ impl Compiler {
                     }
                     self.emit(Instruction::Store(op.is_none()));
                 }
-                return self.assignment_end(in_block && plain_assignment);
+                return self.statement_end(in_block && plain_assignment);
             }
         }
+        let starts_with_call = matches!(self.current(), Token::Word(_))
+            && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "(");
         self.expression(1)?;
-        self.expect(";")?;
+        let direct_call = starts_with_call
+            && matches!(
+                self.code.last().map(|entry| &entry.op),
+                Some(Instruction::Call(..))
+            );
+        self.statement_end(in_block && direct_call)?;
         self.emit(Instruction::Drop);
         Ok(())
     }
-    fn assignment_end(&mut self, allow_control_token: bool) -> Result<()> {
-        // Native OP_EQUAL hands expression lookahead back to CompileBlock.
+    fn statement_end(&mut self, allow_control_token: bool) -> Result<()> {
+        // Native declarations, assignments and direct calls can leave the
+        // next control token for the enclosing CompileBlock.
         // In for headers and unbraced bodies the separator also ends the
         // enclosing native CompileBlock call.
         if allow_control_token {
             while self.take(")") {}
-            if [
-                "if", "while", "for", "switch", "return", "break", "continue", "}",
-            ]
-            .iter()
-            .any(|token| self.is(token))
+            if self.starts_local_declaration()
+                || [
+                    "if", "while", "for", "switch", "return", "break", "continue", "}",
+                ]
+                .iter()
+                .any(|token| self.is(token))
             {
                 return Ok(());
             }
         }
         self.expect(";")
+    }
+    fn starts_local_declaration(&self) -> bool {
+        matches!(
+            self.current(),
+            Token::Word(name) if matches!(
+                name.as_str(), "int" | "bool" | "float" | "string" | "object" | "ref" | "aref" | "ptr"
+            )
+        )
     }
     fn for_statement(&mut self) -> Result<()> {
         self.expect("(")?;
@@ -1253,6 +1270,9 @@ impl Compiler {
         Ok(())
     }
     fn atom(&mut self) -> Result<()> {
+        if self.take("call") {
+            return self.dynamic_call(true);
+        }
         if let Token::Boolean(value) = self.current() {
             let value = Value::Int(i32::from(*value));
             self.p += 1;
@@ -1272,18 +1292,7 @@ impl Compiler {
         }
         let name = self.word()?;
         if self.take("(") {
-            let mut arguments = 0;
-            if !self.take(")") {
-                loop {
-                    self.expression(1)?;
-                    arguments += 1;
-                    ensure!(arguments <= self.limits.locals, "script argument limit");
-                    if self.take(")") {
-                        break;
-                    }
-                    self.expect(",")?;
-                }
-            }
+            let arguments = self.call_arguments()?;
             self.emit(Instruction::Call(name, arguments));
         } else {
             let slot = if let Some(slot) = self.lookup(&name) {
@@ -1309,5 +1318,32 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+    fn dynamic_call(&mut self, in_expression: bool) -> Result<()> {
+        let slot = self.variable()?;
+        ensure!(
+            !in_expression || self.slot_type(slot) == Type::String,
+            "{}",
+            self.error("dynamic call expressions require a declared string variable")
+        );
+        self.expect("(")?;
+        let arguments = self.call_arguments()?;
+        self.emit(Instruction::DynamicCall(slot, arguments));
+        Ok(())
+    }
+    fn call_arguments(&mut self) -> Result<usize> {
+        if self.take(")") {
+            return Ok(0);
+        }
+        let mut count = 0;
+        loop {
+            self.expression(1)?;
+            count += 1;
+            ensure!(count <= self.limits.locals, "script argument limit");
+            if self.take(")") {
+                return Ok(count);
+            }
+            self.expect(",")?;
+        }
     }
 }

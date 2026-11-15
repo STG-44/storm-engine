@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn dynamic_calls_read_the_name_after_arguments_and_support_returns_and_ref_arguments() -> Result<()>
+{
+    let program = Program::compile(
+        "string handler=\"First\";int redirect(){handler=\"sEcOnD\";return 6;}int first(int n){return 100+n;}int second(int n){return n+1;}void touch(ref n){n=3;}int main(){int n=0;string name=\"Touch\";ref alias=&name;call alias(&n);return n*10+(call handler(redirect()));}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(37)
+    );
+
+    let program = Program::compile("int main(){string name=\"Missing\";return call name();}")?;
+    let error = program
+        .call("main", &[], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("unknown function missing"));
+    assert!(Program::compile("int main(){int name=0;return call name();}").is_err());
+    assert!(Program::compile("void main(){call \"Missing\"();}").is_err());
+    Ok(())
+}
+
+#[test]
 fn value_returns_preserve_native_handling_of_trailing_closing_parentheses() -> Result<()> {
     let program = Program::compile(
         "int values[2]={0,7}; ref select(int index){return &values[index]);} int main(){ref result=select(1);return sti(result);}",
@@ -30,7 +51,7 @@ fn if_body_can_start_after_the_extra_closing_token_used_by_the_game_scripts() ->
 #[test]
 fn plain_assignment_in_blocks_hands_control_tokens_back_to_the_statement_parser() -> Result<()> {
     let program = Program::compile(
-        "int main(){int n=0;switch(1){case 1:n=(0)||(1)||(0) if(n==1){n=6}break;}bool ready=n==6 if(ready){int step=(2-1));n=n+step}return n;}",
+        "void Log(int value){} int main(){int n=0;switch(1){case 1:n=(0)||(1)||(0) if(n==1){n=6}break;}bool ready=n==6 if(ready){int step, extra int one=1 if(ready){step=(2-one));n=n+step+extra}}Log(n) return n;}",
     )?;
     assert_eq!(
         program.call("main", &[], &mut (), Limits::default())?,
@@ -39,6 +60,7 @@ fn plain_assignment_in_blocks_hands_control_tokens_back_to_the_statement_parser(
     assert!(Program::compile("void main(){int n; if(n==0) n=1 if(n==1) n=2;}").is_err());
     assert!(Program::compile("void main(){int n; for(n=1 n<2; n++) {}}").is_err());
     assert!(Program::compile("void main(){int n; n=1 2;}").is_err());
+    assert!(Program::compile("int f(){return 1;} int main(){f()+f() return 0;}").is_err());
     Ok(())
 }
 

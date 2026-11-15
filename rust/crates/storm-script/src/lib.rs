@@ -158,6 +158,7 @@ enum Instruction {
     JumpFalse(usize),
     Short(usize, bool),
     Call(String, usize),
+    DynamicCall(Slot, usize),
     Return(bool, usize),
 }
 enum Access {
@@ -487,9 +488,25 @@ impl Program {
                             ip = *target;
                         }
                     }
-                    Instruction::Call(callee, count) => {
+                    Instruction::Call(_, count) | Instruction::DynamicCall(_, count) => {
                         ensure!(stack.len() >= *count, "script argument stack underflow");
                         let args = stack.split_off(stack.len() - count);
+                        let dynamic_name;
+                        let callee = match &located.op {
+                            Instruction::Call(callee, _) => callee,
+                            Instruction::DynamicCall(slot, _) => {
+                                // CALL reads the name after evaluating the
+                                // arguments, including any mutations they make.
+                                let Value::String(name) =
+                                    slot.variable(&locals, &execution.state.globals).value()?
+                                else {
+                                    bail!("dynamic call requires a string variable");
+                                };
+                                dynamic_name = name.to_ascii_lowercase();
+                                &dynamic_name
+                            }
+                            _ => unreachable!(),
+                        };
                         let result = self.invoke(callee, &args, execution, depth + 1)?;
                         stack.push(result);
                     }

@@ -88,10 +88,21 @@ before reevaluating the condition. A `break` exits the loop immediately.
 
 Attributes can use digit-leading names such as `.1`, `.01` and `.1x0`.
 Leading zeros are part of the key, and alphabetic characters use the same
-case folding as other attribute names. The compiler accepts plain assignments
-and local initializers at unambiguous control boundaries inside blocks, as
+case folding as other attribute names. The compiler accepts plain assignments,
+local declarations and direct calls before clear statement boundaries inside blocks, as
 well as surplus closing parentheses in the assignment, return and `if` forms
 used by the original scripts.
+
+`call variable(arguments)` supports both standalone calls and expressions.
+The VM evaluates the arguments first, reads the variable, and looks up the
+resulting name case-insensitively. Dynamic and direct calls share the same
+invocation and reference handling. Dynamic call expressions require a
+declared string variable, as in the original compiler.
+
+The digit-leading attribute revision passed 454 CPU tests on each CI host,
+with 26 software Vulkan tests and a native-window check on Linux. All 144
+archived scenario reports and four startup traces match the baseline.
+[GitHub Actions run 43690632825](https://github.com/STG-44/storm-engine/actions/runs/43690632825)
 
 The shared-header, `extern` and counted-loop revision passed 450 CPU tests on
 each of the four CI hosts. Linux also passed 26 software Vulkan tests and the
@@ -120,7 +131,8 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout progresses through the main script, encounters
-and character code to `store/storeutilite.c:640`. The compiler currently
-stops at an `if` following an unterminated local declaration without an
-initializer. Full compilation and game startup remain in progress.
+The pinned Russian checkout progresses through the main script, dialogues
+and quests to `sea_ai/aiship.c:1613`. The compiler currently stops at a
+standalone `else` following a bare block. The original compiler dispatches
+this token through its expression-result register. Full compilation and
+game startup remain in progress.
