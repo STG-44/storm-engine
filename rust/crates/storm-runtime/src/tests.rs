@@ -1,6 +1,60 @@
 use super::*;
 
 #[test]
+fn configured_game_initializes_the_original_math_library_and_its_counter() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"#libriary "SCRIPT_LIBRIARY_TEST"
+        native float Bring2Range(float a,float b,float c,float d,float x);
+        native float Bring2RangeNoCheck(float a,float b,float c,float d,float x);
+        native float Clampf(float x);
+        native float Degree2Radian(float degrees);
+        native int RDTSC_B();
+        native int RDTSC_E(int start);
+        void Main() {
+            int start=RDTSC_B();
+            Trace("clamp="+MakeInt(Clampf(2.0)));
+            Trace("range="+MakeInt(Bring2Range(10.0,20.0,8.0,2.0,5.0)));
+            Trace("unbounded="+MakeInt(Bring2RangeNoCheck(10.0,20.0,0.0,4.0,10.0)));
+            Trace("radians="+MakeInt(Degree2Radian(180.0)*1000.0));
+            int elapsed=RDTSC_E(start);
+            Trace("timed");
+        }"#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:clamp=1",
+            "script:range=20",
+            "script:unbounded=35",
+            "script:radians=3141",
+            "script:timed",
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn a_library_binding_collision_leaves_the_existing_functions_intact() -> Result<()> {
+    use storm_script::{Host, Value};
+    let mut host = NativeHost::new()?;
+    host.register_function("Clampf", |_| Ok(Value::Float(0.5)))?;
+    host.register_game_library("script_libriary_test")?;
+    let error = host.load_library("script_libriary_test").unwrap_err();
+    assert!(format!("{error:#}").contains("duplicate native function: clampf"));
+    assert!(host.call("bring2range", &[]).is_err());
+    assert_eq!(host.call("clampf", &[])?, Value::Float(0.5));
+    Ok(())
+}
+
+#[test]
 fn configured_scripts_use_original_engine_headers_separately_from_game_program_files() -> Result<()>
 {
     let temp = Temporary::new()?;

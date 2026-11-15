@@ -3,9 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
 use storm_script::{Host, Value, World};
 
-type NativeFunction = Box<dyn FnMut(&[Value]) -> Result<Value>>;
+pub(crate) type NativeFunction = Box<dyn FnMut(&[Value]) -> Result<Value>>;
 type TraceSink = Box<dyn FnMut(&str) -> Result<()>>;
 type LibraryInitializer = Box<dyn FnMut(&mut NativeHost) -> Result<()>>;
+const MAX_NATIVE_FUNCTIONS: usize = 256;
 
 /// The same World supplies script objects and native entity attribute bindings.
 /// Native classes/functions are explicitly registered by production subsystems.
@@ -58,7 +59,7 @@ impl NativeHost {
             "invalid native function name"
         );
         ensure!(
-            self.functions.len() < 256,
+            self.functions.len() < MAX_NATIVE_FUNCTIONS,
             "native function registration budget"
         );
         let name = name.to_ascii_lowercase();
@@ -94,6 +95,28 @@ impl NativeHost {
             "duplicate native library: {name}"
         );
         self.libraries.insert(name, Box::new(initializer));
+        Ok(())
+    }
+    pub(crate) fn register_game_library(&mut self, name: &str) -> Result<()> {
+        let library = crate::script_libraries::MATH_LIBRARY;
+        if name.eq_ignore_ascii_case(library) && !self.libraries.contains_key(library) {
+            self.register_library(library, |host| {
+                let functions = crate::script_libraries::math_functions();
+                ensure!(
+                    host.functions.len() + functions.len() <= MAX_NATIVE_FUNCTIONS,
+                    "native function registration budget"
+                );
+                for (name, _) in &functions {
+                    ensure!(
+                        !host.functions.contains_key(*name),
+                        "duplicate native function: {name}"
+                    );
+                }
+                host.functions
+                    .extend(functions.map(|(name, function)| (name.to_owned(), function)));
+                Ok(())
+            })?;
+        }
         Ok(())
     }
 }

@@ -2,7 +2,8 @@
 
 Game scripts retain the Storm language and original source. The Rust engine,
 compiler, runtime and native API are being ported; game programs are compatibility
-inputs. Full original-game compilation and startup are not established yet.
+inputs. The pinned Russian startup program compiles and registers its
+scripted events. Native game startup remains in progress.
 
 ## Upstream corpus
 
@@ -67,9 +68,10 @@ resolves them through the reserved `storm-engine/` prefix. Native TOKEN treats
 
 The configured engine uses a compilation profile with limits of 2 MiB per
 file, 32 MiB total source, 2,048 files and 2,097,152 tokens. It also allows
-larger function, global, constant and local tables. Standalone compiler APIs
-use the smaller profile by default and can receive an explicit profile.
-Execution limits govern the VM separately.
+larger function, global, constant and local tables. The game profile permits
+1,024 event names and 4,096 handler pairs across static registration and
+runtime events. Standalone compiler APIs use the smaller profile by default
+and can receive an explicit profile. VM execution limits are configured separately.
 
 An `extern` declaration can resolve to a subsequent function definition in the
 same compilation, including definitions in appended include files. Calls to
@@ -139,6 +141,18 @@ hand the next declaration back to the body parser. The parser retains an
 attribute target across extra closing parentheses and recognizes a
 `break` immediately following a value return in a switch branch.
 
+The compiler recognizes the 91 entries in the retained internal function
+table. Implemented builtins use the VM's existing handlers. Other entries
+resolve through registered native host functions and report missing bindings
+when called. Standalone calls check their argument count during compilation.
+Expression calls to defined script functions with parameters defer the arity
+check to frame entry, matching the source acceptance of the original compiler.
+
+Configured startup connects `script_libriary_test` to the original range,
+clamp and degree-conversion operations. The portable performance counter
+uses monotonic nanoseconds and retains the original low-32-bit wrapping
+subtraction for elapsed ticks.
+
 The local-registration revision passed 462 CPU tests on each of four CI
 hosts. Linux passed 26 software Vulkan tests and the native-window check.
 All 144 scenario reports, four archive digests and four startup traces were
@@ -182,7 +196,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout now completes source parsing, including the
-unbraced conditional in the island loader. Call resolution first stops at
-the native function `frnd` in `sea_ai/aiabordage.c:112`. Native function
-coverage and game startup remain in progress.
+The pinned Russian checkout compiles all 201 loaded source files and enters
+native startup. It initializes `script_libriary_test` and stops at
+`dx9render_script_libriary` in `seadogs.c:89`. The remaining native
+libraries and game services must be available before `Main` runs.

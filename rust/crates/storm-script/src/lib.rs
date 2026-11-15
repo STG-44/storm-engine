@@ -9,6 +9,7 @@ mod entity_api;
 mod events;
 mod objects;
 pub mod preview;
+mod retained_builtins;
 mod source;
 mod storage;
 pub use source::{DirectorySource, LibraryRequest, SourceLoader};
@@ -116,6 +117,7 @@ pub struct Program {
     globals: Vec<Declaration>,
     sources: Vec<String>,
     static_handlers: Vec<(String, String)>,
+    event_limits: events::EventLimits,
     libraries: Vec<LibraryRequest>,
 }
 struct Function {
@@ -160,9 +162,14 @@ enum Instruction {
     RestoreExpression(usize),
     JumpIfExpressionNonZero(usize),
     Short(usize, bool),
-    Call(String, usize),
+    Call(String, usize, CallSite),
     DynamicCall(Slot, usize),
     Return(bool, usize),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CallSite {
+    Expression,
+    Statement,
 }
 enum Access {
     Literal(String),
@@ -201,6 +208,24 @@ struct Execution<'a, H: Host> {
 }
 
 impl<H: Host> Execution<'_, H> {
+    fn call_native(
+        &mut self,
+        name: &str,
+        arguments: &[Value],
+        returns: Option<Type>,
+    ) -> Result<Value> {
+        let result = self
+            .host
+            .call(name, arguments)
+            .with_context(|| format!("native {name}"))?;
+        result.validate()?;
+        ensure!(
+            returns.is_none_or(|expected| result.kind() == expected),
+            "native {name} return type mismatch"
+        );
+        Ok(result)
+    }
+
     fn store_variable(&self, variable: &Variable, value: Value, convert: bool) -> Result<()> {
         if let Some(converted) = variable.assign(value, convert)? {
             self.state.set_expression(converted);
@@ -335,6 +360,10 @@ impl Program {
         if builtins::signature(name).is_some() {
             return builtins::call(name, arguments);
         }
+        if let Some((arity, returns)) = retained_builtins::signature(name) {
+            ensure!(arguments.len() == arity, "{name} expects {arity} arguments");
+            return execution.call_native(name, arguments, returns);
+        }
         let function = self
             .functions
             .get(name)
@@ -349,16 +378,7 @@ impl Program {
             "extern script function {name} is not loaded"
         );
         if function.kind == FunctionKind::Native {
-            let result = execution
-                .host
-                .call(name, arguments)
-                .with_context(|| format!("native {name}"))?;
-            result.validate()?;
-            ensure!(
-                result.kind() == function.returns,
-                "native {name} return type mismatch"
-            );
-            return Ok(result);
+            return execution.call_native(name, arguments, Some(function.returns));
         }
         let locals = function
             .locals
@@ -595,12 +615,12 @@ impl Program {
                             ip = *target;
                         }
                     }
-                    Instruction::Call(_, count) | Instruction::DynamicCall(_, count) => {
+                    Instruction::Call(_, count, _) | Instruction::DynamicCall(_, count) => {
                         ensure!(stack.len() >= *count, "script argument stack underflow");
                         let args = stack.split_off(stack.len() - count);
                         let dynamic_name;
                         let callee = match &located.op {
-                            Instruction::Call(callee, _) => callee,
+                            Instruction::Call(callee, _, _) => callee,
                             Instruction::DynamicCall(slot, _) => {
                                 // CALL reads the name after evaluating the
                                 // arguments, including any mutations they make.

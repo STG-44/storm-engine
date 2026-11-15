@@ -17,6 +17,12 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     })
 }
 
+pub(crate) fn arity(name: &str) -> Option<usize> {
+    signature(name)
+        .map(|(count, _)| count)
+        .or_else(|| crate::retained_builtins::signature(name).map(|(count, _)| count))
+}
+
 pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
     let (count, _) = signature(name).expect("builtin");
     ensure!(arguments.len() == count, "builtin argument count");

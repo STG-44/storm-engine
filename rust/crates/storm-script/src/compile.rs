@@ -1,7 +1,7 @@
 use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
 use crate::{
-    Access, AttributeMode, Function, FunctionKind, Instruction, Located, Program, Type, Value,
-    builtins, value::Op,
+    Access, AttributeMode, CallSite, Function, FunctionKind, Instruction, Located, Program, Type,
+    Value, builtins, value::Op,
 };
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, rc::Rc};
@@ -309,7 +309,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         if c.take("(") {
             ensure!(headers.len() < c.limits.functions, "script function limit");
             ensure!(
-                builtins::signature(&name).is_none(),
+                builtins::arity(&name).is_none(),
                 "builtin function cannot be redeclared: {name}"
             );
             // The original function table can replace an unloaded extern
@@ -425,6 +425,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     for start in top_level_calls {
         c.p = start;
         c.atom()?;
+        c.mark_statement_call();
         c.expect(";")?;
     }
     let bodies = functions
@@ -433,19 +434,23 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         .chain(std::iter::once(("<top level>", c.code.as_slice())));
     for (name, code) in bodies {
         for instruction in code {
-            if let Instruction::Call(callee, arguments) = &instruction.op {
-                let expected = if let Some((count, _)) = builtins::signature(callee) {
-                    count
+            if let Instruction::Call(callee, arguments, site) = &instruction.op {
+                let (expected, defer_arity) = if let Some(count) = builtins::arity(callee) {
+                    (count, false)
                 } else {
-                    functions
-                        .get(callee)
-                        .with_context(|| {
-                            format!(
-                                "{name} {}:{}:{}: undeclared function {callee}",
-                                instruction.file, instruction.line, instruction.column
-                            )
-                        })?
-                        .parameters
+                    let function = functions.get(callee).with_context(|| {
+                        format!(
+                            "{name} {}:{}:{}: undeclared function {callee}",
+                            instruction.file, instruction.line, instruction.column
+                        )
+                    })?;
+                    // CompileExpression_L7 only enforces the empty argument
+                    // list for zero-parameter functions. The Rust VM checks
+                    // nonzero parameter lists before entering a frame.
+                    let defer = *site == CallSite::Expression
+                        && function.kind == FunctionKind::Script
+                        && function.parameters != 0;
+                    (function.parameters, defer)
                 };
                 ensure!(
                     if crate::events::signature(callee).is_some() {
@@ -453,7 +458,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                     } else if crate::entity_api::signature(callee).is_some() {
                         crate::entity_api::arguments_valid(callee, *arguments)
                     } else {
-                        *arguments == expected
+                        defer_arity || *arguments == expected
                     },
                     "{name} {}:{}:{}: {callee} expects {} arguments, got {arguments}",
                     instruction.file,
@@ -465,7 +470,8 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         }
     }
     let mut initial_handlers = Vec::new();
-    let mut registered = crate::events::Handlers::default();
+    let event_limits = c.limits.into();
+    let mut registered = crate::events::Handlers::with_limits(event_limits);
     for (event, function, origin) in static_handlers {
         let location = format!(
             "{}:{}:{}: #event_handler",
@@ -496,6 +502,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         globals: c.declarations,
         sources: sources.files,
         static_handlers: initial_handlers,
+        event_limits,
         libraries: sources.libraries,
     })
 }
@@ -1003,11 +1010,7 @@ impl Compiler {
         }
         let starts_with_call = self.starts_direct_call();
         self.expression(1)?;
-        let direct_call = starts_with_call
-            && matches!(
-                self.code.last().map(|entry| &entry.op),
-                Some(Instruction::Call(..))
-            );
+        let direct_call = starts_with_call && self.mark_statement_call();
         if direct_call {
             while self.take(")") {}
             if self.take("=") {
@@ -1054,6 +1057,14 @@ impl Compiler {
     fn starts_direct_call(&self) -> bool {
         matches!(self.current(), Token::Word(_))
             && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "(")
+    }
+    fn mark_statement_call(&mut self) -> bool {
+        let Some(Instruction::Call(_, _, site)) = self.code.last_mut().map(|entry| &mut entry.op)
+        else {
+            return false;
+        };
+        *site = CallSite::Statement;
+        true
     }
     fn starts_plain_assignment(&self) -> bool {
         if !matches!(self.current(), Token::Word(name) if self.lookup(name).is_some()) {
@@ -1500,7 +1511,7 @@ impl Compiler {
         let name = self.word()?;
         if self.take("(") {
             let arguments = self.call_arguments()?;
-            self.emit(Instruction::Call(name, arguments));
+            self.emit(Instruction::Call(name, arguments, CallSite::Expression));
         } else {
             let slot = if let Some(slot) = self.lookup(&name) {
                 slot

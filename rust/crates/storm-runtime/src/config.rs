@@ -77,7 +77,7 @@ impl Startup {
         &self,
         game: &GameDirectory,
         encoding: ScriptEncoding,
-        host: NativeHost,
+        mut host: NativeHost,
     ) -> Result<Engine> {
         let directory = if self.program_directory.is_empty() {
             game.clone()
@@ -95,6 +95,9 @@ impl Startup {
             storm_script::CompileLimits::game(),
         )
         .with_context(|| format!("compile configured Storm program {}", self.run))?;
+        for library in runtime.libraries() {
+            host.register_game_library(&library.name)?;
+        }
         Ok(Engine::from_runtime(runtime, host))
     }
 }

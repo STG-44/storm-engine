@@ -130,6 +130,34 @@ fn static_function_bindings_reject_unknown_or_parameterized_targets_and_bad_synt
 }
 
 #[test]
+fn installed_game_event_limits_apply_to_initial_and_runtime_handlers() -> Result<()> {
+    use std::fmt::Write;
+    let mut source = String::from(
+        "int hits; void count(){hits++;}\n\
+         int main(){SetEventHandler(\"Dynamic\", \"count\", 0); Event(\"E128\"); Event(\"dynamic\"); return hits;}\n",
+    );
+    for n in 0..129 {
+        writeln!(&mut source, "#event_handler(\"E{n}\", \"count\")")?;
+    }
+    assert!(Program::compile(&source).is_err());
+    let mut runtime = Runtime::compile_with_limits(&source, crate::CompileLimits::game())?;
+    assert_eq!(
+        runtime.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(2)
+    );
+    let limited = crate::CompileLimits {
+        event_names: 129,
+        ..crate::CompileLimits::game()
+    };
+    let mut runtime = Runtime::compile_with_limits(&source, limited)?;
+    let error = runtime
+        .call("main", &[], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("script event name budget"));
+    Ok(())
+}
+
+#[test]
 fn static_registration_uses_the_shared_event_and_handler_budgets() -> Result<()> {
     let mut source = String::from("void H(){}\n");
     for n in 0..128 {

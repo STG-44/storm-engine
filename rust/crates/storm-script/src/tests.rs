@@ -1,6 +1,67 @@
 use super::*;
 
 #[test]
+fn original_native_names_link_without_declarations_and_validate_the_host_result() -> Result<()> {
+    struct RandomHost(Value);
+    impl Host for RandomHost {
+        fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
+            assert_eq!(name, "frnd");
+            assert!(arguments.is_empty());
+            Ok(self.0.clone())
+        }
+    }
+    let program = Program::compile("float main(){return FrNd();}")?;
+    let error = program
+        .call("main", &[], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("native function frnd is not registered"));
+    assert_eq!(
+        program.call(
+            "main",
+            &[],
+            &mut RandomHost(Value::Float(0.25)),
+            Limits::default(),
+        )?,
+        Value::Float(0.25)
+    );
+    let error = program
+        .call(
+            "main",
+            &[],
+            &mut RandomHost(Value::Int(0)),
+            Limits::default(),
+        )
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("native frnd return type mismatch"));
+    assert!(Program::compile("float main(){return frnd(1);}").is_err());
+    assert!(Program::compile("native float frnd();").is_err());
+    let dynamic = Program::compile("float main(){string name=\"frnd\"; return call name(1);}")?;
+    let error = dynamic
+        .call("main", &[], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("frnd expects 0 arguments"));
+    Ok(())
+}
+
+#[test]
+fn a_nonzero_parameter_script_call_in_an_expression_checks_arity_when_reached() -> Result<()> {
+    let program = Program::compile(
+        "int f(int x,int y){return x+y;} int main(int active){if(active) return f(2); return 9;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[Value::Int(0)], &mut (), Limits::default())?,
+        Value::Int(9)
+    );
+    let error = program
+        .call("main", &[Value::Int(1)], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("f expects 2 arguments"));
+    assert!(Program::compile("int f(int x,int y){return x+y;} void main(){f(2);}").is_err());
+    assert!(Program::compile("int f(){return 9;} int main(){return f(2);}").is_err());
+    Ok(())
+}
+
+#[test]
 fn unbraced_body_runs_through_its_own_separator_after_nested_control() -> Result<()> {
     let program = Program::compile(
         r#"

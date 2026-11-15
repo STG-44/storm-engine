@@ -11,6 +11,8 @@ pub struct CompileLimits {
     pub globals: usize,
     pub constants: usize,
     pub locals: usize,
+    pub event_names: usize,
+    pub event_handlers: usize,
 }
 impl Default for CompileLimits {
     fn default() -> Self {
@@ -23,6 +25,8 @@ impl Default for CompileLimits {
             globals: 128,
             constants: 1024,
             locals: crate::compile::MAX_LOCALS,
+            event_names: crate::events::MAX_EVENTS,
+            event_handlers: crate::events::MAX_HANDLERS,
         }
     }
 }
@@ -39,6 +43,8 @@ impl CompileLimits {
             globals: 8192,
             constants: 16384,
             locals: 1024,
+            event_names: 1024,
+            event_handlers: 4096,
         }
     }
     pub(crate) fn validate(self) -> Result<()> {
@@ -52,6 +58,8 @@ impl CompileLimits {
             ("globals", self.globals, max.globals),
             ("constants", self.constants, max.constants),
             ("locals", self.locals, max.locals),
+            ("event names", self.event_names, max.event_names),
+            ("event handlers", self.event_handlers, max.event_handlers),
         ] {
             ensure!(
                 value > 0 && value <= maximum,

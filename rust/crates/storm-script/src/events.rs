@@ -1,12 +1,31 @@
 //! Bounded immediate/nested handlers and frame-driven posted events.
 mod queue;
-use crate::{Execution, Host, Limits, Program, Type, Value, spend};
+use crate::{CompileLimits, Execution, Host, Limits, Program, Type, Value, spend};
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeMap;
 use storm_core::Message;
 
-const MAX_EVENTS: usize = 128;
-const MAX_HANDLERS: usize = 512;
+pub(crate) const MAX_EVENTS: usize = 128;
+pub(crate) const MAX_HANDLERS: usize = 512;
+
+#[derive(Clone, Copy)]
+pub(crate) struct EventLimits {
+    names: usize,
+    handlers: usize,
+}
+impl From<CompileLimits> for EventLimits {
+    fn from(limits: CompileLimits) -> Self {
+        Self {
+            names: limits.event_names,
+            handlers: limits.event_handlers,
+        }
+    }
+}
+impl Default for EventLimits {
+    fn default() -> Self {
+        CompileLimits::default().into()
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -24,6 +43,7 @@ pub(crate) struct Handlers {
     entries: BTreeMap<String, Vec<Handler>>,
     completed: u64,
     queue: queue::Queue,
+    limits: EventLimits,
 }
 
 fn event_name(name: &str) -> Result<String> {
@@ -35,8 +55,14 @@ fn event_name(name: &str) -> Result<String> {
 }
 
 impl Handlers {
+    pub(crate) fn with_limits(limits: EventLimits) -> Self {
+        Self {
+            limits,
+            ..Self::default()
+        }
+    }
     pub(crate) fn for_program(program: &Program) -> Result<Self> {
-        let mut handlers = Self::default();
+        let mut handlers = Self::with_limits(program.event_limits);
         for (event, function) in &program.static_handlers {
             handlers.register_static(event, function)?;
         }
@@ -60,11 +86,11 @@ impl Handlers {
             return Ok(());
         }
         ensure!(
-            self.entries.contains_key(&event) || self.entries.len() < MAX_EVENTS,
+            self.entries.contains_key(&event) || self.entries.len() < self.limits.names,
             "script event name budget"
         );
         ensure!(
-            self.entries.values().map(Vec::len).sum::<usize>() < MAX_HANDLERS,
+            self.entries.values().map(Vec::len).sum::<usize>() < self.limits.handlers,
             "script event handler budget"
         );
         self.entries.entry(event).or_default().push(Handler {
