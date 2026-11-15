@@ -126,6 +126,25 @@ The compiler also recognizes assignments to indexed objects and attribute paths
 after an omitted separator, and a comma between the condition and update in
 the original island loader's counted loop.
 
+An unbraced control body ends at the separator read by that body. A
+semicolon consumed by a nested control body leaves the enclosing one open.
+The island loader uses this behavior after a `continue` with an omitted
+separator. The next nested conditional and the following assignment
+remain inside the outer body. An `else if` ends after its first `if`,
+following the original compiler's separate bound for that form.
+
+A value return followed by `=` exits before the following assignment,
+as in the original sail-power calculation. Reference binding commands can
+hand the next declaration back to the body parser. The parser retains an
+attribute target across extra closing parentheses and recognizes a
+`break` immediately following a value return in a switch branch.
+
+The local-registration revision passed 462 CPU tests on each of four CI
+hosts. Linux passed 26 software Vulkan tests and the native-window check.
+All 144 scenario reports, four archive digests and four startup traces were
+verified against the baseline.
+[GitHub Actions run 43721815161](https://github.com/STG-44/storm-engine/actions/runs/43721815161)
+
 The dynamic-call revision passed 455 CPU tests on each CI host. Linux passed
 26 software Vulkan tests and the native-window fixture. All four archive
 digests, 144 scenario reports and four startup traces were verified.
@@ -163,8 +182,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout progresses past the standalone `else`, the
-world map assignment after `sti(...)`, and the forward local declaration in
-the land AI. It currently stops at `islands/islands_loader.c:474`, after an
-unbraced `if` whose `continue` omits the separator. Full compilation and
-game startup remain in progress.
+The pinned Russian checkout now completes source parsing, including the
+unbraced conditional in the island loader. Call resolution first stops at
+the native function `frnd` in `sea_ai/aiabordage.c:112`. Native function
+coverage and game startup remain in progress.

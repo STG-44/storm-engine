@@ -10,6 +10,13 @@ pub(crate) const MAX_TOKENS: usize = 16384;
 const MAX_NESTING: usize = 64;
 pub(crate) const MAX_LOCALS: usize = 128;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StatementScope {
+    Braced,
+    Unbraced,
+    ForInitializer,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Token {
     Word(String),
@@ -714,16 +721,43 @@ impl Compiler {
                 "{}",
                 self.error("unterminated block")
             );
-            self.statement(true)?;
+            self.statement(StatementScope::Braced)?;
         }
     }
-    fn statement(&mut self, in_block: bool) -> Result<()> {
+    fn statement(&mut self, scope: StatementScope) -> Result<()> {
         self.enter()?;
-        self.statement_inner(in_block)?;
+        self.statement_inner(scope)?;
         self.nesting -= 1;
         Ok(())
     }
-    fn statement_inner(&mut self, in_block: bool) -> Result<()> {
+    fn control_body(&mut self) -> Result<()> {
+        if self.is("{") {
+            return self.statement(StatementScope::Braced);
+        }
+        // The native compiler recursively compiles each nested control
+        // statement. Its separator belongs to that nested body. Only a
+        // separator read by this CompileBlock invocation ends this body.
+        loop {
+            while self.is_static_handler() {
+                self.static_handler()?;
+            }
+            if self.take(";") {
+                return Ok(());
+            }
+            if self.take(")") {
+                continue;
+            }
+            ensure!(
+                self.current() != &Token::End && !self.is("}"),
+                "{}",
+                self.error("expected ';' ending unbraced body")
+            );
+            self.statement(StatementScope::Unbraced)?;
+        }
+    }
+    fn statement_inner(&mut self, scope: StatementScope) -> Result<()> {
+        let in_block = scope == StatementScope::Braced;
+        let allow_handoff = scope != StatementScope::ForInitializer;
         // Directives emit no instruction and do not supply a control-flow body.
         // Preserve the following semicolon as the actual empty statement.
         while self.is_static_handler() {
@@ -737,7 +771,7 @@ impl Compiler {
         }
         if self.take("call") {
             self.dynamic_call(false)?;
-            self.statement_end(in_block)?;
+            self.statement_end(allow_handoff)?;
             self.emit(Instruction::Drop);
             return Ok(());
         }
@@ -769,7 +803,7 @@ impl Compiler {
                 self.emit(Instruction::MakeRef);
             }
             self.expect(")")?;
-            return self.expect(";");
+            return self.statement_end(allow_handoff);
         }
         if self.take("return") {
             let value = !self.is(";");
@@ -782,35 +816,34 @@ impl Compiler {
                     while self.take(")") {}
                 }
             }
-            if !(value && in_block && self.is("}")) {
-                self.expect(";")?;
-            }
             let switches = self
                 .loops
                 .iter()
                 .filter(|control| control.start.is_none())
                 .count();
             self.emit(Instruction::Return(value, switches));
+            // The original emits FUNCTION_RETURN before handing '=' back
+            // to CompileBlock. It compiles the MOVE after the return.
+            if value && self.take("=") {
+                return self.previous_assignment(allow_handoff);
+            }
+            if !(value && in_block && (self.is("}") || self.is("break"))) {
+                self.statement_end(false)?;
+            }
             return Ok(());
         }
         if self.take("if") {
             self.expect("(")?;
             self.expression(1)?;
             self.expect(")")?;
-            // Native CompileBlock treats additional closing tokens at the
-            // start of the body as no-ops. The first ')' ends the condition.
-            while self.take(")") {}
             // IF keeps the original condition while the body can change EX.
             // Use a per-frame slot so break and continue can bypass restoration
             // without leaving extra values on the operand stack.
             let slot = self.nesting - 1;
             let conditional = self.emit(Instruction::JumpFalse(0, Some(slot)));
-            self.statement(false)?;
+            self.control_body()?;
             self.patch(conditional);
             self.emit(Instruction::RestoreExpression(slot));
-            if self.take("else") {
-                self.else_body()?;
-            }
             return Ok(());
         }
         if self.take("else") {
@@ -826,7 +859,7 @@ impl Compiler {
                 start: Some(start),
                 breaks: Vec::new(),
             });
-            self.statement(false)?;
+            self.control_body()?;
             self.emit(Instruction::Jump(start));
             self.patch(end);
             for index in self.loops.pop().unwrap().breaks {
@@ -860,7 +893,7 @@ impl Compiler {
                     .is_some_and(|control| control.start.is_none())
                 && (self.is("case") || self.is("default") || self.is("}"));
             if !switch_break {
-                self.expect(";")?;
+                self.statement_end(allow_handoff)?;
             }
             if breaking {
                 let index = self.emit(Instruction::Jump(0));
@@ -900,7 +933,7 @@ impl Compiler {
                     self.emit(Instruction::Store(true));
                 }
                 if !self.take(",") {
-                    return self.statement_end(in_block);
+                    return self.statement_end(allow_handoff);
                 }
             }
         }
@@ -916,6 +949,11 @@ impl Compiler {
                 } else {
                     None
                 };
+                if path.is_some() {
+                    // CompileBlock keeps the left operand across surplus
+                    // closing parentheses after an attribute path.
+                    while self.take(")") {}
+                }
                 if !["=", "+=", "-=", "*=", "/=", "++", "--"]
                     .iter()
                     .any(|s| self.is(s))
@@ -923,7 +961,7 @@ impl Compiler {
                     self.p = checkpoint.0;
                     self.code.truncate(checkpoint.1);
                     self.expression(1)?;
-                    self.expect(";")?;
+                    self.statement_end(false)?;
                     self.emit(Instruction::Drop);
                     return Ok(());
                 }
@@ -960,7 +998,7 @@ impl Compiler {
                     }
                     self.emit(Instruction::Store(op.is_none()));
                 }
-                return self.statement_end(in_block && plain_assignment);
+                return self.statement_end(allow_handoff && plain_assignment);
             }
         }
         let starts_with_call = self.starts_direct_call();
@@ -976,21 +1014,23 @@ impl Compiler {
                 // CompileBlock emits the call and discards its result, then
                 // compiles '=' as a MOVE to the frame's current left operand.
                 self.emit(Instruction::Drop);
-                self.expression(1)?;
-                self.statement_end(in_block)?;
-                self.emit(Instruction::StorePrevious);
-                return Ok(());
+                return self.previous_assignment(allow_handoff);
             }
         }
-        self.statement_end(in_block && direct_call)?;
+        self.statement_end(allow_handoff && direct_call)?;
         self.emit(Instruction::Drop);
+        Ok(())
+    }
+    fn previous_assignment(&mut self, allow_handoff: bool) -> Result<()> {
+        self.expression(1)?;
+        self.statement_end(allow_handoff)?;
+        self.emit(Instruction::StorePrevious);
         Ok(())
     }
     fn statement_end(&mut self, allow_statement_boundary: bool) -> Result<()> {
         // Native declarations, assignments and direct calls can leave the
         // next statement token for the enclosing CompileBlock.
-        // In for headers and unbraced bodies the separator also ends the
-        // enclosing native CompileBlock call.
+        // The enclosing block or for header owns the separator.
         if allow_statement_boundary {
             while self.take(")") {}
             // LABEL emits no bytecode in a braced CompileBlock. Some
@@ -1008,7 +1048,8 @@ impl Compiler {
                 return Ok(());
             }
         }
-        self.expect(";")
+        ensure!(self.is(";"), "{}", self.error("expected ';'"));
+        Ok(())
     }
     fn starts_direct_call(&self) -> bool {
         matches!(self.current(), Token::Word(_))
@@ -1038,6 +1079,7 @@ impl Compiler {
                 cursor += 1;
             }
         }
+        let has_path = symbol(cursor, ".");
         while symbol(cursor, ".") {
             cursor += 1;
             match token(cursor) {
@@ -1052,11 +1094,19 @@ impl Compiler {
                 _ => return false,
             }
         }
+        while has_path && symbol(cursor, ")") {
+            cursor += 1;
+        }
         symbol(cursor, "=")
     }
     fn else_body(&mut self) -> Result<()> {
         let end = self.emit(Instruction::JumpIfExpressionNonZero(0));
-        self.statement(false)?;
+        if self.is("if") {
+            // Native ELSE_BLOCK uses IF_BLOCK as the bound for else-if.
+            self.statement(StatementScope::Unbraced)?;
+        } else {
+            self.control_body()?;
+        }
         self.patch(end);
         Ok(())
     }
@@ -1081,7 +1131,10 @@ impl Compiler {
             "{}",
             self.error("invalid for initializer")
         );
-        self.statement(false)?;
+        if !self.take(";") {
+            self.statement(StatementScope::ForInitializer)?;
+            self.expect(";")?;
+        }
         let condition = self.code.len();
         self.expression(1)?;
         // FOR_BLOCK advances past the condition terminator before reading
@@ -1112,7 +1165,7 @@ impl Compiler {
             start: Some(update),
             breaks: Vec::new(),
         });
-        self.statement(false)?;
+        self.control_body()?;
         self.emit(Instruction::Jump(update));
         self.patch(end);
         for index in self.loops.pop().unwrap().breaks {
@@ -1138,7 +1191,7 @@ impl Compiler {
             if self.is("break") {
                 // A break outside any case exits the current switch on the
                 // path where its preceding guards all missed.
-                self.statement(true)?;
+                self.statement(StatementScope::Braced)?;
                 continue;
             }
             ensure!(
@@ -1181,7 +1234,7 @@ impl Compiler {
                     "{}",
                     self.error("switch branch requires an explicit final break")
                 );
-                self.statement(true)?;
+                self.statement(StatementScope::Braced)?;
                 if end {
                     break;
                 }

@@ -1,6 +1,45 @@
 use super::*;
 
 #[test]
+fn unbraced_body_runs_through_its_own_separator_after_nested_control() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int check(int found) {
+            int count = 0;
+            for (int n = 0; n < 3; n++) {
+                if (found) continue
+                if (1) continue;
+                count += 100;
+                count += 1;
+            }
+            return count;
+        }
+        int nested(int outer, int inner) {
+            int score = 0;
+            if (outer)
+                if (inner) score += 1;
+                else score += 2;
+                score += 10;
+            return score;
+        }
+        "#,
+    )?;
+    for (function, arguments, expected) in [
+        ("check", vec![Value::Int(0)], 3),
+        ("check", vec![Value::Int(1)], 0),
+        ("nested", vec![Value::Int(0), Value::Int(0)], 0),
+        ("nested", vec![Value::Int(1), Value::Int(0)], 12),
+        ("nested", vec![Value::Int(1), Value::Int(1)], 11),
+    ] {
+        assert_eq!(
+            program.call(function, &arguments, &mut (), Limits::default())?,
+            Value::Int(expected)
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn standalone_else_observes_the_shared_expression_register_after_bare_blocks() -> Result<()> {
     let program = Program::compile(
         r#"
@@ -159,7 +198,19 @@ fn assignment_after_direct_call_uses_the_current_frames_left_operand() -> Result
         .call("main", &[], &mut (), Limits::default())
         .unwrap_err();
     assert!(format!("{error:#}").contains("no previous script assignment target"));
-    assert!(Program::compile("int main() { return sti(\"5\") = 0; }").is_err());
+    Ok(())
+}
+
+#[test]
+fn return_with_a_trailing_assignment_returns_before_the_move_or_rhs_call() -> Result<()> {
+    let program = Program::compile(
+        "native float side_effect(); float main(){float force=100.0;return force=side_effect();}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Float(100.0)
+    );
+    assert!(Program::compile("float main(){return 1.0=unknown();}").is_err());
     Ok(())
 }
 
@@ -242,11 +293,18 @@ fn native_statement_boundaries_preserve_assignments_and_direct_calls() -> Result
         Value::Int(10)
     );
     let program = Program::compile(
-        "int main(){object fleet[3]; int slots[2]; string key=\"hold\"; int n=1 fleet[slots[1]].cargo.(key)=7: return n+sti(fleet[0].cargo.hold);}",
+        "int main(){object fleet[3]; int slots[2]; string key=\"hold\"; int n=1 fleet[slots[1]].cargo.(key))=7: return n+sti(fleet[0].cargo.hold);}",
     )?;
     assert_eq!(
         program.call("main", &[], &mut (), Limits::default())?,
         Value::Int(8)
+    );
+    let program = Program::compile(
+        "int main(){object cargo; cargo.hold=7; aref hold; makearef(hold,cargo.hold) int total=sti(hold); return total;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
     );
     assert!(Program::compile("void main(){int damage; damage=5 missing();}").is_err());
     Ok(())
@@ -512,7 +570,7 @@ fn nested_switch_breaks_and_loop_continues_release_only_exited_selectors() -> Re
 #[test]
 fn switch_failures_and_early_returns_do_not_leak_operand_state_between_calls() -> Result<()> {
     let p = Program::compile(
-        "int main(int n){switch(n){case 0:return 1/0;break;case 1:return 7;break;default:return 9;break;}}",
+        "int main(int n){switch(n){case 0:return 1/0;break;case 1:return 7 break;default:return 9;break;}}",
     )?;
     assert!(
         p.call("main", &[Value::Int(0)], &mut (), Limits::default())
