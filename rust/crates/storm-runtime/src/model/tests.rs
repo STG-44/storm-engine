@@ -125,6 +125,124 @@ void Tick(){frames++;
 }
 "#;
 #[test]
+fn configured_renderer_shares_texture_paths_and_keeps_reference_counted_slots() -> Result<()> {
+    let files = fixture()?;
+    for name in ["ui", "ui/alternate", "ui/top", "ui/corrupt"] {
+        let root = files.0.join("RESOURCE/Textures").join(name);
+        std::fs::create_dir_all(&root)?;
+        let mut bytes = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        bytes.extend([255u8, 0, 0, 255]);
+        std::fs::write(
+            root.join("Panel.tga.tx"),
+            if name == "ui/corrupt" {
+                &bytes[..1]
+            } else {
+                &bytes
+            },
+        )?;
+    }
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"#libriary "DX9RENDER_SCRIPT_LIBRIARY"
+        native int SetTexturePath(int level, string folder);
+        native int GetTexture(string name);
+        native void ReleaseTexture(int id);
+        object a,b;
+        void Main() {
+            Trace("bad-level="+SetTexturePath(4,"ignored"));
+            SetTexturePath(0,"alternate\");
+            SetTexturePath(3,"missing\");
+            int first=GetTexture("UI\PANEL.TGA");
+            int again=GetTexture("ui\panel.tga");
+            Trace("same="+first+":"+again);
+            ReleaseTexture(first);
+            SetTexturePath(3,"top\");
+            int top=GetTexture("ui\panel.tga");
+            Trace("top="+top);
+            ReleaseTexture(top);
+            SetTexturePath(3,"corrupt\");
+            int fallback=GetTexture("ui\panel.tga");
+            Trace("fallback="+fallback);
+            ReleaseTexture(fallback);
+            int explicit=GetTexture("ui\panel.tga.tx");
+            Trace("suffix="+explicit);
+            ReleaseTexture(explicit);
+            ReleaseTexture(again);
+            int missing=GetTexture("ui\not-present.tga");
+            Trace("missing="+missing);
+            ReleaseTexture(missing);
+            SetTexturePath(3,"");
+            CreateEntity(&a,"MODELR");
+            SendMessage(a,"ls",20500,"root");
+            SetTexturePath(0,"");
+            CreateEntity(&b,"MODELR");
+            SendMessage(b,"ls",20500,"root");
+            int reused=GetTexture("ui\panel.tga");
+            Trace("reused="+reused);
+            ReleaseTexture(reused);
+        }"#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let trace = Rc::new(RefCell::new(Vec::new()));
+    let output = trace.clone();
+    host.set_trace_sink(move |text| {
+        output.borrow_mut().push(text.to_owned());
+        Ok(())
+    });
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine =
+        crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
+    engine.frame(0)?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "bad-level=0",
+            "same=0:0",
+            "top=1",
+            "fallback=0",
+            "suffix=1",
+            "missing=-1",
+            "reused=0"
+        ],
+    );
+    let ids = models.live_ids()?;
+    assert_eq!(ids.len(), 2);
+    for (id, color) in ids.into_iter().zip([[0, 255, 0, 255], [255, 0, 0, 255]]) {
+        let draw = models.loaded(id)?.context("missing fixture draw")?;
+        assert!(draw.asset.textures.len() > 1);
+        assert!(
+            draw.asset
+                .textures
+                .iter()
+                .skip(1)
+                .all(|t| t.mips[0].rgba == color)
+        );
+    }
+    assert!(
+        engine
+            .host
+            .call("releasetexture", &[storm_script::Value::Int(0)])
+            .is_err()
+    );
+    assert!(
+        engine
+            .host
+            .call(
+                "gettexture",
+                &[storm_script::Value::String("../escape".into())]
+            )
+            .is_err()
+    );
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn original_model_messages_load_static_hierarchies_into_the_shared_script_runtime() -> Result<()> {
     let files = fixture()?;
     let game = GameDirectory::open(&files.0)?;

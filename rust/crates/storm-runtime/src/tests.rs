@@ -1,6 +1,41 @@
 use super::*;
 
 #[test]
+fn configured_game_uses_the_original_offline_steam_results() -> Result<()> {
+    use storm_script::{Host, Value};
+    let temp = Temporary::new()?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut host = NativeHost::new()?;
+    host.register_game_library("SteamApiScriptLib", &game)?;
+    host.load_library("SteamApiScriptLib")?;
+    let id = [Value::Int(123)];
+    let name = [Value::String("sample".into())];
+    let stat = [name[0].clone(), Value::Int(3)];
+    for (function, args, expected) in [
+        ("getsteamenabled", &[][..], 0),
+        ("getdlcenabled", &id[..], 1),
+        ("getdlccount", &[], 0),
+        ("getdlcdata", &id, 0),
+        ("dlcstartoverlay", &id, 0),
+        ("setachievement", &name, 0),
+        ("getachievement", &name, 0),
+        ("setstat", &stat, 0),
+        ("getstat", &name, 0),
+        ("storestats", &[], 0),
+        ("clearachievement", &name, 0),
+        ("resetstats", &id, 0),
+    ] {
+        assert_eq!(
+            host.call(function, args)?,
+            Value::Int(expected),
+            "{function}"
+        );
+    }
+    assert!(host.call("getdlcenabled", &name).is_err());
+    Ok(())
+}
+
+#[test]
 fn configured_game_initializes_the_original_math_library_and_its_counter() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
@@ -45,8 +80,10 @@ fn configured_game_initializes_the_original_math_library_and_its_counter() -> Re
 fn a_library_binding_collision_leaves_the_existing_functions_intact() -> Result<()> {
     use storm_script::{Host, Value};
     let mut host = NativeHost::new()?;
+    let temp = Temporary::new()?;
+    let game = GameDirectory::open(&temp.0)?;
     host.register_function("Clampf", |_| Ok(Value::Float(0.5)))?;
-    host.register_game_library("script_libriary_test")?;
+    host.register_game_library("script_libriary_test", &game)?;
     let error = host.load_library("script_libriary_test").unwrap_err();
     assert!(format!("{error:#}").contains("duplicate native function: clampf"));
     assert!(host.call("bring2range", &[]).is_err());

@@ -2,6 +2,7 @@ use super::{
     ModelVertex, RigMesh, RiggingConfig, RiggingStats, SailPatch, SailShape, SailWind, rigging,
     sails,
 };
+use crate::texture_paths::TexturePaths;
 use anyhow::{Context, Result, bail, ensure};
 use glam::{Mat4, Vec3};
 use std::{
@@ -136,7 +137,7 @@ struct TextureFiles {
     root: PathBuf,
     paths: BTreeMap<String, PathBuf>,
     prefixes: Vec<String>,
-    native_prefix: Option<String>,
+    native: Option<(String, TexturePaths)>,
 }
 impl TextureFiles {
     fn new(game: &Path, model: &Path, override_dir: Option<&Path>) -> Result<Self> {
@@ -189,26 +190,26 @@ impl TextureFiles {
             root,
             paths,
             prefixes,
-            native_prefix: None,
+            native: None,
         })
     }
     fn find(&self, name: &str) -> Result<PathBuf> {
         let name = name.replace('\\', "/");
         let mut name = logical(Path::new(&name))?;
-        if !name.ends_with(".tx") {
-            name.push_str(".tx");
-        }
-        if let Some(prefix) = &self.native_prefix {
+        if let Some((prefix, paths)) = &self.native {
             ensure!(
-                name != "shadow.tga.tx",
+                !matches!(name.as_str(), "shadow.tga" | "shadow.tga.tx"),
                 "native shadow textures require the unported lighting path"
             );
-            let candidate = format!("{prefix}{name}");
-            return self
-                .paths
-                .get(&candidate)
-                .cloned()
-                .with_context(|| format!("native model texture not found: {candidate}"));
+            let requested = format!("{prefix}{name}");
+            return paths
+                .candidates(&requested)?
+                .into_iter()
+                .find_map(|candidate| self.paths.get(&candidate.file).cloned())
+                .with_context(|| format!("native model texture not found: {requested}"));
+        }
+        if !name.ends_with(".tx") {
+            name.push_str(".tx");
         }
         for prefix in &self.prefixes {
             let candidate = if prefix.is_empty() {
@@ -456,6 +457,14 @@ impl ModelAsset {
     /// effects. Texture names use GEOMETRY's literal shared prefix, without
     /// ship-specific or basename fallbacks.
     pub fn load_geometry(path: &Path, game: &Path, texture_prefix: &str) -> Result<Self> {
+        Self::load_geometry_with_paths(path, game, texture_prefix, &TexturePaths::default())
+    }
+    pub fn load_geometry_with_paths(
+        path: &Path,
+        game: &Path,
+        texture_prefix: &str,
+        texture_paths: &TexturePaths,
+    ) -> Result<Self> {
         let prefix = texture_prefix.replace('\\', "/").to_ascii_lowercase();
         if !prefix.is_empty() {
             logical(Path::new(prefix.trim_end_matches('/')))?;
@@ -466,13 +475,13 @@ impl ModelAsset {
             crew: Some(0),
             ..Default::default()
         };
-        Self::load_impl(path, &options, false, Some(&prefix))
+        Self::load_impl(path, &options, false, Some((prefix, texture_paths.clone())))
     }
     fn load_impl(
         path: &Path,
         options: &LoadOptions,
         preview: bool,
-        native_prefix: Option<&str>,
+        native: Option<(String, TexturePaths)>,
     ) -> Result<Self> {
         ensure!(
             (options.particle_profiles.is_empty() && options.particle_project.is_none())
@@ -510,7 +519,7 @@ impl ModelAsset {
             )?)
         };
         if let Some(files) = &mut files {
-            files.native_prefix = native_prefix.map(str::to_owned);
+            files.native = native;
         }
         let mut builder = Builder {
             asset: Self {

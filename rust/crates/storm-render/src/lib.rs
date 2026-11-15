@@ -6,6 +6,7 @@ use wgpu::util::DeviceExt;
 
 pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
 pub mod model;
+pub mod texture_paths;
 
 /// Reject unavailable backends instead of silently selecting a different API.
 pub fn create_instance(backends: wgpu::Backends) -> Result<wgpu::Instance> {

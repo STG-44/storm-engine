@@ -153,6 +153,19 @@ clamp and degree-conversion operations. The portable performance counter
 uses monotonic nanoseconds and retains the original low-32-bit wrapping
 subtraction for elapsed ticks.
 
+`dx9render_script_libriary` now binds `SetTexturePath`, `GetTexture` and
+`ReleaseTexture` through the runtime host. Four path levels are tried from
+highest to lowest before the base request. The resolver adds the original
+texture root and implicit TX suffix, preserves case-insensitive request
+identity and uses the original first-free slot and reference counts.
+Native `MODELR` loads use the same path levels in the wgpu model pipeline.
+Script texture IDs currently retain decoded 2D TX pixels. The UI texture
+consumer, raw image fallback, glow and text drawing remain to be integrated.
+
+`SteamApiScriptLib` uses the retained engine's Steam-disabled response profile.
+The twelve bindings report the original offline values for achievements,
+statistics, overlay and DLC queries.
+
 The local-registration revision passed 462 CPU tests on each of four CI
 hosts. Linux passed 26 software Vulkan tests and the native-window check.
 All 144 scenario reports, four archive digests and four startup traces were
@@ -197,6 +210,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 ~~~
 
 The pinned Russian checkout compiles all 201 loaded source files and enters
-native startup. It initializes `script_libriary_test` and stops at
-`dx9render_script_libriary` in `seadogs.c:89`. The remaining native
-libraries and game services must be available before `Main` runs.
+native startup. It initializes the math, renderer texture, and offline Steam
+bindings, then stops at `ScriptLocationLibrary` in
+`locations/locations.c:21`. The remaining native libraries and game
+services must be available before `Main` runs.

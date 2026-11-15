@@ -65,7 +65,7 @@ impl Fixture {
             preview: true,
             asset,
             files: Some(TextureFiles {
-                native_prefix: None,
+                native: None,
                 root,
                 paths,
                 prefixes: vec!["ships/override".into(), String::new()],

@@ -96,7 +96,7 @@ impl Startup {
         )
         .with_context(|| format!("compile configured Storm program {}", self.run))?;
         for library in runtime.libraries() {
-            host.register_game_library(&library.name)?;
+            host.register_game_library(&library.name, game)?;
         }
         Ok(Engine::from_runtime(runtime, host))
     }

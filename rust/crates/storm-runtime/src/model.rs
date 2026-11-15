@@ -4,7 +4,7 @@ use crate::{GameDirectory, NativeHost, Section, Service, ServiceFrame};
 use anyhow::{Context, Result, bail, ensure};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, Message, Stage};
-use storm_render::model::ModelAsset;
+use storm_render::{model::ModelAsset, texture_paths::TexturePaths};
 mod render;
 pub use render::ModelScenes;
 
@@ -41,6 +41,7 @@ impl Default for State {
 struct Shared {
     game: GameDirectory,
     texture_path: RefCell<String>,
+    texture_paths: Rc<RefCell<TexturePaths>>,
     models: RefCell<BTreeMap<u64, Rc<RefCell<State>>>>,
     draws: RefCell<Vec<Draw>>,
 }
@@ -54,6 +55,7 @@ impl Models {
         let models = Self(Rc::new(Shared {
             game,
             texture_path: RefCell::default(),
+            texture_paths: host.texture_paths.clone(),
             models: RefCell::default(),
             draws: RefCell::default(),
         }));
@@ -170,8 +172,19 @@ impl Entity for Actor {
                     .try_borrow()
                     .context("reentrant texture path")?
                     .clone();
-                let asset = ModelAsset::load_geometry(&path, self.shared.0.game.root(), &prefix)
-                    .with_context(|| format!("load native MODELR geometry {name}"))?;
+                let paths = self
+                    .shared
+                    .0
+                    .texture_paths
+                    .try_borrow()
+                    .context("reentrant renderer texture paths")?;
+                let asset = ModelAsset::load_geometry_with_paths(
+                    &path,
+                    self.shared.0.game.root(),
+                    &prefix,
+                    &paths,
+                )
+                .with_context(|| format!("load native MODELR geometry {name}"))?;
                 let mut state = self
                     .state
                     .try_borrow_mut()

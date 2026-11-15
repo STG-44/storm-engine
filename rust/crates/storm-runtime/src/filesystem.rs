@@ -23,6 +23,10 @@ impl GameDirectory {
         &self.root
     }
     pub fn resolve(&self, name: &str) -> Result<PathBuf> {
+        self.resolve_optional(name)?
+            .with_context(|| format!("game path not found: {name}"))
+    }
+    fn resolve_optional(&self, name: &str) -> Result<Option<PathBuf>> {
         ensure!(
             !name.is_empty()
                 && name.len() <= 1024
@@ -57,8 +61,10 @@ impl GameDirectory {
                     found = Some(entry.path());
                 }
             }
+            let Some(found) = found else {
+                return Ok(None);
+            };
             current = found
-                .with_context(|| format!("game path not found: {name}"))?
                 .canonicalize()
                 .with_context(|| format!("resolve game path {name}"))?;
             ensure!(
@@ -66,7 +72,7 @@ impl GameDirectory {
                 "game path escapes root: {name}"
             );
         }
-        Ok(current)
+        Ok(Some(current))
     }
     pub fn directory(&self, name: &str) -> Result<Self> {
         let path = self.resolve(name)?;
@@ -75,7 +81,15 @@ impl GameDirectory {
     }
     pub fn read(&self, name: &str, limit: usize) -> Result<Vec<u8>> {
         let path = self.resolve(name)?;
-        let file = File::open(&path).with_context(|| format!("open game file {name}"))?;
+        Self::read_file(path, name, limit)
+    }
+    pub(crate) fn read_optional(&self, name: &str, limit: usize) -> Result<Option<Vec<u8>>> {
+        self.resolve_optional(name)?
+            .map(|path| Self::read_file(path, name, limit))
+            .transpose()
+    }
+    fn read_file(path: PathBuf, name: &str, limit: usize) -> Result<Vec<u8>> {
+        let file = File::open(path).with_context(|| format!("open game file {name}"))?;
         let metadata = file.metadata()?;
         ensure!(
             metadata.is_file() && metadata.len() <= limit as u64,

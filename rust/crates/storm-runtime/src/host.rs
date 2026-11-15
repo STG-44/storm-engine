@@ -1,6 +1,11 @@
 use anyhow::{Context, Result, ensure};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    rc::Rc,
+};
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
+use storm_render::texture_paths::TexturePaths;
 use storm_script::{Host, Value, World};
 
 pub(crate) type NativeFunction = Box<dyn FnMut(&[Value]) -> Result<Value>>;
@@ -18,6 +23,7 @@ pub struct NativeHost {
     loaded_libraries: BTreeSet<String>,
     loading_libraries: BTreeSet<String>,
     trace: TraceSink,
+    pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) delta_ms: u32,
 }
 impl NativeHost {
@@ -43,6 +49,7 @@ impl NativeHost {
                 eprintln!("{text}");
                 Ok(())
             }),
+            texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             delta_ms: 0,
         })
     }
@@ -97,26 +104,51 @@ impl NativeHost {
         self.libraries.insert(name, Box::new(initializer));
         Ok(())
     }
-    pub(crate) fn register_game_library(&mut self, name: &str) -> Result<()> {
-        let library = crate::script_libraries::MATH_LIBRARY;
-        if name.eq_ignore_ascii_case(library) && !self.libraries.contains_key(library) {
-            self.register_library(library, |host| {
-                let functions = crate::script_libraries::math_functions();
-                ensure!(
-                    host.functions.len() + functions.len() <= MAX_NATIVE_FUNCTIONS,
-                    "native function registration budget"
-                );
-                for (name, _) in &functions {
-                    ensure!(
-                        !host.functions.contains_key(*name),
-                        "duplicate native function: {name}"
-                    );
-                }
-                host.functions
-                    .extend(functions.map(|(name, function)| (name.to_owned(), function)));
-                Ok(())
-            })?;
+    pub(crate) fn register_game_library(
+        &mut self,
+        name: &str,
+        game: &crate::GameDirectory,
+    ) -> Result<()> {
+        use crate::script_libraries::{MATH_LIBRARY, math_functions, steam, textures};
+        let name = name.to_ascii_lowercase();
+        if self.libraries.contains_key(&name) {
+            return Ok(());
         }
+        match name.as_str() {
+            MATH_LIBRARY => {
+                self.register_library(MATH_LIBRARY, |host| host.bind_library(math_functions()))
+            }
+            textures::RENDERER_LIBRARY => {
+                let game = game.clone();
+                self.register_library(textures::RENDERER_LIBRARY, move |host| {
+                    host.bind_library(textures::functions(
+                        game.clone(),
+                        host.texture_paths.clone(),
+                    ))
+                })
+            }
+            steam::STEAM_LIBRARY => self.register_library(steam::STEAM_LIBRARY, |host| {
+                host.bind_library(steam::offline_functions())
+            }),
+            _ => Ok(()),
+        }
+    }
+    fn bind_library<const N: usize>(
+        &mut self,
+        functions: [(&str, NativeFunction); N],
+    ) -> Result<()> {
+        ensure!(
+            self.functions.len() + functions.len() <= MAX_NATIVE_FUNCTIONS,
+            "native function registration budget"
+        );
+        for (name, _) in &functions {
+            ensure!(
+                !self.functions.contains_key(*name),
+                "duplicate native function: {name}"
+            );
+        }
+        self.functions
+            .extend(functions.map(|(name, function)| (name.to_owned(), function)));
         Ok(())
     }
 }

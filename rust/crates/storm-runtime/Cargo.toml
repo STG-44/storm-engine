@@ -12,11 +12,11 @@ encoding_rs.workspace = true
 storm-core = { path = "../storm-core" }
 storm-script = { path = "../storm-script" }
 storm-render = { path = "../storm-render" }
+storm-formats = { path = "../storm-formats" }
 wgpu.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
-storm-formats = { path = "../storm-formats" }
 pollster.workspace = true
 
 [lints]

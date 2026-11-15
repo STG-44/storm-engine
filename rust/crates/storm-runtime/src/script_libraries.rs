@@ -2,6 +2,8 @@ use crate::host::NativeFunction;
 use anyhow::{Context, Result, bail};
 use std::time::Instant;
 use storm_script::Value;
+pub(crate) mod steam;
+pub(crate) mod textures;
 
 pub(crate) const MATH_LIBRARY: &str = "script_libriary_test";
 
