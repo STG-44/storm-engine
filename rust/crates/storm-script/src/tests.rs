@@ -132,6 +132,38 @@ fn dynamic_calls_read_the_name_after_arguments_and_support_returns_and_ref_argum
 }
 
 #[test]
+fn assignment_after_direct_call_uses_the_current_frames_left_operand() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int side = 0;
+        int observe(string text) { side += 1; return sti(text); }
+        int main() {
+            object cargo;
+            cargo.count = 2;
+            if (sti(cargo.count) == 2) {
+                observe(cargo.count) = 4;
+            }
+            int count = 7;
+            observe(cargo.count) = 9;
+            int values[3];
+            values[1] = 1;
+            observe(cargo.count) = 3;
+            return sti(cargo.count) * 1000 + count * 100 + values[1] * 10 + side;
+        }"#,
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(4933)
+    );
+    let error = Program::compile("void main() { sti(\"5\") = 0; }")?
+        .call("main", &[], &mut (), Limits::default())
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("no previous script assignment target"));
+    assert!(Program::compile("int main() { return sti(\"5\") = 0; }").is_err());
+    Ok(())
+}
+
+#[test]
 fn value_returns_preserve_native_handling_of_trailing_closing_parentheses() -> Result<()> {
     let program = Program::compile(
         "int values[2]={0,7}; ref select(int index){return &values[index]);} int main(){ref result=select(1);return sti(result);}",
@@ -366,7 +398,7 @@ fn switch_retains_one_selector_and_stops_at_the_first_matching_explicit_break() 
         }
     }
     let p = Program::compile(
-        "native int Select(); int main(){int n=0;switch(Select()){case 1:n=10;break;case 2:n=20;break;case 2:n=30;break;default:n=40;break;}return n;}",
+        "native int Select(); int main(){int n=0;switch(Select()){case 1:n=10;break;case 2:n=20;break case 2:n=30;break default:n=40;break}return n;}",
     )?;
     let mut host = Selector(0);
     assert_eq!(

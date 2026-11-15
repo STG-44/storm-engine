@@ -110,6 +110,13 @@ a direct call or another scalar assignment, a colon or surplus closing
 parenthesis after a direct call, and a value return immediately before
 the block ends.
 
+When a standalone direct call is followed by `=`, the original compiler
+emits the call, discards its result and emits a MOVE to the current frame's
+left operand. The Rust VM retains the destination of variable writes,
+increments and attribute writes for this form. A missing destination reports
+a source-located runtime error. A switch branch may end with `break`
+immediately before the next label or the closing brace.
+
 The dynamic-call revision passed 455 CPU tests on each CI host. Linux passed
 26 software Vulkan tests and the native-window fixture. All four archive
 digests, 144 scenario reports and four startup traces were verified.
@@ -148,6 +155,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 ~~~
 
 The pinned Russian checkout progresses past the standalone `else` in
-`sea_ai/aiship.c:1613` and reaches `worldmap/worldmap_encgen.c:148`.
-The compiler currently stops at the `=` after a call to `sti(...)`.
-Full compilation and game startup remain in progress.
+`sea_ai/aiship.c:1613` and the assignment after `sti(...)` in
+`worldmap/worldmap_encgen.c:148`. It reaches `loc_ai/lai_utilites.c:2529`,
+where the script assigns to `Rank` before its declaration later in
+the same function. Full compilation and game startup remain in progress.

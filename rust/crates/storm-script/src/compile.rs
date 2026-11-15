@@ -798,7 +798,18 @@ impl Compiler {
                 "{}",
                 self.error("control statement outside loop or switch")
             );
-            self.expect(";")?;
+            // Native CASE_COMMAND stops its body as soon as BREAK_COMMAND
+            // emits the exit jump, leaving any separator to the outer block.
+            let switch_break = breaking
+                && in_block
+                && self
+                    .loops
+                    .last()
+                    .is_some_and(|control| control.start.is_none())
+                && (self.is("case") || self.is("default") || self.is("}"));
+            if !switch_break {
+                self.expect(";")?;
+            }
             if breaking {
                 let index = self.emit(Instruction::Jump(0));
                 self.loops.last_mut().unwrap().breaks.push(index);
@@ -902,6 +913,15 @@ impl Compiler {
             );
         if direct_call {
             while self.take(")") {}
+            if self.take("=") {
+                // CompileBlock emits the call and discards its result, then
+                // compiles '=' as a MOVE to the frame's current left operand.
+                self.emit(Instruction::Drop);
+                self.expression(1)?;
+                self.statement_end(in_block)?;
+                self.emit(Instruction::StorePrevious);
+                return Ok(());
+            }
         }
         // A LABEL token after the closing parenthesis emits no bytecode.
         // Cabin.c uses this form inside a braced block.

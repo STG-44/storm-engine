@@ -144,6 +144,7 @@ enum Instruction {
     Load(bool),
     Address,
     Store(bool),
+    StorePrevious,
     MakeRef,
     MakeARef,
     Attribute(Vec<Access>, AttributeMode),
@@ -174,6 +175,19 @@ enum AttributeMode {
     Write,
 }
 
+#[derive(Clone)]
+struct SelectedVariable {
+    variable: Variable,
+    indirect: bool,
+    slot: Slot,
+    index: Option<i32>,
+}
+
+enum LeftOperand {
+    Variable(Slot, Option<i32>),
+    Attribute(AttributeReference),
+}
+
 struct Execution<'a, H: Host> {
     host: &'a mut H,
     world: World,
@@ -184,6 +198,30 @@ struct Execution<'a, H: Host> {
     messages: Vec<storm_core::Message>,
     current_message: Option<usize>,
     break_events: bool,
+}
+
+impl<H: Host> Execution<'_, H> {
+    fn store_variable(&self, variable: &Variable, value: Value, convert: bool) -> Result<()> {
+        if let Some(converted) = variable.assign(value, convert)? {
+            self.state.set_expression(converted);
+        }
+        Ok(())
+    }
+
+    fn write_attribute(&mut self, attribute: &AttributeReference, source: Value) -> Result<()> {
+        let value = source.clone().attribute_text()?;
+        self.state
+            .set_expression(if matches!(source, Value::Reference(_)) {
+                source
+            } else {
+                Value::String(value.clone())
+            });
+        if self.state.entity_update.get() {
+            attribute.write(&value, self.host)
+        } else {
+            attribute.set_value(&value)
+        }
+    }
 }
 
 pub(crate) fn spend(fuel: &mut u64) -> Result<()> {
@@ -334,9 +372,10 @@ impl Program {
                 }
             })
             .collect::<Result<Vec<_>>>()?;
-        let mut targets: Vec<(Variable, bool)> = Vec::new();
+        let mut targets: Vec<SelectedVariable> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
         let mut if_conditions: Vec<Option<Value>> = Vec::new();
+        let mut left_operand = None;
         let mut ip = 0;
         loop {
             let located = function
@@ -350,26 +389,32 @@ impl Program {
                     |stack: &mut Vec<Value>| stack.pop().context("script operand stack underflow");
                 match &located.op {
                     Instruction::Push(value) => stack.push(value.clone()),
-                    Instruction::Select(slot) => targets.push((
-                        slot.variable(&locals, &execution.state.globals).clone(),
-                        false,
-                    )),
+                    Instruction::Select(slot) => targets.push(SelectedVariable {
+                        variable: slot.variable(&locals, &execution.state.globals).clone(),
+                        indirect: false,
+                        slot: *slot,
+                        index: None,
+                    }),
                     Instruction::Index => {
                         let index = pop(&mut stack)?.resolved()?;
                         let Value::Int(index) = index else {
                             bail!("array index requires integer");
                         };
                         let base = targets.pop().context("script target stack underflow")?;
-                        let indirect = base.1 || base.0.is_reference();
-                        let Value::Array(array) = base.0.value()? else {
+                        let indirect = base.indirect || base.variable.is_reference();
+                        let Value::Array(array) = base.variable.value()? else {
                             bail!("index on scalar");
                         };
-                        targets.push((array.element(index)?, indirect));
+                        targets.push(SelectedVariable {
+                            variable: array.element(index)?,
+                            indirect,
+                            slot: base.slot,
+                            index: Some(index),
+                        });
                     }
                     Instruction::Address => {
-                        let (variable, _) =
-                            targets.pop().context("script target stack underflow")?;
-                        stack.push(variable.address()?);
+                        let target = targets.pop().context("script target stack underflow")?;
+                        stack.push(target.variable.address()?);
                     }
                     Instruction::Load(keep) => {
                         let target = if *keep {
@@ -378,21 +423,42 @@ impl Program {
                             targets.pop()
                         }
                         .context("script target stack underflow")?;
-                        stack.push(if target.1 {
-                            target.0.reference()
+                        stack.push(if target.indirect {
+                            target.variable.reference()
                         } else {
-                            target.0.load()?
+                            target.variable.load()?
                         });
                     }
                     Instruction::Store(convert) => {
-                        let v = pop(&mut stack)?;
-                        let converted = targets
-                            .pop()
-                            .context("script target stack underflow")?
-                            .0
-                            .assign(v, *convert)?;
-                        if let Some(value) = converted {
-                            execution.state.set_expression(value);
+                        let value = pop(&mut stack)?;
+                        let target = targets.pop().context("script target stack underflow")?;
+                        execution.store_variable(&target.variable, value, *convert)?;
+                        left_operand = Some(LeftOperand::Variable(target.slot, target.index));
+                    }
+                    Instruction::StorePrevious => {
+                        let value = pop(&mut stack)?;
+                        match left_operand
+                            .as_ref()
+                            .context("no previous script assignment target")?
+                        {
+                            LeftOperand::Variable(slot, index) => {
+                                let variable = slot.variable(&locals, &execution.state.globals);
+                                if let Some(index) = index {
+                                    let Value::Array(array) = variable.value()? else {
+                                        bail!("index on scalar");
+                                    };
+                                    execution.store_variable(
+                                        &array.element(*index)?,
+                                        value,
+                                        true,
+                                    )?;
+                                } else {
+                                    execution.store_variable(variable, value, true)?;
+                                }
+                            }
+                            LeftOperand::Attribute(attribute) => {
+                                execution.write_attribute(attribute, value)?;
+                            }
                         }
                     }
                     Instruction::MakeRef => {
@@ -400,22 +466,22 @@ impl Program {
                         targets
                             .pop()
                             .context("script target stack underflow")?
-                            .0
-                            .bind(&source.0)?;
+                            .variable
+                            .bind(&source.variable)?;
                     }
                     Instruction::MakeARef => {
                         let attribute = pop(&mut stack)?.attributes()?;
                         targets
                             .pop()
                             .context("script target stack underflow")?
-                            .0
+                            .variable
                             .bind_attribute(attribute)?;
                     }
                     Instruction::Attribute(path, mode) => {
                         let base = targets
                             .pop()
                             .context("script target stack underflow")?
-                            .0
+                            .variable
                             .value()?
                             .attributes()?;
                         let segments = path
@@ -455,27 +521,14 @@ impl Program {
                     }
                     Instruction::WriteAttribute => {
                         let source = pop(&mut stack)?;
-                        let value = source.clone().attribute_text()?;
                         let attribute = pop(&mut stack)?.attributes()?;
-                        execution
-                            .state
-                            .set_expression(if matches!(source, Value::Reference(_)) {
-                                source
-                            } else {
-                                Value::String(value.clone())
-                            });
-                        if execution.state.entity_update.get() {
-                            attribute.write(&value, execution.host)?;
-                        } else {
-                            attribute.set_value(&value)?;
-                        }
+                        execution.write_attribute(&attribute, source)?;
+                        left_operand = Some(LeftOperand::Attribute(attribute));
                     }
                     Instruction::Increment(decrement) => {
-                        targets
-                            .pop()
-                            .context("script target stack underflow")?
-                            .0
-                            .increment(*decrement)?;
+                        let target = targets.pop().context("script target stack underflow")?;
+                        target.variable.increment(*decrement)?;
+                        left_operand = Some(LeftOperand::Variable(target.slot, target.index));
                     }
                     Instruction::Binary(op) => {
                         let rhs = pop(&mut stack)?;
