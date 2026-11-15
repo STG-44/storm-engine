@@ -1,11 +1,13 @@
 use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
-use crate::{Access, Function, Instruction, Located, Program, Type, Value, builtins, value::Op};
+use crate::{
+    Access, Function, FunctionKind, Instruction, Located, Program, Type, Value, builtins, value::Op,
+};
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, rc::Rc};
 
 pub(crate) const MAX_TOKENS: usize = 16384;
 const MAX_NESTING: usize = 64;
-const MAX_LOCALS: usize = 128;
+pub(crate) const MAX_LOCALS: usize = 128;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Token {
@@ -26,9 +28,13 @@ pub(crate) struct Lexeme {
     pub column: usize,
 }
 
-pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
+pub(crate) fn lex(
+    source: &str,
+    file: Rc<str>,
+    limits: crate::CompileLimits,
+) -> Result<Vec<Lexeme>> {
     ensure!(
-        source.len() <= 262144 && !source.contains('\0'),
+        source.len() <= limits.file_bytes && !source.contains('\0'),
         "script source limit or NUL"
     );
     let mut result = Vec::new();
@@ -63,7 +69,17 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
                 p += 1;
             }
             ensure!(p > name, "{line}:{column}: expected directive name");
-            Some(Token::Directive(source[name..p].to_ascii_lowercase()))
+            let name = source[name..p].to_ascii_lowercase();
+            if matches!(name.as_str(), "ifndef" | "endif") {
+                // Native TOKEN maps these spellings to LINE_COMMENT. They are
+                // header decoration, not conditional C preprocessing.
+                while p < bytes.len() && !matches!(bytes[p], b'\r' | b'\n') {
+                    p += 1;
+                }
+                None
+            } else {
+                Some(Token::Directive(name))
+            }
         } else if bytes[p] == b'"' {
             p += 1;
             let n = source[p..]
@@ -155,7 +171,7 @@ pub(crate) fn lex(source: &str, file: Rc<str>) -> Result<Vec<Lexeme>> {
             previous_cr = c == '\r';
         }
         if let Some(token) = token {
-            ensure!(result.len() < MAX_TOKENS, "script token limit");
+            ensure!(result.len() < limits.tokens, "script token limit");
             result.push(Lexeme {
                 token,
                 file: file.clone(),
@@ -180,6 +196,7 @@ struct Loop {
 }
 
 struct Compiler {
+    limits: crate::CompileLimits,
     tokens: Vec<Lexeme>,
     p: usize,
     code: Vec<Located>,
@@ -194,6 +211,7 @@ struct Compiler {
 
 pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     let mut c = Compiler {
+        limits: sources.limits,
         tokens: sources.tokens,
         p: 0,
         code: Vec::new(),
@@ -210,13 +228,17 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     let mut headers = Vec::new();
     let mut names = BTreeMap::new();
     let mut static_handlers = Vec::new();
+    let mut top_level_calls = Vec::new();
     while c.current() != &Token::End {
         if c.is_static_handler() {
             static_handlers.push(c.static_handler()?);
             continue;
         }
         if let Token::Definition(name, value) = c.current().clone() {
-            ensure!(c.constants.len() < 1024, "script constant limit");
+            ensure!(
+                c.constants.len() < c.limits.constants,
+                "script constant limit"
+            );
             ensure!(
                 !c.constants.contains_key(&name),
                 "{}",
@@ -229,18 +251,47 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         if c.take(";") {
             continue;
         }
+        if matches!(c.current(), Token::Word(_))
+            && matches!(&c.tokens[c.p + 1].token, Token::Symbol(symbol) if symbol == "(")
+        {
+            top_level_calls.push(c.p);
+            c.word()?;
+            c.expect("(")?;
+            let mut depth = 1;
+            while depth != 0 {
+                if c.take("(") {
+                    depth += 1;
+                } else if c.take(")") {
+                    depth -= 1;
+                } else {
+                    ensure!(
+                        c.current() != &Token::End,
+                        "{}",
+                        c.error("unterminated top-level call")
+                    );
+                    c.p += 1;
+                }
+            }
+            c.expect(";")?;
+            continue;
+        }
         let start = c.p;
-        let native = c.take("native");
+        let function_kind = c.function_kind();
         let kind = c.kind()?;
         let name = c.word()?;
         if c.take("(") {
-            ensure!(headers.len() < 128, "script function limit");
+            ensure!(headers.len() < c.limits.functions, "script function limit");
             ensure!(
                 builtins::signature(&name).is_none(),
                 "builtin function cannot be redeclared: {name}"
             );
+            // The original function table can replace an unloaded extern
+            // entry with another declaration or a loaded definition.
             ensure!(
-                names.insert(name.clone(), ()).is_none(),
+                matches!(
+                    names.insert(name.clone(), function_kind),
+                    None | Some(FunctionKind::Extern)
+                ),
                 "duplicate function {name}"
             );
             headers.push(start);
@@ -248,10 +299,10 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 ensure!(c.current() != &Token::End, "unterminated parameter list");
                 c.p += 1;
             }
-            if native {
+            if function_kind != FunctionKind::Script {
                 c.expect(";")?;
             } else {
-                c.expect("{")?;
+                c.function_body_start()?;
                 let mut depth = 1;
                 while depth != 0 {
                     ensure!(
@@ -276,10 +327,14 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 }
             }
         } else {
-            ensure!(!native && kind != Type::Void, "invalid global declaration");
+            ensure!(
+                function_kind == FunctionKind::Script && kind != Type::Void,
+                "{}",
+                c.error("invalid global declaration")
+            );
             let mut name = name;
             loop {
-                ensure!(c.globals.len() < 128, "script global limit");
+                ensure!(c.globals.len() < c.limits.globals, "script global limit");
                 let elements = c.elements()?;
                 let initial = c.initializer(kind, elements)?;
                 ensure!(!c.globals.contains_key(&name), "duplicate global {name}");
@@ -300,7 +355,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
     let mut functions = BTreeMap::new();
     for start in headers {
         c.p = start;
-        let native = c.take("native");
+        let kind = c.function_kind();
         let returns = c.kind()?;
         let name = c.word()?;
         c.expect("(")?;
@@ -318,10 +373,10 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 c.expect(",")?;
             }
         }
-        if native {
+        if kind != FunctionKind::Script {
             c.expect(";")?;
         } else {
-            c.expect("{")?;
+            c.function_body_start()?;
             c.block()?;
             c.emit(Instruction::Return(false, 0));
         }
@@ -330,15 +385,26 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
             Function {
                 parameters,
                 returns,
-                native,
+                kind,
                 locals: std::mem::take(&mut c.types),
                 code: std::mem::take(&mut c.code),
             },
         );
         c.locals.clear();
     }
-    for (name, function) in &functions {
-        for instruction in &function.code {
+    // The original compiler emits these statements outside any function.
+    // Startup begins at Main's function offset, leaving them unreachable.
+    for start in top_level_calls {
+        c.p = start;
+        c.atom()?;
+        c.expect(";")?;
+    }
+    let bodies = functions
+        .iter()
+        .map(|(name, function)| (name.as_str(), function.code.as_slice()))
+        .chain(std::iter::once(("<top level>", c.code.as_slice())));
+    for (name, code) in bodies {
+        for instruction in code {
             if let Instruction::Call(callee, arguments) = &instruction.op {
                 let expected = if let Some((count, _)) = builtins::signature(callee) {
                     count
@@ -407,6 +473,23 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
 }
 
 impl Compiler {
+    fn function_body_start(&mut self) -> Result<()> {
+        // SEPARATOR leaves the original function declaration open until its
+        // body starts, as in GetColonyByIndex in the upstream game.
+        while self.take(";") {}
+        self.expect("{")
+    }
+
+    fn function_kind(&mut self) -> FunctionKind {
+        if self.take("extern") {
+            FunctionKind::Extern
+        } else if self.take("native") {
+            FunctionKind::Native
+        } else {
+            FunctionKind::Script
+        }
+    }
+
     fn is_static_handler(&self) -> bool {
         matches!(self.current(), Token::Directive(name) if name == "event_handler")
     }
@@ -521,7 +604,7 @@ impl Compiler {
         }
     }
     fn local(&mut self, name: String, kind: Type, elements: usize) -> Result<usize> {
-        ensure!(self.types.len() < MAX_LOCALS, "script local limit");
+        ensure!(self.types.len() < self.limits.locals, "script local limit");
         ensure!(
             !self.locals.contains_key(&name),
             "{}",
@@ -657,6 +740,9 @@ impl Compiler {
             }
             return Ok(());
         }
+        if self.take("for") {
+            return self.for_statement();
+        }
         if self.take("switch") {
             return self.switch_statement();
         }
@@ -775,6 +861,55 @@ impl Compiler {
         self.emit(Instruction::Drop);
         Ok(())
     }
+    fn for_statement(&mut self) -> Result<()> {
+        self.expect("(")?;
+        ensure!(
+            self.is(";")
+                || matches!(self.current(), Token::Word(_))
+                    && ![
+                        "if", "else", "while", "for", "switch", "return", "break", "continue"
+                    ]
+                    .iter()
+                    .any(|keyword| self.is(keyword)),
+            "{}",
+            self.error("invalid for initializer")
+        );
+        self.statement()?;
+        let condition = self.code.len();
+        self.expression(1)?;
+        self.expect(";")?;
+        let end = self.emit(Instruction::JumpFalse(0));
+        let first_body = self.emit(Instruction::Jump(0));
+
+        // Native FOR_BLOCK accepts a variable followed by postfix ++ or --.
+        // Continue targets this update as well as ordinary body completion.
+        let update = self.code.len();
+        let slot = self.variable()?;
+        let decrement = if self.take("--") {
+            true
+        } else {
+            self.expect("++")?;
+            false
+        };
+        self.expect(")")?;
+        self.emit(Instruction::Select(slot));
+        self.emit(Instruction::Increment(decrement));
+        self.emit(Instruction::Jump(condition));
+        self.patch(first_body);
+
+        self.loops.push(Loop {
+            start: Some(update),
+            breaks: Vec::new(),
+        });
+        self.statement()?;
+        self.emit(Instruction::Jump(update));
+        self.patch(end);
+        for index in self.loops.pop().unwrap().breaks {
+            self.patch(index);
+        }
+        Ok(())
+    }
+
     fn switch_statement(&mut self) -> Result<()> {
         self.expect("(")?;
         self.expression(1)?;
@@ -930,36 +1065,58 @@ impl Compiler {
         self.expect("]")?;
         Ok(n)
     }
-    fn initial_literal(&mut self, kind: Type, boolean: bool) -> Result<Value> {
+    fn initial_literal(&mut self, kind: Type, scalar: bool) -> Result<Option<Value>> {
         let negative = self.take("-");
         let value = match self.current() {
             Token::Literal(value) => value.clone(),
-            Token::Boolean(value) if boolean && kind == Type::Int && !negative => {
-                Value::Int(i32::from(*value))
+            Token::Boolean(value) if scalar => {
+                // The original TRUE_CONST/FALSE_CONST branches ignore the
+                // parsed sign and only assign to integer globals.
+                let value = *value;
+                self.p += 1;
+                return Ok((kind == Type::Int).then_some(Value::Int(i32::from(value))));
+            }
+            Token::Word(name) if scalar && self.constants.contains_key(name) => {
+                // The original scalar initializer consumes UNKNOWN without
+                // assigning a value, even when the name is an existing define.
+                self.p += 1;
+                return Ok(None);
             }
             _ => return Err(self.error("unsupported global initializer literal")),
         };
-        ensure!(value.kind() == kind, "global initializer type mismatch");
+        if scalar && value.kind() != kind {
+            // Native scalar initialization skips writes for other types.
+            self.p += 1;
+            return Ok(None);
+        }
+        ensure!(
+            value.kind() == kind,
+            "{}",
+            self.error(&format!(
+                "global initializer type mismatch (expected {kind:?}, got {:?})",
+                value.kind()
+            ))
+        );
         ensure!(
             !negative || matches!(kind, Type::Int | Type::Float),
             "invalid initializer sign"
         );
         self.p += 1;
-        if negative { value.negate() } else { Ok(value) }
+        Ok(Some(if negative { value.negate()? } else { value }))
     }
     fn initializer(&mut self, kind: Type, elements: usize) -> Result<Vec<Value>> {
         if !self.take("=") {
             return Ok(Vec::new());
         }
         if elements <= 1 {
-            return Ok(vec![self.initial_literal(kind, true)?]);
+            return Ok(self.initial_literal(kind, true)?.into_iter().collect());
         }
         self.expect("{")?;
         let mut values = Vec::new();
         if !self.take("}") {
             loop {
                 ensure!(values.len() < elements, "too many array initializers");
-                values.push(self.initial_literal(kind, false)?);
+                values.extend(self.initial_literal(kind, false)?);
                 if self.take("}") {
                     break;
                 }
@@ -1074,7 +1231,7 @@ impl Compiler {
                 loop {
                     self.expression(1)?;
                     arguments += 1;
-                    ensure!(arguments <= MAX_LOCALS, "script argument limit");
+                    ensure!(arguments <= self.limits.locals, "script argument limit");
                     if self.take(")") {
                         break;
                     }
@@ -1086,6 +1243,11 @@ impl Compiler {
             let slot = if let Some(slot) = self.lookup(&name) {
                 slot
             } else if let Some((value, _)) = self.constants.get(&name) {
+                ensure!(
+                    value.kind() != Type::Void,
+                    "{}",
+                    self.error("empty define has no scalar value")
+                );
                 self.emit(Instruction::Push(value.clone()));
                 return Ok(());
             } else {

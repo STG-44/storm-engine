@@ -125,8 +125,17 @@ pub struct GameSource {
 }
 impl storm_script::SourceLoader for GameSource {
     fn load(&mut self, path: &str) -> Result<String> {
+        ensure!(path.len() <= 1024, "script source path length limit");
+        let folded = path.replace('\\', "/").to_ascii_lowercase();
+        if let Some(name) = folded.strip_prefix("storm-engine/") {
+            return Ok(crate::shared_headers::source(name)?.to_owned());
+        }
         self.encoding
-            .decode(&self.directory.read(path, 262144)?)
+            .decode(
+                &self
+                    .directory
+                    .read(path, storm_script::CompileLimits::game().file_bytes)?,
+            )
             .with_context(|| format!("decode script {path}"))
     }
 }

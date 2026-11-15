@@ -1331,6 +1331,88 @@
           "text": "}"
         }
       ]
+    },
+    {
+      "source": "#ifndef GUARD trailing text\nint main(){return 7;}\n#endif extra\n",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "7"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
+    },
+    {
+      "source": "int main(){\n#ifndef ANY\nreturn 3;\n#endif\n}",
+      "expected": [
+        {
+          "kind": "word",
+          "text": "int"
+        },
+        {
+          "kind": "word",
+          "text": "main"
+        },
+        {
+          "kind": "word",
+          "text": "("
+        },
+        {
+          "kind": "word",
+          "text": ")"
+        },
+        {
+          "kind": "word",
+          "text": "{"
+        },
+        {
+          "kind": "word",
+          "text": "return"
+        },
+        {
+          "kind": "int",
+          "text": "3"
+        },
+        {
+          "kind": "word",
+          "text": ";"
+        },
+        {
+          "kind": "word",
+          "text": "}"
+        }
+      ]
     }
   ]
 }

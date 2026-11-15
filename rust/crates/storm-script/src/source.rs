@@ -1,4 +1,5 @@
 //! Explicit source loading. Includes append complete files, not inline text.
+use crate::CompileLimits;
 use crate::compile::{Lexeme, Token, lex};
 use anyhow::{Context, Result, bail, ensure};
 use std::{
@@ -10,8 +11,8 @@ use std::{
 };
 
 pub(crate) const MAX_FILE: usize = 262144;
-const MAX_TOTAL: usize = 1048576;
-const MAX_FILES: usize = 64;
+pub(crate) const MAX_TOTAL: usize = 1048576;
+pub(crate) const MAX_FILES: usize = 64;
 
 /// The embedding application explicitly supplies source text for normalized,
 /// root-relative ASCII paths. Script execution itself cannot read files.
@@ -32,12 +33,20 @@ pub struct LibraryRequest {
 /// every platform and accepts Windows separators. Ambiguous names fail.
 pub struct DirectorySource {
     root: PathBuf,
+    file_bytes: usize,
 }
 impl DirectorySource {
     pub fn new(root: impl AsRef<Path>) -> Result<Self> {
+        Self::with_limits(root, CompileLimits::default())
+    }
+    pub fn with_limits(root: impl AsRef<Path>, limits: CompileLimits) -> Result<Self> {
+        limits.validate()?;
         let root = root.as_ref().canonicalize().context("open script root")?;
         ensure!(root.is_dir(), "script root is not a directory");
-        Ok(Self { root })
+        Ok(Self {
+            root,
+            file_bytes: limits.file_bytes,
+        })
     }
 }
 impl SourceLoader for DirectorySource {
@@ -76,14 +85,14 @@ impl SourceLoader for DirectorySource {
         let file = File::open(&current).with_context(|| format!("open script {path}"))?;
         let metadata = file.metadata()?;
         ensure!(
-            metadata.is_file() && metadata.len() <= MAX_FILE as u64,
+            metadata.is_file() && metadata.len() <= self.file_bytes as u64,
             "invalid script file or source limit: {path}"
         );
         let mut text = String::new();
-        file.take(MAX_FILE as u64 + 1)
+        file.take(self.file_bytes as u64 + 1)
             .read_to_string(&mut text)
             .with_context(|| format!("read UTF-8 script {path}"))?;
-        ensure!(text.len() <= MAX_FILE, "script source limit: {path}");
+        ensure!(text.len() <= self.file_bytes, "script source limit: {path}");
         Ok(text)
     }
 }
@@ -116,9 +125,17 @@ pub(crate) struct Sources {
     pub tokens: Vec<Lexeme>,
     pub files: Vec<String>,
     pub libraries: Vec<LibraryRequest>,
+    pub limits: CompileLimits,
 }
 pub(crate) fn memory(text: &str) -> Result<Sources> {
-    let mut builder = Builder::default();
+    memory_with_limits(text, CompileLimits::default())
+}
+pub(crate) fn memory_with_limits(text: &str, limits: CompileLimits) -> Result<Sources> {
+    limits.validate()?;
+    let mut builder = Builder {
+        limits,
+        ..Builder::default()
+    };
     builder.add("<source>", text)?;
     ensure!(
         builder.pending.is_empty(),
@@ -127,7 +144,18 @@ pub(crate) fn memory(text: &str) -> Result<Sources> {
     Ok(builder.finish())
 }
 pub(crate) fn load(entry: &str, loader: &mut impl SourceLoader) -> Result<Sources> {
-    let mut builder = Builder::default();
+    load_with_limits(entry, loader, CompileLimits::default())
+}
+pub(crate) fn load_with_limits(
+    entry: &str,
+    loader: &mut impl SourceLoader,
+    limits: CompileLimits,
+) -> Result<Sources> {
+    limits.validate()?;
+    let mut builder = Builder {
+        limits,
+        ..Builder::default()
+    };
     builder.queue(entry, None)?;
     while let Some((path, origin)) = builder.pending.pop_front() {
         let text = loader
@@ -140,6 +168,7 @@ pub(crate) fn load(entry: &str, loader: &mut impl SourceLoader) -> Result<Source
 
 #[derive(Default)]
 struct Builder {
+    limits: CompileLimits,
     seen: BTreeSet<String>,
     pending: VecDeque<(String, Option<String>)>,
     files: Vec<String>,
@@ -153,7 +182,10 @@ impl Builder {
     fn queue(&mut self, path: &str, origin: Option<String>) -> Result<()> {
         let path = normalized(path)?;
         if !self.seen.contains(&path) {
-            ensure!(self.seen.len() < MAX_FILES, "script file count limit");
+            ensure!(
+                self.seen.len() < self.limits.files,
+                "script file count limit"
+            );
             self.seen.insert(path.clone());
             self.pending.push_back((path, origin));
         }
@@ -161,15 +193,17 @@ impl Builder {
     }
     fn add(&mut self, path: &str, text: &str) -> Result<()> {
         ensure!(
-            text.len() <= MAX_FILE && self.bytes + text.len() <= MAX_TOTAL,
+            text.len() <= self.limits.file_bytes
+                && self.bytes + text.len() <= self.limits.total_bytes,
             "script source byte limit: {path}"
         );
         self.bytes += text.len();
-        let mut tokens = lex(text, Rc::from(path)).with_context(|| format!("source {path}"))?;
+        let mut tokens =
+            lex(text, Rc::from(path), self.limits).with_context(|| format!("source {path}"))?;
         self.end = tokens.pop();
         self.raw_tokens += tokens.len();
         ensure!(
-            self.raw_tokens <= crate::compile::MAX_TOKENS,
+            self.raw_tokens <= self.limits.tokens,
             "script token limit across files"
         );
         self.files.push(path.into());
@@ -225,9 +259,20 @@ impl Builder {
                         let name = input
                             .next()
                             .with_context(|| format!("{context}: missing name"))?;
-                        let Token::Word(name) = name.token else {
-                            bail!("{context}: expected constant name");
+                        let definition_line = name.line;
+                        let name = match name.token {
+                            Token::Word(name) => name,
+                            Token::Boolean(true) => "true".to_owned(),
+                            Token::Boolean(false) => "false".to_owned(),
+                            _ => bail!("{context}: expected constant name"),
                         };
+                        if input.peek().is_none_or(|next| next.line > definition_line) {
+                            // Native empty header guards reserve the name with
+                            // a non-scalar token type (usually DEBUG_LINEFEED).
+                            item.token = Token::Definition(name, crate::Value::Void);
+                            self.tokens.push(item);
+                            continue;
+                        }
                         let mut value = input
                             .next()
                             .with_context(|| format!("{context}: missing value"))?;
@@ -268,6 +313,7 @@ impl Builder {
             tokens: self.tokens,
             files: self.files,
             libraries: self.libraries,
+            limits: self.limits,
         }
     }
 }

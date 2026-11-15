@@ -89,8 +89,12 @@ impl Startup {
             directory,
             encoding,
         };
-        let runtime = storm_script::Runtime::compile_with_loader(&self.run, &mut source)
-            .with_context(|| format!("compile configured Storm program {}", self.run))?;
+        let runtime = storm_script::Runtime::compile_with_loader_and_limits(
+            &self.run,
+            &mut source,
+            storm_script::CompileLimits::game(),
+        )
+        .with_context(|| format!("compile configured Storm program {}", self.run))?;
         Ok(Engine::from_runtime(runtime, host))
     }
 }

@@ -1,5 +1,23 @@
 use super::*;
 
+#[test]
+fn scalar_global_define_initializers_leave_defaults_until_runtime_assignment() -> Result<()> {
+    let p = Program::compile(
+        "#define HUD_HEIGHT 900\n#define HUD_SCALE 1.5\nint height=HUD_HEIGHT;float scale=-HUD_SCALE;float wrong_scale=1;int wrong_height=5.0;int main(){int initial=height+sti(scale)+sti(wrong_scale)+wrong_height;height=HUD_HEIGHT;return initial*1000+height;}",
+    )?;
+    assert_eq!(
+        p.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(900)
+    );
+    let p = Program::compile("int flag=-true; int main(){return flag;}")?;
+    assert_eq!(
+        p.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(1)
+    );
+    assert!(Program::compile("int height=MISSING;").is_err());
+    Ok(())
+}
+
 fn call(runtime: &mut Runtime, name: &str) -> Result<Value> {
     runtime.call(name, &[], &mut (), Limits::default())
 }
@@ -208,7 +226,7 @@ fn global_and_array_limits_reject_bad_declarations_and_reclaim_failed_call_alloc
         "int a[-1];",
         "int a[2][2];",
         "int a[2]={1,2,3};",
-        "float a=1;",
+        "float a[2]={1,2.0};",
         "int a=1+2;",
         "object a={};",
         "int a; int A;",

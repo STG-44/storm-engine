@@ -1,4 +1,179 @@
 use super::*;
+
+#[test]
+fn top_level_call_statements_are_checked_but_main_starts_at_its_own_body() -> Result<()> {
+    let program = Program::compile(
+        "native void SideEffect(int value); SideEffect(GetEngineVersion()); int main(){return GetEngineVersion();}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(54128)
+    );
+    assert!(Program::compile("GetEngineVersion(1); int main(){return 0;}").is_err());
+    assert!(Program::compile("Missing(); int main(){return 0;}").is_err());
+    assert!(Program::compile("GetEngineVersion()+1; int main(){return 0;}").is_err());
+    Ok(())
+}
+
+#[test]
+fn extern_script_functions_resolve_across_includes_and_report_unloaded_calls() -> Result<()> {
+    let mut files = Memory::new(&[
+        (
+            "main.c",
+            "#include \"module.c\"\nextern int Advance(int n);\nextern int ADVANCE(int value);\nextern int Unloaded(int n);\nint main(){return Advance(6);}\nint later(){return Unloaded(6);}",
+        ),
+        ("module.c", "int advance(int amount); {return amount + 1;}"),
+    ]);
+    let program = Program::compile_with_loader("main.c", &mut files)?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
+    let error = program
+        .call("later", &[], &mut (), Limits::default())
+        .unwrap_err();
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("main.c:")
+            && message.contains("extern script function unloaded is not loaded"),
+        "{message}"
+    );
+    assert!(Program::compile("extern int F(int n); int main(){return F();}").is_err());
+    assert!(Program::compile("int F(){return 0;} extern int f();").is_err());
+    assert!(Program::compile("extern int x;").is_err());
+    Ok(())
+}
+
+#[test]
+fn game_compile_profile_accepts_large_sources_and_declarations_without_widening_defaults()
+-> Result<()> {
+    let mut source = format!("/*{}*/\n", "x".repeat(300_000));
+    for i in 0..300 {
+        source += &format!("int G{i}={};\n", if i == 299 { 42 } else { 0 });
+    }
+    for i in 0..2000 {
+        source += &format!("#define C{i} {i}\n");
+    }
+    for i in 0..140 {
+        source += &format!("int F{i}(){{return {i};}}\n");
+    }
+    source += "int main(){int n=0;";
+    for i in 0..160 {
+        source += &format!("int V{i}={i};");
+    }
+    for _ in 0..9000 {
+        source += "n+=1;";
+    }
+    source += "return n+F139()+C1999+G299+V159;}";
+    assert!(Program::compile(&source).is_err());
+    let p = Program::compile_with_limits(&source, CompileLimits::game())?;
+    assert_eq!(
+        p.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(11339)
+    );
+    assert!(Program::compile(&source).is_err());
+    Ok(())
+}
+
+#[test]
+fn game_compile_profile_loads_larger_include_collections_in_original_append_order() -> Result<()> {
+    let mut files = Memory::default();
+    let mut main = String::new();
+    for i in 0..100 {
+        main += &format!("#include \"file{i}.c\"\n");
+        files
+            .files
+            .insert(format!("file{i}.c"), format!("int F{i}(){{return {i};}}"));
+    }
+    main += "int main(){return F99();}";
+    files.files.insert("main.c".into(), main);
+    let error = Program::compile_with_loader("main.c", &mut files)
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("file count limit"));
+    let p = Program::compile_with_loader_and_limits("main.c", &mut files, CompileLimits::game())?;
+    assert_eq!(p.sources().len(), 101);
+    assert_eq!(
+        p.sources()[1..],
+        (0..100).map(|i| format!("file{i}.c")).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        p.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(99)
+    );
+    Ok(())
+}
+
+#[test]
+fn compile_profiles_reject_zero_and_unbounded_values_before_loading_any_files() {
+    let max = CompileLimits::game();
+    for limits in [
+        CompileLimits {
+            file_bytes: usize::MAX,
+            ..max
+        },
+        CompileLimits {
+            total_bytes: usize::MAX,
+            ..max
+        },
+        CompileLimits { files: 0, ..max },
+        CompileLimits {
+            tokens: usize::MAX,
+            ..max
+        },
+        CompileLimits {
+            functions: usize::MAX,
+            ..max
+        },
+        CompileLimits {
+            globals: usize::MAX,
+            ..max
+        },
+        CompileLimits {
+            constants: 0,
+            ..max
+        },
+        CompileLimits {
+            locals: usize::MAX,
+            ..max
+        },
+    ] {
+        let mut files = Memory::new(&[("main.c", "int main(){return 7;}")]);
+        assert!(Program::compile_with_loader_and_limits("main.c", &mut files, limits).is_err());
+        assert!(files.reads.is_empty());
+        assert!(Program::compile_with_limits("int main(){return 7;}", limits).is_err());
+    }
+}
+
+#[test]
+fn original_boolean_named_defines_reserve_names_without_replacing_intrinsic_tokens() -> Result<()> {
+    let p = Program::compile("#define false 777\n#define true 0\nint main(){return true+false;}")?;
+    assert_eq!(
+        p.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(1)
+    );
+    assert!(Program::compile("#define true 1\n#define TRUE 2\nint main(){return 0;}").is_err());
+    Ok(())
+}
+
+#[test]
+fn native_header_guards_are_comments_and_empty_defines_reserve_non_scalar_names() -> Result<()> {
+    let program = Program::compile(
+        "#define GUARD\n#ifndef GUARD\nint main(){return 7;}\n#endif ignored text\n",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
+    assert!(Program::compile("#define GUARD\n#define guard\nint main(){return 7;}").is_err());
+    let error = Program::compile("#define GUARD\nint main(){return GUARD;}")
+        .err()
+        .unwrap();
+    assert!(format!("{error:#}").contains("empty define has no scalar value"));
+    assert!(Program::compile("#define GUARD\nint a[GUARD];").is_err());
+    assert!(Program::compile("#define GUARD").is_ok());
+    Ok(())
+}
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -151,7 +326,6 @@ fn memory_compilation_never_reads_includes_and_directives_inside_comments_and_st
 #[test]
 fn malformed_unsupported_and_duplicate_directives_fail_explicitly() {
     for text in [
-        "#define N",
         "#define N true",
         "#define N Other",
         "#define N(x) x",
@@ -164,7 +338,7 @@ fn malformed_unsupported_and_duplicate_directives_fail_explicitly() {
         "#include 3",
         "#include",
         "void main(){#define N 3}",
-        "#define N 3 int value=N;",
+        "#define N 3 int value=N+1;",
         "#define N 3 void main(){N=4;}",
     ] {
         assert!(Program::compile(text).is_err(), "{text}");

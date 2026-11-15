@@ -20,9 +20,9 @@ fold ASCII case and accept Windows separators on every target. Missing,
 ambiguous, escaping, oversized and nonregular inputs return errors.
 
 The embedding explicitly selects UTF-8 or Windows-1251 source decoding; UTF-8
-BOM is recognized. This is a portable text adapter for the original byte-based
-language, not proof of all original encodings/localization semantics. Existing
-compiler/source budgets and unsupported language features remain unchanged.
+BOM is recognized. The configured engine uses the
+[game compilation profile](ORIGINAL_SCRIPTS.md) and resolves `storm-engine/`
+includes through the original engine-owned shared headers.
 Missing `PROGRAM` and unsupported grammar/functions/classes report their
 path/source context rather than silently substituting preview implementations.
 

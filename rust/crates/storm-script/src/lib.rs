@@ -2,6 +2,8 @@
 //! The private instruction format is not the original cached-program format.
 mod builtins;
 mod compile;
+mod compile_limits;
+pub use compile_limits::CompileLimits;
 mod conversions;
 mod entity_api;
 mod events;
@@ -119,9 +121,15 @@ pub struct Program {
 struct Function {
     parameters: usize,
     returns: Type,
-    native: bool,
+    kind: FunctionKind,
     locals: Vec<Declaration>,
     code: Vec<Located>,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FunctionKind {
+    Script,
+    Native,
+    Extern,
 }
 struct Located {
     op: Instruction,
@@ -179,9 +187,19 @@ impl Program {
     pub fn compile(source: &str) -> Result<Self> {
         compile::compile(source::memory(source)?)
     }
+    pub fn compile_with_limits(source: &str, limits: CompileLimits) -> Result<Self> {
+        compile::compile(source::memory_with_limits(source, limits)?)
+    }
 
     pub fn compile_with_loader(entry: &str, loader: &mut impl SourceLoader) -> Result<Self> {
         compile::compile(source::load(entry, loader)?)
+    }
+    pub fn compile_with_loader_and_limits(
+        entry: &str,
+        loader: &mut impl SourceLoader,
+        limits: CompileLimits,
+    ) -> Result<Self> {
+        compile::compile(source::load_with_limits(entry, loader, limits)?)
     }
     /// Normalized file names in original append order; in-memory source has one synthetic name.
     pub fn sources(&self) -> &[String] {
@@ -279,7 +297,11 @@ impl Program {
             "{name} expects {} arguments",
             function.parameters
         );
-        if function.native {
+        ensure!(
+            function.kind != FunctionKind::Extern,
+            "extern script function {name} is not loaded"
+        );
+        if function.kind == FunctionKind::Native {
             let result = execution
                 .host
                 .call(name, arguments)

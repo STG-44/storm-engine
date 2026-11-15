@@ -45,12 +45,12 @@ names fail explicitly. The physical root itself can have a non-ASCII name.
 Normalization of slash/dot aliases is a portability adaptation beyond the
 retained string list's case folding.
 
-The loader accepts regular UTF-8 files, with 256 KiB per-file and 1 MiB total
-source budgets, at most 64 unique files and 16,384 significant tokens across
-all files. Source files are lexed independently; partial strings/comments cannot
-span file boundaries. There is no implicit shared-engine-directory remapping.
-Custom loaders can explicitly provide additional virtual sources. Compile and
-runtime diagnostics carry normalized file names with source line/column.
+The default compiler accepts up to 256 KiB per file, 1 MiB of source, 64 unique
+files and 16,384 tokens. The configured engine uses the game compilation profile
+and resolves the reserved `storm-engine/` prefix through its bundled shared
+headers. Source files are lexed independently. Custom loaders can explicitly
+provide additional virtual sources. Diagnostics carry normalized file names
+with source line and column.
 
 ## Typed constants
 

@@ -2,10 +2,10 @@
 
 Started: 2026-10-17.
 
-Current increment: [original-script compatibility prerequisites](ORIGINAL_SCRIPTS.md):
-bounded switch statements, original token spacing and explicitly registered
-native script libraries. The public upstream script corpus is available for
-unchanged-source checks; complete game compilation and startup remain pending.
+The [original-script compatibility work](ORIGINAL_SCRIPTS.md) adds engine-owned
+shared headers, a game compilation profile, `extern` declarations and counted
+`for` loops to the earlier switch, lexer and native library support. The public upstream script
+corpus exercises the configured engine startup path during development.
 
 Latest validated scene increment: [shared desktop window and retained TIMER](NATIVE_WINDOW.md).
 The native window drives the same configured script/entity/model host, with

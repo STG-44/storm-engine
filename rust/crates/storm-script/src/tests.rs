@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn native_counted_for_updates_on_continue_and_skips_update_on_break() -> Result<()> {
+    let program = Program::compile(
+        "int main(){int sum=0;for(int i=5;i>0;i--){switch(i){case 4:continue;break;}if(i==1)break;sum+=i;}int j=3;for(;j<3;j++)sum+=100;return sum+j;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(13)
+    );
+    assert!(Program::compile("void main(){int i;for(i=0;i<1;i+=1){}}").is_err());
+    assert!(Program::compile("void main(){int i;for(return;i<1;i++){}}").is_err());
+    Ok(())
+}
+
+#[test]
 fn library_directives_keep_first_case_insensitive_requests_in_native_append_order() -> Result<()> {
     struct Files;
     impl SourceLoader for Files {
@@ -98,7 +112,11 @@ fn native_signed_token_spacing_streams_preserve_quoted_unicode_and_control_bytes
         serde_json::from_str(include_str!("../reference/token_spacing/cases.json"))?;
     for case in fixture["cases"].as_array().unwrap() {
         let mut actual = Vec::new();
-        for lexeme in compile::lex(case["source"].as_str().unwrap(), "spacing.c".into())? {
+        for lexeme in compile::lex(
+            case["source"].as_str().unwrap(),
+            "spacing.c".into(),
+            CompileLimits::default(),
+        )? {
             let (kind, text) = match lexeme.token {
                 compile::Token::End => continue,
                 compile::Token::Word(s) | compile::Token::Symbol(s) => ("word", s),

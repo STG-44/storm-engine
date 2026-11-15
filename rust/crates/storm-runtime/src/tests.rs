@@ -1,6 +1,80 @@
 use super::*;
 
 #[test]
+fn configured_scripts_use_original_engine_headers_separately_from_game_program_files() -> Result<()>
+{
+    let temp = Temporary::new()?;
+    std::fs::create_dir_all(temp.0.join("PROGRAM/storm-engine"))?;
+    std::fs::write(
+        temp.0.join("engine.ini"),
+        "program_directory=PROGRAM\nrun=main.c\n",
+    )?;
+    std::fs::write(
+        temp.0.join("PROGRAM/storm-engine/layers.h"),
+        "#define SEA_EXECUTE 999\n",
+    )?;
+    std::fs::write(
+        temp.0.join("PROGRAM/main.c"),
+        "#include \"storm-engine\\layers.h\"\n#include \"storm-engine/events.h\"\nvoid Main(){Trace(\"layer=\"+SEA_EXECUTE);Trace(GET_CANNON_BY_TYPE_EVENT);}",
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    assert_eq!(
+        engine.sources(),
+        ["main.c", "storm-engine/layers.h", "storm-engine/events.h"]
+    );
+    engine.frame(0)?;
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        ["script:layer=2", "script:GetCannonByTypeEvent"]
+    );
+    Ok(())
+}
+
+#[test]
+fn all_bundled_shared_headers_are_verbatim_and_reserved_misses_never_read_game_shadows()
+-> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::create_dir_all(temp.0.join("storm-engine"))?;
+    std::fs::write(temp.0.join("storm-engine/unknown.h"), "#define SHADOW 7")?;
+    let mut source = GameSource {
+        directory: GameDirectory::open(&temp.0)?,
+        encoding: ScriptEncoding::Windows1251,
+    };
+    let names = [
+        "layers.h",
+        "events.h",
+        "controls.h",
+        "sound.h",
+        "messages.h",
+        "mast_msg.h",
+        "sail_msg.h",
+        "bimanager/messages.h",
+        "battle_interface/msg_control.h",
+        "battle_interface/log_msg.h",
+        "sea_ai/sea_people.h",
+        "sea_ai/script_defines.h",
+        "interface/messages.h",
+    ];
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../src/libs/shared_headers/include/shared");
+    for name in names {
+        let actual = source.load(&format!("storm-engine/{name}"))?;
+        assert_eq!(actual, std::fs::read_to_string(root.join(name))?);
+    }
+    assert!(source.load("storm-engine/unknown.h").is_err());
+    assert!(source.load("storm-engine/../layers.h").is_err());
+    assert!(source.load(&"a".repeat(1025)).is_err());
+    assert_eq!(
+        source.load("STORM-ENGINE\\LAYERS.H")?,
+        source.load("storm-engine/layers.h")?
+    );
+    Ok(())
+}
+
+#[test]
 fn registered_script_libraries_initialize_once_before_native_calls_and_register_real_bindings()
 -> Result<()> {
     use std::{cell::Cell, rc::Rc};

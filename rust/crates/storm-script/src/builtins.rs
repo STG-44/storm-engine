@@ -3,6 +3,7 @@ use anyhow::{Result, ensure};
 
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
+        "getengineversion" => (0, Type::Int),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
         "getarraysize" => (1, Type::Int),
@@ -19,6 +20,10 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
 pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
     let (count, _) = signature(name).expect("builtin");
     ensure!(arguments.len() == count, "builtin argument count");
+    if name == "getengineversion" {
+        // ENGINE_SCRIPT_VERSION in the retained core_impl.h.
+        return Ok(Value::Int(54128));
+    }
     let value = arguments[0].resolved();
     if name == "checkattribute" && (value.is_err() || matches!(value, Ok(Value::AReference(None))))
     {

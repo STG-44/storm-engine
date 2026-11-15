@@ -38,7 +38,7 @@ not a complete port of native switch compilation or C fallthrough semantics.
 The lexer retains signed-char TOKEN::StartArgument boundary skipping, including
 nonbreaking spaces present in unchanged seadogs.c. Quoted Unicode and control
 bytes remain intact. A separate oracle compiles the complete unedited TOKEN
-implementation under UBSan with signed char and compares 26 lexical streams.
+implementation under UBSan with signed char and compares 28 lexical streams.
 Only platform-header and output scaffolding is supplied. This validates spacing
 boundaries, not the complete original compiler.
 
@@ -58,23 +58,38 @@ errors on missing bindings. It does not load arbitrary DLLs or implement the
 production renderer, Steam or general script-library function sets. Complete
 native compile/load timing and dynamic segment behavior remain pending.
 
-## Actual startup boundary and next work
+## Loading the original program
 
-The unchanged upstream root source now passes the earlier unsupported colon
-and nonbreaking-space lexical boundaries and library-directive collection.
-Configured engine startup currently stops at its reserved
-storm-engine/layers.h include. The original C++ LoadFile resolves that prefix
-from engine resource/shared, separately from the game program directory.
-That shared-header provider and its native header-guard/empty-define behavior
-are the next source-loading work.
+The configured engine bundles the 13 original C++ shared script headers and
+resolves them through the reserved `storm-engine/` prefix. Native TOKEN treats
+`#ifndef` and `#endif` as comments. Empty defines reserve names, and defines named
+`true` or `false` coexist with the intrinsic boolean tokens.
 
-Existing source limits remain 64 files / 1 MiB total / 256 KiB per file and
-16,384 tokens, with bounded function/global/local counts. They are insufficient
-for the whole corpus. Explicit bounded game-sized compilation, extern/linking,
-remaining grammar, native functions/classes and services must follow. Raising
-limits alone does not establish compatibility. This work extends the same
-shared Engine/World used by the desktop model window, alongside native sea /
-camera integration; it does not claim an original-game or playable land start.
+The configured engine uses a compilation profile with limits of 2 MiB per
+file, 32 MiB total source, 2,048 files and 2,097,152 tokens. It also allows
+larger function, global, constant and local tables. Standalone compiler APIs
+use the smaller profile by default and can receive an explicit profile.
+Execution limits govern the VM separately.
+
+An `extern` declaration can resolve to a subsequent function definition in the
+same compilation, including definitions in appended include files. Calls to
+unloaded declarations report the function name when executed. Dynamic segment
+loading is future work. A scalar global keeps its default value when initialized
+with a recognized define or a literal of another type, following the original
+compiler's initializer branches. Calls at the top level are checked at compile
+time. Startup enters `Main` at its own offset. `GetEngineVersion()` returns the
+retained script compatibility version, 54128. The compiler accepts separator
+tokens between a function signature and its body, as used by
+`GetColonyByIndex` in the original colony scripts.
+
+Counted `for` loops use a postfix increment or decrement of the named
+variable, following the original compiler. A `continue` runs the update
+before reevaluating the condition. A `break` exits the loop immediately.
+
+The preceding switch, lexer and library registration changes passed 439 CPU
+tests on each of the four CI hosts, plus 26 Vulkan tests on Linux. The archived
+reports match the 36 baseline scenarios on all four hosts.
+[GitHub Actions run 42077673030](https://github.com/STG-44/storm-engine/actions/runs/42077673030)
 
 ## Reproduce
 
@@ -92,5 +107,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The current missing shared-header error is an expected, explicit compatibility
-boundary. It is not a successful game startup.
+On the pinned Russian checkout, compilation currently reaches the
+`Dolly` branch in `seadogs.c` at line 1353. The assignment immediately before
+that line ends without a semicolon. The script compiler still needs the
+original statement termination behavior, and full game startup remains open.

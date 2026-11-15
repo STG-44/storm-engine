@@ -144,8 +144,20 @@ impl Runtime {
     pub fn compile(source: &str) -> Result<Self> {
         Self::from_program(Program::compile(source)?)
     }
+    pub fn compile_with_limits(source: &str, limits: crate::CompileLimits) -> Result<Self> {
+        Self::from_program(Program::compile_with_limits(source, limits)?)
+    }
     pub fn compile_with_loader(entry: &str, loader: &mut impl crate::SourceLoader) -> Result<Self> {
         Self::from_program(Program::compile_with_loader(entry, loader)?)
+    }
+    pub fn compile_with_loader_and_limits(
+        entry: &str,
+        loader: &mut impl crate::SourceLoader,
+        limits: crate::CompileLimits,
+    ) -> Result<Self> {
+        Self::from_program(Program::compile_with_loader_and_limits(
+            entry, loader, limits,
+        )?)
     }
     fn from_program(program: Program) -> Result<Self> {
         Ok(Self {

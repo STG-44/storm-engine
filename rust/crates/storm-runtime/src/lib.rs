@@ -5,6 +5,7 @@ mod config;
 mod filesystem;
 mod frame;
 mod host;
+mod shared_headers;
 mod window_settings;
 pub use window_settings::WindowSettings;
 pub mod model;

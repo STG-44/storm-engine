@@ -21,6 +21,8 @@ for separator in separators:
     cases.append({'source': f'int main(){{string s="a{separator}b";/*x{separator}y*/return 3;}}'})
 cases += [{'source': 'int\r\nmain(){//я\nreturn\u00a0 7;}'},
           {'source': 'int\u00a0main(){string s="Корсары";return 7;}'}]
+cases += [{'source': '#ifndef GUARD trailing text\nint main(){return 7;}\n#endif extra\n'},
+          {'source': 'int main(){\n#ifndef ANY\nreturn 3;\n#endif\n}'}]
 
 driver = r'''
 #include "token.h"
