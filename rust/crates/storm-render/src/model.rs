@@ -17,7 +17,7 @@ pub mod rig_buffers;
 mod rigging;
 mod sail_damage;
 mod sails;
-pub use sail_damage::{SailDamageMaterial, SailDamageSettings, SailImpact};
+pub use sail_damage::{SailDamageMaterial, SailDamageSettings, SailImpact, original_sail_speed};
 mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};

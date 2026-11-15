@@ -4,6 +4,7 @@ use std::time::Instant;
 use storm_script::Value;
 pub(crate) mod interface;
 pub(crate) mod location;
+pub(crate) mod rigging;
 pub(crate) mod steam;
 pub(crate) mod textures;
 

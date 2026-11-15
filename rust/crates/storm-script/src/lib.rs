@@ -23,7 +23,7 @@ pub use objects::{AttributeReference, Object, Reference, Variable, World};
 use std::collections::BTreeMap;
 use storm_core::{AttributeId, AttributeStore, EntityId};
 use value::Op;
-pub use value::{Type, Value};
+pub use value::{MAX_STRING, Type, Value};
 
 /// External native functions must be declared in source. Internal builtins
 /// use explicit hooks below; scripts have no implicit filesystem, network or FFI API.

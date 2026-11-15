@@ -180,6 +180,19 @@ case-insensitive first-match lookup and spaces inside quoted text. Text
 files support UTF-8 and Windows-1251. User string files, language switching,
 and interface controls remain pending.
 
+`script_rigging_files` exposes attribute templates with decimal numeric
+formats for UI strings and the original sail power loss calculation with
+the initial 1.0 hole dependence.
+`ShipSailState` returns the original integer zero before a native SAIL entity
+exists. Live SAIL state, configured dependence and script-driven changes to
+sail hole masks still need the native SAIL service.
+
+The common-translations revision passed 474 CPU tests on Windows, Linux,
+and both macOS architectures. Linux passed another 26 software Vulkan
+tests and the native-window check. All four archive digests, 144 scenario
+reports and four startup traces were verified against the baseline.
+[GitHub Actions run 43751892089](https://github.com/STG-44/storm-engine/actions/runs/43751892089)
+
 The local-registration revision passed 462 CPU tests on each of four CI
 hosts. Linux passed 26 software Vulkan tests and the native-window check.
 All 144 scenario reports, four archive digests and four startup traces were
@@ -223,8 +236,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout compiles all 201 loaded source files and enters
-native startup. It initializes the math, renderer texture, offline Steam,
-location lookups and common translations, then stops at `script_rigging_files`
-in `battle_interface/utils.c:8`. The remaining native libraries and game services
-must be available before `Main` runs.
+The pinned Russian checkout compiles all 201 startup source files and enters
+`Main` in `seadogs.c`. `Main` reaches `ControlsInit` and then stops at
+`LoadSegment("controls\init_pc.c")` in `controls/controls.c:62`. Loading and
+unloading script segments at runtime is still pending.

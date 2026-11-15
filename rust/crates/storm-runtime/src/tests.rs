@@ -1,6 +1,57 @@
 use super::*;
 
 #[test]
+fn configured_rigging_formats_attributes_and_uses_original_sail_power() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r##"#libriary "script_rigging_files"
+        native string GetAssembledString(string template, aref data);
+        native float funcGetSailSpeed(int holes, int maximum, float power);
+        native int ShipSailState(int character);
+        object data;
+        void Main() {
+            aref view, unbound;
+            data.ship.name = "Бриг";
+            data.ship.count = "  -31 shots";
+            data.ship.power = " +1.256 knots";
+            data.ship.bad = "invalid";
+            data.ship.decimal = "-0.0";
+            makearef(view, data.ship);
+            Trace(GetAssembledString("[#sSHIP.name#|#dship.count#|#fship.power#]", &data));
+            Trace(GetAssembledString("#f.2power#/#f.0power#/#dmissing#/#ubad#/#fbad#/#f.1decimal", view));
+            Trace(GetAssembledString("abc##xyz#sname", view));
+            Trace("[" + GetAssembledString("literal", unbound) + "]");
+            if (funcGetSailSpeed(1, 4, 100.0) == 25.0 &&
+                funcGetSailSpeed(0, 4, 100.0) == 0.0 &&
+                funcGetSailSpeed(5, 4, 100.0) == 100.0 &&
+                funcGetSailSpeed(1, 0, 100.0) == 100.0) {
+                Trace("sail power loss");
+            }
+            Trace("absent sail=" + ShipSailState(7));
+        }"##,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:[Бриг|-31|1.256000]",
+            "script:1.26/1///0.000000/-0.0",
+            "script:abcxyzБриг",
+            "script:[]",
+            "script:sail power loss",
+            "script:absent sail=0",
+        ],
+    );
+    Ok(())
+}
+
+#[test]
 fn configured_interface_reads_original_common_strings_and_localized_text() -> Result<()> {
     let temp = Temporary::new()?;
     let texts = temp.0.join("resource/ini/texts");

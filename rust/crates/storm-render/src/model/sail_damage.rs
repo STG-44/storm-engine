@@ -103,7 +103,7 @@ impl SailPatch {
 }
 
 /// GetSailSpeed's original float arithmetic and clamping.
-fn original_sail_speed(holes: i32, mut maximum: i32, speed: f32, dependence: f32) -> f32 {
+pub fn original_sail_speed(holes: i32, mut maximum: i32, speed: f32, dependence: f32) -> f32 {
     if maximum <= 0 {
         maximum = 1;
     }

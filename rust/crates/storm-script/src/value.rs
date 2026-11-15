@@ -1,7 +1,7 @@
 use crate::objects::{AttributeReference, Object, Reference};
 use anyhow::{Result, bail, ensure};
 
-pub(crate) const MAX_STRING: usize = 4096;
+pub const MAX_STRING: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Type {

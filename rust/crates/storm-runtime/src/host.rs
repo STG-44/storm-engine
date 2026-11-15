@@ -122,7 +122,7 @@ impl NativeHost {
         game: &crate::GameDirectory,
     ) -> Result<()> {
         use crate::script_libraries::{
-            MATH_LIBRARY, interface, location, math_functions, steam, textures,
+            MATH_LIBRARY, interface, location, math_functions, rigging, steam, textures,
         };
         let name = name.to_ascii_lowercase();
         if self.libraries.contains_key(&name) {
@@ -154,6 +154,9 @@ impl NativeHost {
                     host.bind_library(interface::functions(&game)?)
                 })
             }
+            rigging::RIGGING_LIBRARY => self.register_library(rigging::RIGGING_LIBRARY, |host| {
+                host.bind_library(rigging::functions())
+            }),
             _ => Ok(()),
         }
     }
