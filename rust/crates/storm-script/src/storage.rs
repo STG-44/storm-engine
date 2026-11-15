@@ -82,6 +82,10 @@ impl Array {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// Read the current value of an element without copying its attribute tree.
+    pub fn element_value(&self, index: i32) -> Result<Value> {
+        self.element(index)?.value()
+    }
     pub(crate) fn element(&self, index: i32) -> Result<Variable> {
         let index = usize::try_from(index).context("negative array index")?;
         self.0

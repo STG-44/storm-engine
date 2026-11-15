@@ -102,7 +102,7 @@ pub(crate) fn functions(
     [
         (
             "settexturepath",
-            Box::new(move |args| {
+            NativeFunction::new(move |args| {
                 let [Value::Int(level), Value::String(prefix)] = args else {
                     bail!("SetTexturePath expects a level and path");
                 };
@@ -115,7 +115,7 @@ pub(crate) fn functions(
         ),
         (
             "gettexture",
-            Box::new(move |args| {
+            NativeFunction::new(move |args| {
                 let [Value::String(name)] = args else {
                     bail!("GetTexture expects a file name");
                 };
@@ -131,7 +131,7 @@ pub(crate) fn functions(
         ),
         (
             "releasetexture",
-            Box::new(move |args| {
+            NativeFunction::new(move |args| {
                 let [Value::Int(id)] = args else {
                     bail!("ReleaseTexture expects a texture ID");
                 };

@@ -30,7 +30,7 @@ pub(crate) fn offline_functions() -> [(&'static str, NativeFunction); 12] {
         ("resetstats", Integer, 0),
     ]
     .map(|(name, signature, result)| {
-        let function: NativeFunction = Box::new(move |args| {
+        let function: NativeFunction = NativeFunction::new(move |args| {
             let valid = match (signature, args) {
                 (None, []) | (String, [Value::String(_)]) => true,
                 (Integer, [value]) | (Stat, [Value::String(_), value]) => {

@@ -117,11 +117,14 @@ fn rejected_and_error_initialization_defer_destruction_without_rolling_back_attr
     assert!(trace.borrow().dropped.is_empty());
     let before_cleanup = manager.create("ok", &mut store, None)?;
     assert_eq!(before_cleanup.raw(), (3_u64 << 32) | 2);
+    assert_eq!(manager.first_id("reject"), None);
+    assert_eq!(manager.first_id("OK"), Some(before_cleanup));
     manager.new_lifecycle().unwrap();
     assert_eq!(trace.borrow().dropped, [ids[1], ids[0]]);
     let reused = manager.create("ok", &mut store, None)?;
     assert_eq!(reused.raw(), 4_u64 << 32);
     assert_eq!(manager.ids("ok"), [before_cleanup, reused]);
+    assert_eq!(manager.first_id("ok"), Some(reused));
     assert!(!manager.is_valid(ids[0]));
     Ok(())
 }

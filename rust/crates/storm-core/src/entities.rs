@@ -360,6 +360,15 @@ impl EntityManager {
         ids.sort_by_key(|id| id.raw());
         ids
     }
+    /// GetEntityId scans storage order, including slots reused by newer entities.
+    pub fn first_id(&self, class: &str) -> Option<EntityId> {
+        let hash = class_hash(class);
+        self.entries
+            .iter()
+            .flatten()
+            .find(|entry| entry.valid && entry.hash == hash)
+            .map(|entry| entry.id)
+    }
     pub fn erase(&mut self, id: EntityId) {
         if let Some(entry) = self.entry_mut(id).filter(|e| e.valid) {
             entry.valid = false;

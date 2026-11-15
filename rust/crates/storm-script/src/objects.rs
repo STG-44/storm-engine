@@ -99,7 +99,8 @@ impl World {
             initialized: Cell::new(false),
         })))
     }
-    pub(crate) fn read<T>(&self, action: impl FnOnce(&AttributeStore) -> T) -> Result<T> {
+    /// Read attributes from the same store that native entities borrow.
+    pub fn read<T>(&self, action: impl FnOnce(&AttributeStore) -> T) -> Result<T> {
         self.prepare(0)?;
         Ok(action(&self.0.attributes.borrow()))
     }

@@ -1,6 +1,70 @@
 use super::*;
 
 #[test]
+fn configured_location_library_uses_live_arrays_and_entity_attributes() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"#libriary "ScriptLocationLibrary"
+        native int NativeFindCharacter(ref items, string id);
+        native int NativeFindLocation(ref items, string id);
+        native int NativeFindLoadCharacter();
+        native string GetNextLineString();
+        object characters[3], a, b;
+        void Main() {
+            characters[2].id = "Captain";
+            Trace("initial="+NativeFindCharacter(&characters,"captain"));
+            characters[0].id = "CAPTAIN";
+            Trace("cached="+NativeFindCharacter(&characters,"Captain"));
+            Trace("other-cache="+NativeFindLocation(&characters,"captain"));
+            SetArraySize(&characters,2);
+            Trace("resized="+NativeFindCharacter(&characters,"captain"));
+            characters[0].id = "departed";
+            Trace("missing="+NativeFindCharacter(&characters,"captain"));
+            Trace("empty="+NativeFindLocation(&characters,""));
+            Trace("absent="+NativeFindLoadCharacter());
+            CreateEntity(&a,"location");
+            CreateEntity(&b,"LOCATION");
+            Trace("unset="+NativeFindLoadCharacter());
+            a.index=" +31port";
+            b.index=42;
+            Trace("first="+NativeFindLoadCharacter());
+            DeleteClass(&a);
+            Trace("remaining="+NativeFindLoadCharacter());
+            Trace("line"+GetNextLineString()+"end");
+        }"#,
+    )?;
+    struct Location;
+    impl Entity for Location {}
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut host = host(&trace)?;
+    host.entities
+        .register_class("location", || Ok(Box::new(Location)))?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host)?;
+    engine.frame(0)?;
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:initial=2",
+            "script:cached=2",
+            "script:other-cache=0",
+            "script:resized=0",
+            "script:missing=-1",
+            "script:empty=-1",
+            "script:absent=-1",
+            "script:unset=-1",
+            "script:first=31",
+            "script:remaining=42",
+            "script:line\r\nend",
+        ],
+    );
+    Ok(())
+}
+
+#[test]
 fn configured_game_uses_the_original_offline_steam_results() -> Result<()> {
     use storm_script::{Host, Value};
     let temp = Temporary::new()?;

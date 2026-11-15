@@ -8,7 +8,19 @@ use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType
 use storm_render::texture_paths::TexturePaths;
 use storm_script::{Host, Value, World};
 
-pub(crate) type NativeFunction = Box<dyn FnMut(&[Value]) -> Result<Value>>;
+type NativeCallback = dyn FnMut(&[Value], &World, &EntityManager) -> Result<Value>;
+pub(crate) struct NativeFunction(Box<NativeCallback>);
+impl NativeFunction {
+    pub(crate) fn new(mut function: impl FnMut(&[Value]) -> Result<Value> + 'static) -> Self {
+        Self::with_world(move |args, _, _| function(args))
+    }
+
+    pub(crate) fn with_world(
+        function: impl FnMut(&[Value], &World, &EntityManager) -> Result<Value> + 'static,
+    ) -> Self {
+        Self(Box::new(function))
+    }
+}
 type TraceSink = Box<dyn FnMut(&str) -> Result<()>>;
 type LibraryInitializer = Box<dyn FnMut(&mut NativeHost) -> Result<()>>;
 const MAX_NATIVE_FUNCTIONS: usize = 256;
@@ -74,7 +86,7 @@ impl NativeHost {
             !self.functions.contains_key(&name),
             "duplicate native function: {name}"
         );
-        self.functions.insert(name, Box::new(function));
+        self.functions.insert(name, NativeFunction::new(function));
         Ok(())
     }
     pub fn set_trace_sink(&mut self, sink: impl FnMut(&str) -> Result<()> + 'static) {
@@ -109,7 +121,7 @@ impl NativeHost {
         name: &str,
         game: &crate::GameDirectory,
     ) -> Result<()> {
-        use crate::script_libraries::{MATH_LIBRARY, math_functions, steam, textures};
+        use crate::script_libraries::{MATH_LIBRARY, location, math_functions, steam, textures};
         let name = name.to_ascii_lowercase();
         if self.libraries.contains_key(&name) {
             return Ok(());
@@ -130,6 +142,10 @@ impl NativeHost {
             steam::STEAM_LIBRARY => self.register_library(steam::STEAM_LIBRARY, |host| {
                 host.bind_library(steam::offline_functions())
             }),
+            location::LOCATION_LIBRARY => self
+                .register_library(location::LOCATION_LIBRARY, |host| {
+                    host.bind_library(location::functions())
+                }),
             _ => Ok(()),
         }
     }
@@ -178,11 +194,11 @@ impl Host for NativeHost {
         self.world.clone()
     }
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
-        self.functions
+        let function = self
+            .functions
             .get_mut(name)
-            .with_context(|| format!("native function is not registered: {name}"))?(
-            arguments
-        )
+            .with_context(|| format!("native function is not registered: {name}"))?;
+        (function.0)(arguments, &self.world, &self.entities)
     }
     fn is_entity(&self, id: EntityId) -> Result<bool> {
         Ok(self.entities.is_valid(id))

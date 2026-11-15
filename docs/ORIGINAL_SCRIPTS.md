@@ -166,6 +166,13 @@ consumer, raw image fallback, glow and text drawing remain to be integrated.
 The twelve bindings report the original offline values for achievements,
 statistics, overlay and DLC queries.
 
+`ScriptLocationLibrary` exposes the character and location ID lookups. The
+two searches keep separate native-sized caches and check each cached index
+against current array contents. `NativeFindLoadCharacter` reads the current
+valid location entity's `index` attribute in storage order, and
+`GetNextLineString` returns CRLF. Progress-screen rendering, technique
+execution, and the delay service remain pending.
+
 The local-registration revision passed 462 CPU tests on each of four CI
 hosts. Linux passed 26 software Vulkan tests and the native-window check.
 All 144 scenario reports, four archive digests and four startup traces were
@@ -210,7 +217,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 ~~~
 
 The pinned Russian checkout compiles all 201 loaded source files and enters
-native startup. It initializes the math, renderer texture, and offline Steam
-bindings, then stops at `ScriptLocationLibrary` in
-`locations/locations.c:21`. The remaining native libraries and game
-services must be available before `Main` runs.
+native startup. It initializes the math, renderer texture, offline Steam,
+and location lookup bindings, then stops at `script_interface_functions` in
+`interface/utilite.c:33`. The remaining native libraries and game services
+must be available before `Main` runs.
