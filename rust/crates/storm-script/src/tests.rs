@@ -1,6 +1,116 @@
 use super::*;
 
 #[test]
+fn standalone_else_observes_the_shared_expression_register_after_bare_blocks() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int zero() { return 0; }
+        int nonzero() { return 7; }
+        void note() {}
+        int main() {
+            int result = 0;
+            if (0) result = 90; else {
+                nonzero();
+                { note(); }
+                else { result += 100; }
+                zero();
+                { note(); }
+                else { result += 1; }
+            }
+            if (1) {
+                if (0) result += 100; else result += 2;
+                zero();
+            } else result += 100;
+            { note(); }
+            else result += 100;
+            if ("0") result += 100;
+            else if (0) result += 100;
+            else result += 4;
+            string name = "zero";
+            call name();
+            else result += 100;
+            name = "note";
+            call name();
+            else result += 8;
+            return result;
+        }"#,
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(15)
+    );
+    Ok(())
+}
+
+#[test]
+fn standalone_else_tracks_loops_switches_logical_tests_and_move_conversions() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int zero() { return 0; }
+        int one() { return 1; }
+        int main() {
+            int result = 0;
+            for (int i = 0; i < 3; i++) {
+                if (i < 2) continue;
+                result += 1;
+            }
+            else result += 2;
+            while (1) { if (1) { zero(); break; } }
+            else result += 4;
+            switch (2) { case 1: result += 100; break; }
+            else result += 8;
+            int evaluated = 0 || 1;
+            else result += 16;
+            int converted = "0";
+            else result += 32;
+            object cargo;
+            cargo.hold = 0;
+            else result += 64;
+            cargo.1 = 3;
+            one();
+            string key = "hold";
+            string contents = cargo.(key);
+            else result += 128;
+            cargo.hold = 1;
+            aref hold;
+            makearef(hold, cargo.hold);
+            if (hold) { cargo.hold = 0; } else result += 256;
+            return result + evaluated + converted + sti(contents);
+        }"#,
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(512)
+    );
+    Ok(())
+}
+
+#[test]
+fn runtime_keeps_expression_state_across_calls_without_losing_reference_identity() -> Result<()> {
+    let mut runtime = Runtime::compile(
+        r#"
+        int source = 0;
+        void seed() { while (&source) {} }
+        void set() { source = 5; }
+        int query() { else return 7; return 9; }
+        "#,
+    )?;
+    let mut host = ();
+    let limits = Limits::default();
+    runtime.call("seed", &[], &mut host, limits)?;
+    runtime.call("set", &[], &mut host, limits)?;
+    assert_eq!(
+        runtime.call("query", &[], &mut host, limits)?,
+        Value::Int(9)
+    );
+    let error = Program::compile("int query(){else return 7; return 9;}")?
+        .call("query", &[], &mut host, limits)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("non-scalar value in integer conversion"));
+    Ok(())
+}
+
+#[test]
 fn dynamic_calls_read_the_name_after_arguments_and_support_returns_and_ref_arguments() -> Result<()>
 {
     let program = Program::compile(
@@ -30,7 +140,13 @@ fn value_returns_preserve_native_handling_of_trailing_closing_parentheses() -> R
         program.call("main", &[], &mut (), Limits::default())?,
         Value::Int(7)
     );
+    let program = Program::compile("int f(int n){return n;} int main(){return f(7)}")?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(7)
+    );
     assert!(Program::compile("int main(){return );}").is_err());
+    assert!(Program::compile("void main(){return}").is_err());
     assert!(Program::compile("int main(){if(1) return 7); return 0;}").is_err());
     Ok(())
 }
@@ -61,6 +177,39 @@ fn plain_assignment_in_blocks_hands_control_tokens_back_to_the_statement_parser(
     assert!(Program::compile("void main(){int n; for(n=1 n<2; n++) {}}").is_err());
     assert!(Program::compile("void main(){int n; n=1 2;}").is_err());
     assert!(Program::compile("int f(){return 1;} int main(){f()+f() return 0;}").is_err());
+    Ok(())
+}
+
+#[test]
+fn native_statement_boundaries_preserve_assignments_and_direct_calls() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        void apply(ref target, int amount) { target += amount; }
+        int main() {
+            int hull = 5;
+            switch (1) {
+                case 1:
+                    int damage = (2 + (3))
+                    damage = damage + 1
+                    apply(&hull, damage);
+                    break;
+            }
+            return hull;
+        }
+        "#,
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(11)
+    );
+    let program = Program::compile(
+        "int n; void apply() { n += 5; } int main() { apply(): if (1) apply()); return n; }",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(10)
+    );
+    assert!(Program::compile("void main(){int damage; damage=5 missing();}").is_err());
     Ok(())
 }
 

@@ -426,10 +426,11 @@ impl Variable {
         *target.0.borrow_mut() = Value::AReference(Some(value));
         Ok(())
     }
-    pub(crate) fn assign(&self, value: Value, convert: bool) -> Result<()> {
+    // A MOVE conversion leaves its converted source in the compiler's EX.
+    pub(crate) fn assign(&self, value: Value, convert: bool) -> Result<Option<Value>> {
         if matches!(*self.0.borrow(), Value::Reference(_)) && matches!(value, Value::Reference(_)) {
             *self.0.borrow_mut() = value;
-            return Ok(());
+            return Ok(None);
         }
         let target = self.resolved()?;
         let value = value.resolved()?;
@@ -438,13 +439,20 @@ impl Variable {
             "whole-array assignment is not supported"
         );
         let kind = target.0.borrow().kind();
-        let value = if convert { value.convert(kind)? } else { value };
+        let converted = convert && value.kind() != kind;
+        let value = if converted {
+            value.convert(kind)?
+        } else {
+            value
+        };
         if let (Value::Object(destination), Value::Object(source)) = (&*target.0.borrow(), &value) {
-            return destination.replace(source);
+            destination.replace(source)?;
+            return Ok(None);
         }
         ensure!(value.kind() != Type::Void, "void assignment");
+        let expression = converted.then(|| value.clone());
         *target.0.borrow_mut() = value;
-        Ok(())
+        Ok(expression)
     }
     pub(crate) fn increment(&self, decrement: bool) -> Result<()> {
         let target = self.resolved()?;
@@ -479,7 +487,8 @@ impl Reference {
         Variable(self.0.upgrade().context("uninitialized or expired ref")?).value()
     }
     pub(crate) fn store(&self, value: Value) -> Result<()> {
-        Variable(self.0.upgrade().context("uninitialized or expired ref")?).assign(value, false)
+        Variable(self.0.upgrade().context("uninitialized or expired ref")?).assign(value, false)?;
+        Ok(())
     }
     pub(crate) fn convert(&self, kind: Type) -> Result<Value> {
         let value = self.value()?.convert(kind)?;

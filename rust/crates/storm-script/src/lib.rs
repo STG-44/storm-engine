@@ -146,7 +146,7 @@ enum Instruction {
     Store(bool),
     MakeRef,
     MakeARef,
-    Attribute(Vec<Access>, bool),
+    Attribute(Vec<Access>, AttributeMode),
     WriteAttribute,
     Increment(bool),
     Binary(Op),
@@ -155,7 +155,9 @@ enum Instruction {
     Not,
     Drop,
     Jump(usize),
-    JumpFalse(usize),
+    JumpFalse(usize, Option<usize>),
+    RestoreExpression(usize),
+    JumpIfExpressionNonZero(usize),
     Short(usize, bool),
     Call(String, usize),
     DynamicCall(Slot, usize),
@@ -164,6 +166,12 @@ enum Instruction {
 enum Access {
     Literal(String),
     Dynamic(Slot),
+}
+#[derive(Clone, Copy)]
+enum AttributeMode {
+    Read,
+    Bind,
+    Write,
 }
 
 struct Execution<'a, H: Host> {
@@ -328,6 +336,7 @@ impl Program {
             .collect::<Result<Vec<_>>>()?;
         let mut targets: Vec<(Variable, bool)> = Vec::new();
         let mut stack: Vec<Value> = Vec::new();
+        let mut if_conditions: Vec<Option<Value>> = Vec::new();
         let mut ip = 0;
         loop {
             let located = function
@@ -377,11 +386,14 @@ impl Program {
                     }
                     Instruction::Store(convert) => {
                         let v = pop(&mut stack)?;
-                        targets
+                        let converted = targets
                             .pop()
                             .context("script target stack underflow")?
                             .0
                             .assign(v, *convert)?;
+                        if let Some(value) = converted {
+                            execution.state.set_expression(value);
+                        }
                     }
                     Instruction::MakeRef => {
                         let source = targets.pop().context("script target stack underflow")?;
@@ -399,7 +411,7 @@ impl Program {
                             .0
                             .bind_attribute(attribute)?;
                     }
-                    Instruction::Attribute(path, create) => {
+                    Instruction::Attribute(path, mode) => {
                         let base = targets
                             .pop()
                             .context("script target stack underflow")?
@@ -411,25 +423,47 @@ impl Program {
                             .map(|access| -> Result<_> {
                                 Ok(match access {
                                     Access::Literal(s) => (s.clone(), false),
-                                    Access::Dynamic(slot) => (
-                                        slot.variable(&locals, &execution.state.globals)
-                                            .load()?
-                                            .path_text()?,
-                                        true,
-                                    ),
+                                    Access::Dynamic(slot) => {
+                                        let value = slot
+                                            .variable(&locals, &execution.state.globals)
+                                            .load()?;
+                                        let key = value.clone().path_text()?;
+                                        // ADVANCE_AP and VERIFY_AP convert the key in EX.
+                                        // Assignment targets use ACCESS_VAR instead.
+                                        if !matches!(mode, AttributeMode::Write) {
+                                            let expression = if matches!(value, Value::Reference(_))
+                                            {
+                                                value
+                                            } else {
+                                                Value::String(key.clone())
+                                            };
+                                            execution.state.set_expression(expression);
+                                        }
+                                        (key, true)
+                                    }
                                 })
                             })
                             .collect::<Result<Vec<_>>>()?;
-                        let attribute = base.walk(&segments, *create)?;
-                        stack.push(if *create {
-                            Value::AReference(Some(attribute))
-                        } else {
-                            Value::String(attribute.value()?)
+                        let attribute =
+                            base.walk(&segments, !matches!(mode, AttributeMode::Read))?;
+                        stack.push(match mode {
+                            AttributeMode::Read => Value::String(attribute.value()?),
+                            AttributeMode::Bind | AttributeMode::Write => {
+                                Value::AReference(Some(attribute))
+                            }
                         });
                     }
                     Instruction::WriteAttribute => {
-                        let value = pop(&mut stack)?.attribute_text()?;
+                        let source = pop(&mut stack)?;
+                        let value = source.clone().attribute_text()?;
                         let attribute = pop(&mut stack)?.attributes()?;
+                        execution
+                            .state
+                            .set_expression(if matches!(source, Value::Reference(_)) {
+                                source
+                            } else {
+                                Value::String(value.clone())
+                            });
                         if execution.state.entity_update.get() {
                             attribute.write(&value, execution.host)?;
                         } else {
@@ -474,8 +508,27 @@ impl Program {
                         pop(&mut stack)?;
                     }
                     Instruction::Jump(target) => ip = *target,
-                    Instruction::JumpFalse(target) => {
-                        if pop(&mut stack)?.condition_integer()? == 0 {
+                    Instruction::JumpFalse(target, retain) => {
+                        let value = pop(&mut stack)?;
+                        if let Some(slot) = retain {
+                            if *slot >= if_conditions.len() {
+                                if_conditions.resize_with(*slot + 1, || None);
+                            }
+                            if_conditions[*slot] = Some(value.clone());
+                        }
+                        execution.state.set_expression(value);
+                        if execution.state.expression_condition()? == 0 {
+                            ip = *target;
+                        }
+                    }
+                    Instruction::RestoreExpression(slot) => {
+                        let value = if_conditions[*slot]
+                            .take()
+                            .context("script if condition was not retained")?;
+                        execution.state.set_expression(value);
+                    }
+                    Instruction::JumpIfExpressionNonZero(target) => {
+                        if execution.state.expression_condition()? != 0 {
                             ip = *target;
                         }
                     }
@@ -483,7 +536,8 @@ impl Program {
                         let value = stack
                             .last_mut()
                             .context("script condition stack underflow")?;
-                        if (value.condition_integer()? != 0) == *when_true {
+                        execution.state.set_expression(value.clone());
+                        if (execution.state.expression_condition()? != 0) == *when_true {
                             *value = value.bool_convert()?;
                             ip = *target;
                         }
@@ -508,6 +562,11 @@ impl Program {
                             _ => unreachable!(),
                         };
                         let result = self.invoke(callee, &args, execution, depth + 1)?;
+                        if matches!(&located.op, Instruction::DynamicCall(..)) {
+                            execution
+                                .state
+                                .set_expression(Value::Int(i32::from(result.kind() != Type::Void)));
+                        }
                         stack.push(result);
                     }
                     Instruction::Return(value, switch_depth) => {
@@ -516,7 +575,9 @@ impl Program {
                             "{name} return value presence does not match declaration"
                         );
                         let mut result = if *value {
-                            pop(&mut stack)?
+                            let result = pop(&mut stack)?;
+                            execution.state.set_expression(result.clone());
+                            result
                         } else {
                             Value::Void
                         };

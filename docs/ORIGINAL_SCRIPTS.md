@@ -99,6 +99,22 @@ resulting name case-insensitively. Dynamic and direct calls share the same
 invocation and reference handling. Dynamic call expressions require a
 declared string variable, as in the original compiler.
 
+A standalone `else` tests the shared expression register used by the original
+Storm VM. The interpreter restores a normal `if` condition after the body,
+including when nested calls change the register. A loop test, switch comparison,
+short-circuit test, value return, dynamic call, or attribute operation can
+change the value seen by the next standalone `else`. The compiler accepts
+the statement boundaries used by the boarding, cabin, island, sail
+interface and world map scripts. These include an assignment followed by
+a direct call or another scalar assignment, a colon or surplus closing
+parenthesis after a direct call, and a value return immediately before
+the block ends.
+
+The dynamic-call revision passed 455 CPU tests on each CI host. Linux passed
+26 software Vulkan tests and the native-window fixture. All four archive
+digests, 144 scenario reports and four startup traces were verified.
+[GitHub Actions run 43691189014](https://github.com/STG-44/storm-engine/actions/runs/43691189014)
+
 The digit-leading attribute revision passed 454 CPU tests on each CI host,
 with 26 software Vulkan tests and a native-window check on Linux. All 144
 archived scenario reports and four startup traces match the baseline.
@@ -131,8 +147,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout progresses through the main script, dialogues
-and quests to `sea_ai/aiship.c:1613`. The compiler currently stops at a
-standalone `else` following a bare block. The original compiler dispatches
-this token through its expression-result register. Full compilation and
-game startup remain in progress.
+The pinned Russian checkout progresses past the standalone `else` in
+`sea_ai/aiship.c:1613` and reaches `worldmap/worldmap_encgen.c:148`.
+The compiler currently stops at the `=` after a call to `sti(...)`.
+Full compilation and game startup remain in progress.

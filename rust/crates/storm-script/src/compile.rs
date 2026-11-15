@@ -1,6 +1,7 @@
 use crate::storage::{Declaration, MAX_ELEMENTS, Slot};
 use crate::{
-    Access, Function, FunctionKind, Instruction, Located, Program, Type, Value, builtins, value::Op,
+    Access, AttributeMode, Function, FunctionKind, Instruction, Located, Program, Type, Value,
+    builtins, value::Op,
 };
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, rc::Rc};
@@ -616,9 +617,10 @@ impl Compiler {
     fn patch(&mut self, index: usize) {
         let target = self.code.len();
         match &mut self.code[index].op {
-            Instruction::Jump(t) | Instruction::JumpFalse(t) | Instruction::Short(t, _) => {
-                *t = target
-            }
+            Instruction::Jump(t)
+            | Instruction::JumpFalse(t, _)
+            | Instruction::JumpIfExpressionNonZero(t)
+            | Instruction::Short(t, _) => *t = target,
             _ => unreachable!(),
         }
     }
@@ -705,7 +707,7 @@ impl Compiler {
                     "makearef requires aref/ref destination"
                 );
                 let path = self.path()?;
-                self.emit(Instruction::Attribute(path, true));
+                self.emit(Instruction::Attribute(path, AttributeMode::Bind));
                 self.emit(Instruction::MakeARef);
             } else {
                 ensure!(
@@ -728,7 +730,9 @@ impl Compiler {
                     while self.take(")") {}
                 }
             }
-            self.expect(";")?;
+            if !(value && in_block && self.is("}")) {
+                self.expect(";")?;
+            }
             let switches = self
                 .loops
                 .iter()
@@ -744,24 +748,28 @@ impl Compiler {
             // Native CompileBlock treats additional closing tokens at the
             // start of the body as no-ops. The first ')' ends the condition.
             while self.take(")") {}
-            let conditional = self.emit(Instruction::JumpFalse(0));
+            // IF keeps the original condition while the body can change EX.
+            // Use a per-frame slot so break and continue can bypass restoration
+            // without leaving extra values on the operand stack.
+            let slot = self.nesting - 1;
+            let conditional = self.emit(Instruction::JumpFalse(0, Some(slot)));
             self.statement(false)?;
+            self.patch(conditional);
+            self.emit(Instruction::RestoreExpression(slot));
             if self.take("else") {
-                let end = self.emit(Instruction::Jump(0));
-                self.patch(conditional);
-                self.statement(false)?;
-                self.patch(end);
-            } else {
-                self.patch(conditional);
+                self.else_body()?;
             }
             return Ok(());
+        }
+        if self.take("else") {
+            return self.else_body();
         }
         if self.take("while") {
             let start = self.code.len();
             self.expect("(")?;
             self.expression(1)?;
             self.expect(")")?;
-            let end = self.emit(Instruction::JumpFalse(0));
+            let end = self.emit(Instruction::JumpFalse(0, None));
             self.loops.push(Loop {
                 start: Some(start),
                 breaks: Vec::new(),
@@ -852,7 +860,7 @@ impl Compiler {
                 }
                 let plain_assignment = self.is("=");
                 if let Some(path) = path {
-                    self.emit(Instruction::Attribute(path, true));
+                    self.emit(Instruction::Attribute(path, AttributeMode::Write));
                     self.expect("=")?;
                     self.expression(1)?;
                     self.emit(Instruction::WriteAttribute);
@@ -885,28 +893,36 @@ impl Compiler {
                 return self.statement_end(in_block && plain_assignment);
             }
         }
-        let starts_with_call = matches!(self.current(), Token::Word(_))
-            && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "(");
+        let starts_with_call = self.starts_direct_call();
         self.expression(1)?;
         let direct_call = starts_with_call
             && matches!(
                 self.code.last().map(|entry| &entry.op),
                 Some(Instruction::Call(..))
             );
-        self.statement_end(in_block && direct_call)?;
+        if direct_call {
+            while self.take(")") {}
+        }
+        // A LABEL token after the closing parenthesis emits no bytecode.
+        // Cabin.c uses this form inside a braced block.
+        if !(in_block && direct_call && self.take(":")) {
+            self.statement_end(in_block && direct_call)?;
+        }
         self.emit(Instruction::Drop);
         Ok(())
     }
-    fn statement_end(&mut self, allow_control_token: bool) -> Result<()> {
+    fn statement_end(&mut self, allow_statement_boundary: bool) -> Result<()> {
         // Native declarations, assignments and direct calls can leave the
-        // next control token for the enclosing CompileBlock.
+        // next statement token for the enclosing CompileBlock.
         // In for headers and unbraced bodies the separator also ends the
         // enclosing native CompileBlock call.
-        if allow_control_token {
+        if allow_statement_boundary {
             while self.take(")") {}
             if self.starts_local_declaration()
+                || self.starts_direct_call()
+                || self.starts_scalar_assignment()
                 || [
-                    "if", "while", "for", "switch", "return", "break", "continue", "}",
+                    "if", "else", "while", "for", "switch", "return", "break", "continue", "}",
                 ]
                 .iter()
                 .any(|token| self.is(token))
@@ -915,6 +931,20 @@ impl Compiler {
             }
         }
         self.expect(";")
+    }
+    fn starts_direct_call(&self) -> bool {
+        matches!(self.current(), Token::Word(_))
+            && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "(")
+    }
+    fn starts_scalar_assignment(&self) -> bool {
+        matches!(self.current(), Token::Word(name) if self.lookup(name).is_some())
+            && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "=")
+    }
+    fn else_body(&mut self) -> Result<()> {
+        let end = self.emit(Instruction::JumpIfExpressionNonZero(0));
+        self.statement(false)?;
+        self.patch(end);
+        Ok(())
     }
     fn starts_local_declaration(&self) -> bool {
         matches!(
@@ -941,7 +971,7 @@ impl Compiler {
         let condition = self.code.len();
         self.expression(1)?;
         self.expect(";")?;
-        let end = self.emit(Instruction::JumpFalse(0));
+        let end = self.emit(Instruction::JumpFalse(0, None));
         let first_body = self.emit(Instruction::Jump(0));
 
         // Native FOR_BLOCK accepts a variable followed by postfix ++ or --.
@@ -1010,7 +1040,7 @@ impl Compiler {
                 );
                 self.expect(":")?;
                 self.emit(Instruction::CompareSwitch);
-                Some(self.emit(Instruction::JumpFalse(0)))
+                Some(self.emit(Instruction::JumpFalse(0, None)))
             } else {
                 self.expect("default")?;
                 self.expect(":")?;
@@ -1312,7 +1342,7 @@ impl Compiler {
             self.index()?;
             if self.is(".") {
                 let path = self.path()?;
-                self.emit(Instruction::Attribute(path, false));
+                self.emit(Instruction::Attribute(path, AttributeMode::Read));
             } else {
                 self.emit(Instruction::Load(false));
             }

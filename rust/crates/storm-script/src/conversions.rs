@@ -59,10 +59,10 @@ impl Value {
         }
     }
     pub(crate) fn condition_integer(&self) -> Result<i32> {
-        if let Self::Reference(reference) = self {
-            reference.convert(Type::Int)?.integer()
-        } else {
-            self.integer()
+        match self {
+            Self::Reference(reference) => reference.convert(Type::Int)?.integer(),
+            Self::AReference(Some(reference)) => Self::String(reference.scalar_value()?).integer(),
+            value => value.integer(),
         }
     }
     pub(crate) fn bool_convert(&self) -> Result<Self> {

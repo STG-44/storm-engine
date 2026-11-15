@@ -155,6 +155,8 @@ pub(crate) struct State {
     pub world: World,
     pub budget: Budget,
     pub globals: Vec<Variable>,
+    // Native COMPILER shares EX across script invocations and events.
+    expression: RefCell<Value>,
     // COMPILER starts with bEntityUpdate=true; calls/events share the flag.
     pub entity_update: Cell<bool>,
 }
@@ -179,8 +181,28 @@ impl State {
             world,
             budget,
             globals,
+            expression: RefCell::new(Value::Void),
             entity_update: Cell::new(true),
         })
+    }
+
+    pub fn set_expression(&self, value: Value) {
+        // Branches cannot interpret whole objects or arrays as conditions.
+        // Do not extend the lifetime of the source's attribute tree or cells.
+        self.expression.replace(match value {
+            Value::Object(_) | Value::Array(_) => Value::Void,
+            value => value,
+        });
+    }
+
+    pub fn expression_condition(&self) -> Result<i32> {
+        let mut value = self.expression.borrow_mut();
+        let condition = value.condition_integer()?;
+        // DATA::Convert follows a ref and changes its referent in place.
+        if !matches!(*value, Value::Reference(_)) {
+            *value = Value::Int(condition);
+        }
+        Ok(condition)
     }
 }
 
