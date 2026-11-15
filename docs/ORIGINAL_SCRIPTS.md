@@ -173,6 +173,13 @@ valid location entity's `index` attribute in storage order, and
 `GetNextLineString` returns CRLF. Progress-screen rendering, technique
 execution, and the delay service remain pending.
 
+`script_interface_functions` exposes the configured language and common
+translations. It resolves the selected directory and strings file through
+`language.ini`, reads the original common string records, and preserves
+case-insensitive first-match lookup and spaces inside quoted text. Text
+files support UTF-8 and Windows-1251. User string files, language switching,
+and interface controls remain pending.
+
 The local-registration revision passed 462 CPU tests on each of four CI
 hosts. Linux passed 26 software Vulkan tests and the native-window check.
 All 144 scenario reports, four archive digests and four startup traces were
@@ -218,6 +225,6 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 
 The pinned Russian checkout compiles all 201 loaded source files and enters
 native startup. It initializes the math, renderer texture, offline Steam,
-and location lookup bindings, then stops at `script_interface_functions` in
-`interface/utilite.c:33`. The remaining native libraries and game services
+location lookups and common translations, then stops at `script_rigging_files`
+in `battle_interface/utils.c:8`. The remaining native libraries and game services
 must be available before `Main` runs.

@@ -1,6 +1,44 @@
 use super::*;
 
 #[test]
+fn configured_interface_reads_original_common_strings_and_localized_text() -> Result<()> {
+    let temp = Temporary::new()?;
+    let texts = temp.0.join("resource/ini/texts");
+    std::fs::create_dir_all(texts.join("russian"))?;
+    std::fs::write(
+        texts.join("language.ini"),
+        "[Common]\n; defaultLanguage=English\ndefaultLanguage = Russian\nstrings=common.ini\n[Directory]\nRUSSIAN=russian\n",
+    )?;
+    let (common, _, replaced) = encoding_rs::WINDOWS_1251.encode(
+        "string = PortTitle, \"  Порт  \"\r\nstring = PORTTITLE,\"duplicate\"\r\nstring = Empty, ignored\r\n[other]\r\nstring = Other,\"must stay hidden\"\r\n",
+    );
+    assert!(!replaced);
+    std::fs::write(texts.join("russian/common.ini"), common)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"#libriary "script_interface_functions"
+        native string LanguageGetLanguage();
+        native string XI_ConvertString(string key);
+        void Main() {
+            Trace(LanguageGetLanguage());
+            Trace("["+XI_ConvertString("porttitle")+"]");
+            Trace("["+XI_ConvertString("Empty")+XI_ConvertString("Other")+"]");
+        }"#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    engine.shutdown()?;
+    assert_eq!(
+        *trace.borrow(),
+        ["script:Russian", "script:[  Порт  ]", "script:[]"],
+    );
+    Ok(())
+}
+
+#[test]
 fn configured_location_library_uses_live_arrays_and_entity_attributes() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

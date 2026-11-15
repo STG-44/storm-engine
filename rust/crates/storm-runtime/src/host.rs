@@ -121,7 +121,9 @@ impl NativeHost {
         name: &str,
         game: &crate::GameDirectory,
     ) -> Result<()> {
-        use crate::script_libraries::{MATH_LIBRARY, location, math_functions, steam, textures};
+        use crate::script_libraries::{
+            MATH_LIBRARY, interface, location, math_functions, steam, textures,
+        };
         let name = name.to_ascii_lowercase();
         if self.libraries.contains_key(&name) {
             return Ok(());
@@ -146,6 +148,12 @@ impl NativeHost {
                 .register_library(location::LOCATION_LIBRARY, |host| {
                     host.bind_library(location::functions())
                 }),
+            interface::INTERFACE_LIBRARY => {
+                let game = game.clone();
+                self.register_library(interface::INTERFACE_LIBRARY, move |host| {
+                    host.bind_library(interface::functions(&game)?)
+                })
+            }
             _ => Ok(()),
         }
     }

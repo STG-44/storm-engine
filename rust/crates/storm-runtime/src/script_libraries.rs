@@ -2,6 +2,7 @@ use crate::host::NativeFunction;
 use anyhow::{Context, Result, bail};
 use std::time::Instant;
 use storm_script::Value;
+pub(crate) mod interface;
 pub(crate) mod location;
 pub(crate) mod steam;
 pub(crate) mod textures;
