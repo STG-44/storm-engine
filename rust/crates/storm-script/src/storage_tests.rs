@@ -23,6 +23,38 @@ fn call(runtime: &mut Runtime, name: &str) -> Result<Value> {
 }
 
 #[test]
+fn local_storage_is_registered_before_its_initializer_executes() -> Result<()> {
+    let mut runtime = Runtime::compile(
+        r#"
+        int score = 98;
+        int original() { return score; }
+        int pair(int a, int b) { return a*10+b; }
+        int query(int n) { return n+1; }
+        int main() {
+            score += 3;
+            data[1] = 4;
+            name = "QUERY";
+            if (0) {
+                int Score = 90;
+                int data[4];
+                string name = "Missing";
+            }
+            object marker;
+            marker.int = 7;
+            int digits = pair(1, 2), other = 3;
+            int result = call name(digits);
+            return score * 1000 + data[1] * 100 + result + other + sti(marker.int);
+        }
+        "#,
+    )?;
+    assert_eq!(call(&mut runtime, "main")?, Value::Int(3423));
+    assert_eq!(call(&mut runtime, "main")?, Value::Int(3423));
+    assert_eq!(call(&mut runtime, "original")?, Value::Int(98));
+    assert!(Program::compile("void main(){int rank; if(0){int RANK;} }").is_err());
+    Ok(())
+}
+
+#[test]
 fn globals_resolve_forward_keep_case_insensitive_state_and_isolate_runtimes() -> Result<()> {
     let source = r#"
         int bump() { Count++; return count; }

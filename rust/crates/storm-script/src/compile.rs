@@ -314,7 +314,6 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                 ),
                 "duplicate function {name}"
             );
-            headers.push(start);
             while !c.take(")") {
                 ensure!(c.current() != &Token::End, "unterminated parameter list");
                 c.p += 1;
@@ -346,6 +345,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
                     }
                 }
             }
+            headers.push((start, c.p));
         } else {
             ensure!(
                 function_kind == FunctionKind::Script && kind != Type::Void,
@@ -373,7 +373,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
         }
     }
     let mut functions = BTreeMap::new();
-    for start in headers {
+    for (start, end) in headers {
         c.p = start;
         let kind = c.function_kind();
         let returns = c.kind()?;
@@ -397,6 +397,7 @@ pub(crate) fn compile(sources: crate::source::Sources) -> Result<Program> {
             c.expect(";")?;
         } else {
             c.function_body_start()?;
+            c.register_locals(end - 1)?;
             c.block()?;
             c.emit(Instruction::Return(false, 0));
         }
@@ -640,6 +641,57 @@ impl Compiler {
         });
         Ok(index)
     }
+    fn local_declarator(&mut self) -> Result<(String, usize)> {
+        let name = self.word()?;
+        let elements = self.elements()?;
+        Ok((name, elements))
+    }
+    fn register_locals(&mut self, end: usize) -> Result<()> {
+        // Native AddFuncVar runs before CompileBlock. Initializers remain at
+        // their own execution sites, including unreachable nested branches.
+        let start = self.p;
+        while self.p < end {
+            if !self.is_local_type_token() {
+                self.p += 1;
+                continue;
+            }
+            let kind = self.kind()?;
+            loop {
+                let (name, elements) = self.local_declarator()?;
+                self.local(name, kind, elements)?;
+                if self.take("=") {
+                    self.skip_local_initializer(end);
+                }
+                if !self.take(",") {
+                    break;
+                }
+            }
+        }
+        self.p = start;
+        Ok(())
+    }
+    fn is_local_type_token(&self) -> bool {
+        self.starts_local_declaration()
+            && !matches!(&self.tokens[self.p - 1].token, Token::Symbol(symbol) if symbol == ".")
+    }
+    fn skip_local_initializer(&mut self, end: usize) {
+        let mut depth = 0usize;
+        while self.p < end {
+            if self.is(";")
+                || self.is("{")
+                || self.is("}")
+                || depth == 0 && (self.is(",") || self.is_local_type_token())
+            {
+                break;
+            }
+            if self.is("(") || self.is("[") {
+                depth += 1;
+            } else if self.is(")") || self.is("]") {
+                depth = depth.saturating_sub(1);
+            }
+            self.p += 1;
+        }
+    }
     fn enter(&mut self) -> Result<()> {
         self.nesting += 1;
         ensure!(
@@ -832,9 +884,15 @@ impl Compiler {
         if self.starts_local_declaration() {
             let kind = self.kind()?;
             loop {
-                let name = self.word()?;
-                let elements = self.elements()?;
-                let index = self.local(name, kind, elements)?;
+                let (name, elements) = self.local_declarator()?;
+                let index = *self.locals.get(&name).with_context(|| {
+                    self.error(&format!("unregistered local declaration {name}"))
+                })?;
+                ensure!(
+                    self.types[index].kind == kind && self.types[index].elements == elements,
+                    "{}",
+                    self.error("local declaration differs from its first pass")
+                );
                 if self.take("=") {
                     ensure!(elements <= 1, "local array initializer is not supported");
                     self.emit(Instruction::Select(Slot::Local(index)));
@@ -898,6 +956,7 @@ impl Compiler {
                     self.expression(1)?;
                     if let Some(op) = op {
                         self.emit(Instruction::Binary(op));
+                        while self.take(")") {}
                     }
                     self.emit(Instruction::Store(op.is_none()));
                 }
@@ -923,11 +982,7 @@ impl Compiler {
                 return Ok(());
             }
         }
-        // A LABEL token after the closing parenthesis emits no bytecode.
-        // Cabin.c uses this form inside a braced block.
-        if !(in_block && direct_call && self.take(":")) {
-            self.statement_end(in_block && direct_call)?;
-        }
+        self.statement_end(in_block && direct_call)?;
         self.emit(Instruction::Drop);
         Ok(())
     }
@@ -938,9 +993,12 @@ impl Compiler {
         // enclosing native CompileBlock call.
         if allow_statement_boundary {
             while self.take(")") {}
-            if self.starts_local_declaration()
+            // LABEL emits no bytecode in a braced CompileBlock. Some
+            // original calls and assignments leave ':' at this boundary.
+            if self.take(":")
+                || self.starts_local_declaration()
                 || self.starts_direct_call()
-                || self.starts_scalar_assignment()
+                || self.starts_plain_assignment()
                 || [
                     "if", "else", "while", "for", "switch", "return", "break", "continue", "}",
                 ]
@@ -956,9 +1014,45 @@ impl Compiler {
         matches!(self.current(), Token::Word(_))
             && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "(")
     }
-    fn starts_scalar_assignment(&self) -> bool {
-        matches!(self.current(), Token::Word(name) if self.lookup(name).is_some())
-            && matches!(&self.tokens[self.p + 1].token, Token::Symbol(symbol) if symbol == "=")
+    fn starts_plain_assignment(&self) -> bool {
+        if !matches!(self.current(), Token::Word(name) if self.lookup(name).is_some()) {
+            return false;
+        }
+        let token = |index| self.tokens.get(index).map(|lexeme: &Lexeme| &lexeme.token);
+        let symbol =
+            |index, expected: &str| matches!(token(index), Some(Token::Symbol(s)) if s == expected);
+        let mut cursor = self.p + 1;
+        if symbol(cursor, "[") {
+            let mut depth = 1;
+            cursor += 1;
+            while depth != 0 {
+                match token(cursor) {
+                    Some(Token::Symbol(s)) if s == "[" => depth += 1,
+                    Some(Token::Symbol(s)) if s == "]" => depth -= 1,
+                    Some(Token::Symbol(s)) if matches!(s.as_str(), ";" | "{" | "}") => {
+                        return false;
+                    }
+                    Some(Token::End) | None => return false,
+                    _ => {}
+                }
+                cursor += 1;
+            }
+        }
+        while symbol(cursor, ".") {
+            cursor += 1;
+            match token(cursor) {
+                Some(Token::Word(_) | Token::AttributeName(_)) => cursor += 1,
+                Some(Token::Symbol(s))
+                    if s == "("
+                        && matches!(token(cursor + 1), Some(Token::Word(_)))
+                        && symbol(cursor + 2, ")") =>
+                {
+                    cursor += 3;
+                }
+                _ => return false,
+            }
+        }
+        symbol(cursor, "=")
     }
     fn else_body(&mut self) -> Result<()> {
         let end = self.emit(Instruction::JumpIfExpressionNonZero(0));
@@ -990,7 +1084,11 @@ impl Compiler {
         self.statement(false)?;
         let condition = self.code.len();
         self.expression(1)?;
-        self.expect(";")?;
+        // FOR_BLOCK advances past the condition terminator before reading
+        // the update variable. The island loader also uses a comma there.
+        if !self.take(";") {
+            self.expect(",")?;
+        }
         let end = self.emit(Instruction::JumpFalse(0, None));
         let first_body = self.emit(Instruction::Jump(0));
 
@@ -1033,10 +1131,16 @@ impl Compiler {
             breaks: Vec::new(),
         });
         let mut default_seen = false;
-        let mut branches = 0;
         while !self.take("}") {
-            branches += 1;
-            ensure!(branches <= 256, "{}", self.error("switch branch limit"));
+            if self.take(";") {
+                continue;
+            }
+            if self.is("break") {
+                // A break outside any case exits the current switch on the
+                // path where its preceding guards all missed.
+                self.statement(true)?;
+                continue;
+            }
             ensure!(
                 !default_seen,
                 "{}",

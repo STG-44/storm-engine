@@ -117,6 +117,15 @@ increments and attribute writes for this form. A missing destination reports
 a source-located runtime error. A switch branch may end with `break`
 immediately before the next label or the closing brace.
 
+Function locals are registered before body compilation, including declarations
+inside later branches. Each invocation starts with fresh local storage and
+executes initializers when it reaches their statements. Switch tables use the
+shared source and VM instruction budgets. This covers the original table of
+464 character models and explicit breaks after the last labeled branch.
+The compiler also recognizes assignments to indexed objects and attribute paths
+after an omitted separator, and a comma between the condition and update in
+the original island loader's counted loop.
+
 The dynamic-call revision passed 455 CPU tests on each CI host. Linux passed
 26 software Vulkan tests and the native-window fixture. All four archive
 digests, 144 scenario reports and four startup traces were verified.
@@ -154,8 +163,8 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
   --script-encoding utf8 --frame-ms 0
 ~~~
 
-The pinned Russian checkout progresses past the standalone `else` in
-`sea_ai/aiship.c:1613` and the assignment after `sti(...)` in
-`worldmap/worldmap_encgen.c:148`. It reaches `loc_ai/lai_utilites.c:2529`,
-where the script assigns to `Rank` before its declaration later in
-the same function. Full compilation and game startup remain in progress.
+The pinned Russian checkout progresses past the standalone `else`, the
+world map assignment after `sti(...)`, and the forward local declaration in
+the land AI. It currently stops at `islands/islands_loader.c:474`, after an
+unbraced `if` whose `continue` omits the separator. Full compilation and
+game startup remain in progress.

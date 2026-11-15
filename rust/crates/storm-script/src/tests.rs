@@ -235,11 +235,18 @@ fn native_statement_boundaries_preserve_assignments_and_direct_calls() -> Result
         Value::Int(11)
     );
     let program = Program::compile(
-        "int n; void apply() { n += 5; } int main() { apply(): if (1) apply()); return n; }",
+        "int n; void apply() { n += (2 + 3)); } int main() { apply(): if (1) apply()); return n; }",
     )?;
     assert_eq!(
         program.call("main", &[], &mut (), Limits::default())?,
         Value::Int(10)
+    );
+    let program = Program::compile(
+        "int main(){object fleet[3]; int slots[2]; string key=\"hold\"; int n=1 fleet[slots[1]].cargo.(key)=7: return n+sti(fleet[0].cargo.hold);}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(8)
     );
     assert!(Program::compile("void main(){int damage; damage=5 missing();}").is_err());
     Ok(())
@@ -248,7 +255,7 @@ fn native_statement_boundaries_preserve_assignments_and_direct_calls() -> Result
 #[test]
 fn native_counted_for_updates_on_continue_and_skips_update_on_break() -> Result<()> {
     let program = Program::compile(
-        "int main(){int sum=0;for(int i=5;i>0;i--){switch(i){case 4:continue;break;}if(i==1)break;sum+=i;}int j=3;for(;j<3;j++)sum+=100;return sum+j;}",
+        "int main(){int sum=0;for(int i=5;i>0,i--){switch(i){case 4:continue;break;}if(i==1)break;sum+=i;}int j=3;for(;j<3;j++)sum+=100;return sum+j;}",
     )?;
     assert_eq!(
         program.call("main", &[], &mut (), Limits::default())?,
@@ -348,6 +355,13 @@ fn unbound_and_invalid_libraries_fail_explicitly_with_original_directive_locatio
     }
     assert!(!runtime.is_initialized());
     assert_eq!(host.0, 1);
+    let program = Program::compile(
+        "int main(){switch(1){case 1:switch(2){case 0:return 4;break;break;case 2:return 5;break;}return 9;break;}return 0;}",
+    )?;
+    assert_eq!(
+        program.call("main", &[], &mut (), Limits::default())?,
+        Value::Int(9)
+    );
     Ok(())
 }
 
@@ -406,6 +420,29 @@ fn switch_retains_one_selector_and_stops_at_the_first_matching_explicit_break() 
         Value::Int(20)
     );
     assert_eq!(host.0, 1);
+    Ok(())
+}
+
+#[test]
+fn large_switch_tables_use_the_shared_source_and_execution_budgets() -> Result<()> {
+    use std::fmt::Write;
+    let mut source = String::from("int main(int model){switch(model){");
+    for model in 0..464 {
+        write!(&mut source, "case {model}:return {model};break;")?;
+    }
+    source.push_str("}return -1;}");
+    let program = Program::compile(&source)?;
+    let args = [Value::Int(463)];
+    assert_eq!(
+        program.call("main", &args, &mut (), Limits::default())?,
+        Value::Int(463)
+    );
+    let limits = Limits {
+        instructions: 100,
+        ..Limits::default()
+    };
+    let error = program.call("main", &args, &mut (), limits).unwrap_err();
+    assert!(format!("{error:#}").contains("script instruction budget exhausted"));
     Ok(())
 }
 
