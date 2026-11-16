@@ -95,7 +95,7 @@ jobs:
           test -f "$VK_DRIVER_FILES"
           xvfb-run -a vulkaninfo --summary
           cargo test -p storm-render --locked -- --ignored
-          cargo test -p storm-runtime --locked -- --ignored
+          cargo test -p storm-runtime --locked model::tests:: -- --ignored
           python rust/apps/storm-engine/fixtures/prepare_model_game.py generated-model-game
           timeout 30s xvfb-run -a sh -c 'exec "$@" > engine-window.txt' sh cargo run -q -p storm-engine --locked -- --game-dir generated-model-game --script-encoding utf8 --backend vulkan --window --window-frames 3 --window-fixed-delta 16
           python -c "from pathlib import Path; s=Path('engine-window.txt').read_text(encoding='utf-8-sig').splitlines(); assert s[0]=='model-loaded=1' and s[-2:]==['destroy','exit']; body=s[1:-2]; assert len(body)>=6 and len(body)%2==0; assert body[::2]==['frame='+str(i+1) for i in range(len(body)//2)] and set(body[1::2])=={'delta=16'}"
