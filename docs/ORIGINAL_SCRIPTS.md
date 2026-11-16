@@ -218,6 +218,14 @@ on every target. The runtime seeds it from Unix time in milliseconds as
 the original compiler did. A fixed seed also reproduces Microsoft's
 published sample. [Microsoft CRT rand](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/rand?view=msvc-170)
 
+`xinterface` initializes its viewport from `interfaces.ini` and the current
+window size, loads the cursor texture, and reads the script's initial
+`GameTime` attributes. Its synchronous initialization events obtain the
+quest text files and the live script reference for the mouse wheel. The
+`obj_strservice` messages and language functions share the open catalog
+IDs and reference counts. Dialog nodes, interface rendering, and quest
+parameter substitution remain pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -277,6 +285,7 @@ The pinned Russian checkout compiles all 201 startup source files and enters
 `Main` in `seadogs.c`. The original `controls\init_pc.c` completes its first
 control setup. With installed island locator models under `resource/models`,
 `IslandsInit` reports 34 islands and `WeatherInit` reports 34 weather presets.
-Startup completes the town and fast-reload tables and reaches creation of
-the native `xinterface` class in `interface/baseinterface.c:11`. The native
-interface entity and menu rendering are still pending.
+Startup completes the town and fast-reload tables, initializes `xinterface`,
+and creates `obj_strservice`. It then reaches `ILogAndActions` creation in
+`battle_interface/loginterface.c:19`. The native log and actions HUD is
+still pending.

@@ -38,6 +38,8 @@ pub struct NativeHost {
     trace: TraceSink,
     random: crate::random::Random,
     pub(crate) controls: crate::controls::Controls,
+    pub(crate) interfaces: Option<crate::interface::Interfaces>,
+    pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) delta_ms: u32,
 }
@@ -70,6 +72,8 @@ impl NativeHost {
             }),
             random: crate::random::Random::new(seed),
             controls: crate::controls::Controls::default(),
+            interfaces: None,
+            interface_language: None,
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             delta_ms: 0,
         })
@@ -100,6 +104,20 @@ impl NativeHost {
     }
     pub fn set_trace_sink(&mut self, sink: impl FnMut(&str) -> Result<()> + 'static) {
         self.trace = Box::new(sink);
+    }
+    pub fn set_interface_window(&mut self, width: u32, height: u32) {
+        if let Some(interfaces) = &self.interfaces {
+            interfaces.set_window(width, height);
+        }
+    }
+    pub fn interface_state(
+        &self,
+        id: EntityId,
+    ) -> Option<std::cell::Ref<'_, crate::interface::InterfaceState>> {
+        if !self.entities.is_valid(id) {
+            return None;
+        }
+        self.interfaces.as_ref()?.state(id)
     }
     pub(crate) fn configure_script_source(
         &mut self,
@@ -167,7 +185,11 @@ impl NativeHost {
             interface::INTERFACE_LIBRARY => {
                 let game = game.clone();
                 self.register_library(interface::INTERFACE_LIBRARY, move |host| {
-                    host.bind_library(interface::functions(&game)?)
+                    let language = host
+                        .interface_language
+                        .clone()
+                        .unwrap_or_else(|| interface::LanguageService::new(game.clone()));
+                    host.bind_library(interface::functions(&language)?)
                 })
             }
             rigging::RIGGING_LIBRARY => self.register_library(rigging::RIGGING_LIBRARY, |host| {
@@ -258,6 +280,22 @@ impl Host for NativeHost {
         self.entities
             .create(class, store, root)
             .with_context(|| format!("create native class {class}"))
+    }
+    fn entity_init_events(&self, entity: EntityId) -> &'static [&'static str] {
+        self.interfaces
+            .as_ref()
+            .map_or(&[], |interfaces| interfaces.events(entity))
+    }
+    fn entity_init_result(
+        &mut self,
+        entity: EntityId,
+        event: &str,
+        value: Option<Value>,
+    ) -> Result<()> {
+        self.interfaces
+            .as_ref()
+            .context("native interface service unavailable")?
+            .result(entity, event, value)
     }
     fn send_message(
         &mut self,

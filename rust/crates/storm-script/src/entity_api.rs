@@ -1,7 +1,7 @@
 //! The original entity lookup/deletion and compiler notification switch.
-use crate::{AttributeReference, Execution, Host, Type, Value};
-use anyhow::{Result, bail, ensure};
-use storm_core::EntityId;
+use crate::{AttributeReference, Execution, Host, Program, Type, Value};
+use anyhow::{Context, Result, bail, ensure};
+use storm_core::{EntityId, Message};
 
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
@@ -48,9 +48,11 @@ fn layer(value: &Value) -> Result<u8> {
 }
 
 pub(crate) fn call(
+    program: &Program,
     name: &str,
     arguments: &[Value],
     execution: &mut Execution<'_, impl Host>,
+    depth: usize,
 ) -> Result<Value> {
     ensure!(
         arguments_valid(name, arguments.len()),
@@ -109,7 +111,7 @@ pub(crate) fn call(
             // arguments can replace the caller's entity identity.
             let attributes = arguments[0].attributes()?;
             let class = arguments[1].resolved()?;
-            let id = create(class.text()?, Some(&attributes), execution)?;
+            let id = create(program, class.text()?, Some(&attributes), execution, depth)?;
             if id == EntityId::INVALID {
                 return Ok(Value::Int(0));
             }
@@ -133,7 +135,7 @@ pub(crate) fn call(
             // Reserve the return object's owned tree before constructing an
             // entity; Init still receives a null attribute binding.
             let object = execution.world.object(EntityId::INVALID)?;
-            let id = create(class.text()?, None, execution)?;
+            let id = create(program, class.text()?, None, execution, depth)?;
             ensure!(id != EntityId::INVALID, "CreateClass Init returned false");
             object.set_entity(id);
             Ok(Value::Object(object))
@@ -159,18 +161,43 @@ pub(crate) fn call(
 }
 
 fn create(
+    program: &Program,
     class: &str,
     attributes: Option<&AttributeReference>,
     execution: &mut Execution<'_, impl Host>,
+    depth: usize,
 ) -> Result<EntityId> {
     let mut created = EntityId::INVALID;
-    let result = execution.world.initialize(attributes, |store, root| {
-        created = execution.host.create_entity(class, store, root)?;
-        Ok(created)
-    });
+    let result = execution
+        .world
+        .initialize(attributes, |store, root| {
+            created = execution.host.create_entity(class, store, root)?;
+            Ok(created)
+        })
+        .and_then(|id| {
+            if id != EntityId::INVALID {
+                for &event in execution.host.entity_init_events(id) {
+                    let value = program
+                        .dispatch_message(
+                            event,
+                            Some(Message::new("", vec![])?),
+                            execution,
+                            depth + 1,
+                        )
+                        .with_context(|| format!("Init entity {class}, script event {event}"))?;
+                    execution
+                        .host
+                        .entity_init_result(id, event, value)
+                        .with_context(|| {
+                            format!("Init entity {class}, result of script event {event}")
+                        })?;
+                }
+            }
+            Ok(id)
+        });
     if result.is_err() && created != EntityId::INVALID {
-        // A successful native Init can exceed the script's smaller attribute
-        // budget. Do not leave an unreachable live instance on that path.
+        // Neither an attribute budget failure nor a callback failure may
+        // leave an entity the caller never received.
         execution.host.delete_entity(created)?;
     }
     result

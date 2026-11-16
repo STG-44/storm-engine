@@ -1,6 +1,135 @@
 use super::*;
 
 #[test]
+fn configured_xinterface_uses_the_live_viewport_and_synchronous_script_callbacks() -> Result<()> {
+    let temp = Temporary::new()?;
+    let game_dir = &temp.0;
+    let ini = game_dir.join("resource/ini/interfaces");
+    let textures = game_dir.join("resource/textures/interfaces");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::create_dir_all(&textures)?;
+    std::fs::write(
+        ini.join("interfaces.ini"),
+        "[COMMON]\nMousePointer=Interfaces\\cursor.tga,10,size:(32,24),pos:(-16,-12)\nRepeatDelay=250\n\
+         [PC_SCREEN_1920_1080]\nbDynamicScaling=1\n[PC_SCREEN]\nwScreenWidth=800\nwScreenHeight=600\n",
+    )?;
+    let mut tx = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    tx.extend([0, 0, 255, 255]);
+    std::fs::write(textures.join("cursor.tga.tx"), tx)?;
+    std::fs::write(
+        game_dir.join("engine.ini"),
+        "run=main.c\nscreen_x=800\nscreen_y=600\n",
+    )?;
+    std::fs::write(
+        game_dir.join("quest.txt"),
+        "#QUEST Q1 Заголовок\r\n#TEXT 1 Запись\r\n#TEXT 1 duplicate",
+    )?;
+    std::fs::write(
+        game_dir.join("extra.txt"),
+        "#QUEST Q1 duplicate\n#TEXT 2 Вторая запись",
+    )?;
+    std::fs::write(
+        game_dir.join("main.c"),
+        r#"
+        object ui;
+        string files[3];
+        int wheel;
+        #event_handler("evGetMouseWeel", "GetWheel");
+        #event_handler("test_scroll", "SetWheel");
+        ref QuestFiles() {
+            Trace("init-bound=" + IsEntity(&ui));
+            files[0] = "quest.txt";
+            files[1] = "extra.txt";
+            files[2] = "quest.txt";
+            return &files;
+        }
+        ref GetWheel() { Trace("wheel-init"); return &wheel; }
+        void SetWheel() { wheel=GetEventData(); }
+        void Main() {
+            ui.GameTime.sec=45;
+            ui.GameTime.min=12;
+            ui.GameTime.hour=7;
+            SetEventHandler("GetQuestTextFileName", "QuestFiles", 0);
+            CreateEntity(&ui,"xinterface");
+            DelEventHandler("GetQuestTextFileName", "QuestFiles");
+            Trace("created=" + IsEntity(&ui));
+            wheel=2;
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(game_dir)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(1600, 900);
+    engine.frame(16)?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:init-bound=0",
+            "script:wheel-init",
+            "script:created=1"
+        ]
+    );
+    let id = engine.host.entities.first_id("xinterface").unwrap();
+    {
+        let state = engine.host.interface_state(id).unwrap();
+        assert_eq!(state.screen.section, "PC_SCREEN_1920_1080");
+        assert_eq!(state.screen.size, [1066, 600]);
+        assert_eq!(state.screen.rect, [133, 0, 933, 600]);
+        assert_eq!(state.screen.repeat_delay, 250);
+        assert_eq!(state.game_time, [45, 12, 7]);
+        let cursor = state.cursor.as_ref().unwrap();
+        assert_eq!((cursor.size, cursor.offset), ([32, 24], [-16, -12]));
+        assert_eq!(
+            cursor.texture.as_ref().unwrap().mips[0].rgba,
+            [255, 0, 0, 255]
+        );
+        assert_eq!(state.quest_title("Q1"), Some("Заголовок"));
+        assert_eq!(state.quest_text("Q1", "1"), Some("Запись"));
+        assert_eq!(state.quest_text("Q1", "2"), Some("Вторая запись"));
+        assert_eq!(state.wheel_steps()?, 2);
+    }
+    engine.emit_event(
+        "test_scroll",
+        &mut Message::new("l", vec![storm_core::Value::Long(-3)])?,
+    )?;
+    assert_eq!(engine.host.interface_state(id).unwrap().wheel_steps()?, -3);
+    engine.shutdown()?;
+    assert!(engine.host.interface_state(id).is_none());
+    Ok(())
+}
+
+#[test]
+fn a_failed_interface_script_callback_does_not_leave_a_live_entity() -> Result<()> {
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("resource/ini/interfaces");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::write(ini.join("interfaces.ini"), "[PC_SCREEN]\n")?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("GetQuestTextFileName", "Files");
+        string Files() { return "../outside.txt"; }
+        void Main() { CreateEntity(&ui,"xinterface"); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let error = engine.frame(0).expect_err("invalid quest path");
+    assert!(format!("{error:#}").contains("invalid game path component"));
+    assert!(engine.host.entities.first_id("xinterface").is_none());
+    engine.shutdown()?;
+    assert!(engine.host.entities.all_ids().is_empty());
+    Ok(())
+}
+
+#[test]
 fn rand_and_frnd_share_the_original_windows_stream() -> Result<()> {
     use storm_script::{Limits, Runtime, Value};
     let mut runtime = Runtime::compile(
@@ -59,11 +188,18 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
         native int LanguageOpenFile(string file);
         native void LanguageCloseFile(int id);
         native string LanguageConvertString(int id, string key);
+        object language;
         void Main() {
+            CreateEntity(&language, "obj_strservice");
             int first = LanguageOpenFile("places.txt");
-            int second = LanguageOpenFile("PLACES.TXT");
+            int second = sti(SendMessage(&language,"ls",45100,"PLACES.TXT"));
             int other = LanguageOpenFile("other.txt");
             Trace("ids=" + first + "," + second + "," + other);
+            string key = "PoRt";
+            string translated, selected;
+            SendMessage(&language,"llee",45102,first,&key,&translated);
+            SendMessage(&language,"le",45103,&selected);
+            Trace(selected + "=" + translated);
             Trace(LanguageConvertString(first, "PoRt"));
             Trace(LanguageConvertString(first, "help"));
             Trace("[" + LanguageConvertString(first, "Empty") + LanguageConvertString(other, "missing") + "]");
@@ -71,7 +207,7 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
             LanguageCloseFile("places.txt");
             LanguageCloseFile(first);
             Trace(LanguageConvertString(second, "port"));
-            LanguageCloseFile(second);
+            SendMessage(&language,"ll",45101,second);
             Trace("[" + LanguageConvertString(first, "port") + "]");
             Trace("failed=" + LanguageOpenFile("empty.txt") + "," + LanguageOpenFile("missing.txt"));
             Trace("reopened=" + LanguageOpenFile("places.txt"));
@@ -87,6 +223,7 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
         *trace.borrow(),
         [
             "script:ids=0,0,1",
+            "script:Russian=Барбадос",
             "script:Барбадос",
             "script:первая\r\nвторая",
             "script:[]",

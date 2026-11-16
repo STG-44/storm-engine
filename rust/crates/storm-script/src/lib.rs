@@ -59,6 +59,18 @@ pub trait Host {
     ) -> Result<EntityId> {
         bail!("entity creation is not bound by this host")
     }
+    /// Native Init may synchronously query a script before binding the caller's entity ID.
+    fn entity_init_events(&self, _entity: EntityId) -> &'static [&'static str] {
+        &[]
+    }
+    fn entity_init_result(
+        &mut self,
+        _entity: EntityId,
+        _event: &str,
+        _value: Option<Value>,
+    ) -> Result<()> {
+        Ok(())
+    }
     /// Synchronous native dispatch. Attribute handles belong to this store and
     /// are only borrowed for this call; pointer tokens are opaque 64-bit values.
     fn send_message(
@@ -376,7 +388,7 @@ impl Program {
             value.validate()?;
         }
         if entity_api::signature(name).is_some() {
-            return entity_api::call(name, arguments, execution);
+            return entity_api::call(self, name, arguments, execution, depth);
         }
         if events::signature(name).is_some() {
             return self.event_builtin(name, arguments, execution, depth);

@@ -1,7 +1,12 @@
 //! Configured language and common strings from the original interface service.
 use crate::{GameDirectory, ScriptEncoding, host::NativeFunction};
 use anyhow::{Context, Result, bail, ensure};
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::{OnceCell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+};
+use storm_core::{Entity, EntityInit, Message, ScriptScalar};
 use storm_script::Value;
 
 pub(crate) const INTERFACE_LIBRARY: &str = "script_interface_functions";
@@ -21,6 +26,75 @@ struct Catalog {
     file: String,
     references: u32,
     strings: BTreeMap<String, String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct LanguageService(Rc<LanguageResources>);
+
+struct LanguageResources {
+    game: GameDirectory,
+    language: OnceCell<Rc<Language>>,
+}
+
+impl LanguageService {
+    pub fn new(game: GameDirectory) -> Self {
+        Self(Rc::new(LanguageResources {
+            game,
+            language: OnceCell::new(),
+        }))
+    }
+
+    fn get(&self) -> Result<Rc<Language>> {
+        if let Some(language) = self.0.language.get() {
+            return Ok(language.clone());
+        }
+        let language = Rc::new(Language::load(&self.0.game)?);
+        Ok(self.0.language.get_or_init(|| language).clone())
+    }
+
+    pub fn register(&self, host: &mut crate::NativeHost) -> Result<()> {
+        let service = self.clone();
+        host.entities.register_class("obj_strservice", move || {
+            Ok(Box::new(LanguageActor {
+                service: service.clone(),
+            }))
+        })?;
+        Ok(())
+    }
+}
+
+struct LanguageActor {
+    service: LanguageService,
+}
+
+impl Entity for LanguageActor {
+    fn init(&mut self, _: &mut EntityInit<'_>) -> Result<bool> {
+        self.service.get()?;
+        Ok(true)
+    }
+
+    fn process_message(&mut self, message: &mut Message) -> Result<u64> {
+        let language = self.service.get()?;
+        match message.long()? {
+            45100 => return Ok(language.open(&self.service.0.game, message.string()?)? as u64),
+            45101 => language.close(message.long()?),
+            45102 => {
+                let id = message.long()?;
+                let input = message.script_variable()?;
+                let output = message.script_variable()?;
+                let translated = match input.read() {
+                    Ok(ScriptScalar::String(name)) => language.translation(id, &name),
+                    _ => String::new(),
+                };
+                output.set(ScriptScalar::String(translated))?;
+            }
+            45103 => message
+                .script_variable()?
+                .set(ScriptScalar::String(language.name.clone()))?,
+            _ => {}
+        }
+        Ok(0)
+    }
 }
 
 impl Language {
@@ -216,13 +290,13 @@ fn ini_value<'a>(text: &'a str, section: &str, key: &str) -> Option<&'a str> {
     None
 }
 
-pub(crate) fn functions(game: &GameDirectory) -> Result<[(&'static str, NativeFunction); 5]> {
-    let language = Rc::new(Language::load(game)?);
+pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, NativeFunction); 5]> {
+    let language = service.get()?;
     let current = language.clone();
     let common = language.clone();
     let opener = language.clone();
     let closer = language.clone();
-    let game = game.clone();
+    let game = service.0.game.clone();
     Ok([
         (
             "languagegetlanguage",

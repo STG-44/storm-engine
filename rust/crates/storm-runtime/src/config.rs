@@ -102,6 +102,10 @@ impl Startup {
             host.register_game_library(&library.name, game)?;
         }
         crate::locator::register(&mut host, game.clone())?;
+        crate::interface::Interfaces::register(&mut host, game.clone())?;
+        let language = crate::script_libraries::interface::LanguageService::new(game.clone());
+        language.register(&mut host)?;
+        host.interface_language = Some(language);
         host.configure_script_source(source, game.clone());
         Ok(
             Engine::from_runtime(runtime, host)

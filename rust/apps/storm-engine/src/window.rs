@@ -257,6 +257,10 @@ impl ApplicationHandler for Application<'_> {
                 &self.options.settings,
             )) {
                 Ok(surface) => {
+                    let size = surface.window.inner_size();
+                    self.engine
+                        .host
+                        .set_interface_window(size.width, size.height);
                     surface.window.request_redraw();
                     self.surface = Some(surface);
                 }
@@ -287,7 +291,12 @@ impl ApplicationHandler for Application<'_> {
         }
         let result = match event {
             WindowEvent::CloseRequested => self.close(event_loop),
-            WindowEvent::Resized(size) => surface.resize(size),
+            WindowEvent::Resized(size) => {
+                self.engine
+                    .host
+                    .set_interface_window(size.width, size.height);
+                surface.resize(size)
+            }
             WindowEvent::Focused(focused) => {
                 self.focused = focused;
                 if focused {

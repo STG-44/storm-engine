@@ -418,7 +418,7 @@ impl Program {
         }
         Ok(result)
     }
-    fn dispatch_message(
+    pub(crate) fn dispatch_message(
         &self,
         name: &str,
         message: Option<Message>,

@@ -6,6 +6,7 @@ mod controls;
 mod filesystem;
 mod frame;
 mod host;
+pub mod interface;
 mod locator;
 mod random;
 mod script_libraries;
