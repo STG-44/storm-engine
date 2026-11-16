@@ -247,6 +247,15 @@ The retained renderer disables regular postprocessing when it loads
 pending. Object copies reserve space only for the source subtree and reuse
 the interned names in the current script world.
 
+`Sound` registers on the native Realize layer and shares a stereo mixer
+across script entities. The service handles WAV, Ogg Vorbis and MP3 assets,
+sound aliases, ambient scheme scheduling, volume, and immediate or faded
+stop. Resetting a scheme clears its schedule. Sounds already playing can
+be stopped independently, including with the original master ID zero.
+The desktop audio device opens on the first playback request. Linux
+builds of the runtime require ALSA development headers (`libasound2-dev`
+on Debian and Ubuntu). Positional sound remains pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -295,6 +304,14 @@ cargo test -p storm-script -p storm-runtime --locked
 python rust/crates/storm-script/reference/token_spacing/generate.py
 ~~~
 
+With the original `RESOURCE/Sounds/MUSIC/Military.ogg` available, check
+playback through the default desktop audio device with:
+
+~~~sh
+STORM_AUDIO_GAME_DIR=/path/to/installed-game cargo test -p storm-runtime --locked \
+  original_ogg_reaches_the_desktop_audio_device -- --ignored
+~~~
+
 For an external, pinned upstream checkout, configured startup uses:
 
 ~~~sh
@@ -309,5 +326,6 @@ control setup. With installed island locator models under `resource/models`,
 Startup completes the town and fast-reload tables and initializes
 `xinterface`, `obj_strservice`, `ILogAndActions`, and `BITimer`.
 `Main` returns successfully, and the first frame runs the weather update.
-The next timed frame dispatches the first logo event and stops when
-`InitSound` attempts to create the native `Sound` entity at `sound.c:840`.
+The next timed frame dispatches the first logo event, creates `Sound` and
+resets its scheme and playback. Startup then stops when the script
+attempts to create `CAviPlayer` at `interface/interface.c:1271`.

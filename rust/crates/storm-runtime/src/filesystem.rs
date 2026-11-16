@@ -26,7 +26,7 @@ impl GameDirectory {
         self.resolve_optional(name)?
             .with_context(|| format!("game path not found: {name}"))
     }
-    fn resolve_optional(&self, name: &str) -> Result<Option<PathBuf>> {
+    pub(crate) fn resolve_optional(&self, name: &str) -> Result<Option<PathBuf>> {
         ensure!(
             !name.is_empty()
                 && name.len() <= 1024

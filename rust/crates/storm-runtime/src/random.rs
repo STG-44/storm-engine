@@ -26,6 +26,9 @@ impl Random {
         self.state = self.state.wrapping_mul(214013).wrapping_add(2531011);
         (self.state >> 16) & RAND_MAX
     }
+    pub(crate) fn unit(&mut self) -> f32 {
+        self.next() as f32 / RAND_MAX as f32
+    }
 
     pub fn script_call(&mut self, name: &str, arguments: &[Value]) -> Option<Result<Value>> {
         Some(match name {
@@ -50,6 +53,6 @@ impl Random {
 
     fn frnd(&mut self, arguments: &[Value]) -> Result<Value> {
         ensure!(arguments.is_empty(), "frnd expects no arguments");
-        Ok(Value::Float(self.next() as f32 / RAND_MAX as f32))
+        Ok(Value::Float(self.unit()))
     }
 }

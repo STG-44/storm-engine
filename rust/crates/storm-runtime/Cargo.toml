@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 encoding_rs.workspace = true
+rodio.workspace = true
 storm-core = { path = "../storm-core" }
 storm-script = { path = "../storm-script" }
 storm-render = { path = "../storm-render" }

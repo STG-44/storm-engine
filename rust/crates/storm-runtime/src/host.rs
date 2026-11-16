@@ -36,7 +36,7 @@ pub struct NativeHost {
     loading_libraries: BTreeSet<String>,
     script_source: Option<(crate::GameSource, crate::GameDirectory)>,
     trace: TraceSink,
-    random: crate::random::Random,
+    pub(crate) random: Rc<RefCell<crate::random::Random>>,
     pub(crate) controls: crate::controls::Controls,
     pub(crate) interfaces: Option<crate::interface::Interfaces>,
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
@@ -72,7 +72,7 @@ impl NativeHost {
                 eprintln!("{text}");
                 Ok(())
             }),
-            random: crate::random::Random::new(seed),
+            random: Rc::new(RefCell::new(crate::random::Random::new(seed))),
             controls: crate::controls::Controls::default(),
             interfaces: None,
             interface_language: None,
@@ -296,7 +296,7 @@ impl Host for NativeHost {
         }
         self.controls
             .script_call(name, arguments)
-            .or_else(|| self.random.script_call(name, arguments))
+            .or_else(|| self.random.borrow_mut().script_call(name, arguments))
             .with_context(|| format!("native function is not registered: {name}"))?
     }
     fn is_entity(&self, id: EntityId) -> Result<bool> {

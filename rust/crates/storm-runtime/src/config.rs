@@ -106,10 +106,13 @@ impl Startup {
         let language = crate::script_libraries::interface::LanguageService::new(game.clone());
         language.register(&mut host)?;
         host.interface_language = Some(language);
+        let sound = crate::sound::Sound::register(&mut host, game.clone())?;
         host.configure_script_source(source, game.clone());
-        Ok(
-            Engine::from_runtime(runtime, host)
-                .with_startup_instructions(GAME_STARTUP_INSTRUCTIONS),
-        )
+        let mut engine = Engine::from_runtime(runtime, host)
+            .with_startup_instructions(GAME_STARTUP_INSTRUCTIONS);
+        if let Some(sound) = sound {
+            engine.register_service(sound)?;
+        }
+        Ok(engine)
     }
 }

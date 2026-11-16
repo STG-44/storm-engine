@@ -11,6 +11,7 @@ mod locator;
 mod random;
 mod script_libraries;
 mod shared_headers;
+mod sound;
 mod window_settings;
 pub use window_settings::WindowSettings;
 pub mod model;
