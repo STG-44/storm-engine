@@ -36,12 +36,16 @@ pub struct NativeHost {
     loading_libraries: BTreeSet<String>,
     script_source: Option<(crate::GameSource, crate::GameDirectory)>,
     trace: TraceSink,
+    random: crate::random::Random,
     pub(crate) controls: crate::controls::Controls,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) delta_ms: u32,
 }
 impl NativeHost {
     pub fn new() -> Result<Self> {
+        Self::with_random_seed(crate::random::Random::clock_seed())
+    }
+    pub(crate) fn with_random_seed(seed: u32) -> Result<Self> {
         let mut entities = EntityManager::default();
         // CoreImpl::Init and shared/layers.h. Trace/reflection layers stay Common.
         for index in 0..15 {
@@ -64,6 +68,7 @@ impl NativeHost {
                 eprintln!("{text}");
                 Ok(())
             }),
+            random: crate::random::Random::new(seed),
             controls: crate::controls::Controls::default(),
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             delta_ms: 0,
@@ -234,6 +239,7 @@ impl Host for NativeHost {
         }
         self.controls
             .script_call(name, arguments)
+            .or_else(|| self.random.script_call(name, arguments))
             .with_context(|| format!("native function is not registered: {name}"))?
     }
     fn is_entity(&self, id: EntityId) -> Result<bool> {

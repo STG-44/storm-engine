@@ -7,6 +7,7 @@ mod filesystem;
 mod frame;
 mod host;
 mod locator;
+mod random;
 mod script_libraries;
 mod shared_headers;
 mod window_settings;

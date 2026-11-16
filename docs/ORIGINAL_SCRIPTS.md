@@ -176,9 +176,12 @@ execution, and the delay service remain pending.
 `script_interface_functions` exposes the configured language and common
 translations. It resolves the selected directory and strings file through
 `language.ini`, reads the original common string records, and preserves
-case-insensitive first-match lookup and spaces inside quoted text. Text
-files support UTF-8 and Windows-1251. User string files, language switching,
-and interface-specific control helpers remain pending.
+case-insensitive first-match lookup and spaces inside quoted text. The
+`LanguageOpenFile`, `LanguageCloseFile` and `LanguageConvertString` bindings
+also support original brace-delimited catalogs in UTF-8 and Windows-1251.
+Repeated opens retain the same ID until the last close, and new files reuse
+the lowest free ID. Language switching and interface-specific helpers
+remain pending.
 
 `script_rigging_files` exposes attribute templates with decimal numeric
 formats for UI strings and the original sail power loss calculation with
@@ -209,6 +212,11 @@ their ship berths, quest and multiplayer spawns, fire positions and named
 `LoadGroup` entries to the original script object. Other locator messages
 remain pending. The configured game startup has a separate fuel allowance
 for `Main`, since its ship, island and weather tables initialize in one call.
+
+`Rand` and `frnd` consume one shared stream using the Windows CRT sequence
+on every target. The runtime seeds it from Unix time in milliseconds as
+the original compiler did. A fixed seed also reproduces Microsoft's
+published sample. [Microsoft CRT rand](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/rand?view=msvc-170)
 
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
@@ -269,5 +277,6 @@ The pinned Russian checkout compiles all 201 startup source files and enters
 `Main` in `seadogs.c`. The original `controls\init_pc.c` completes its first
 control setup. With installed island locator models under `resource/models`,
 `IslandsInit` reports 34 islands and `WeatherInit` reports 34 weather presets.
-Startup then reaches the `Rand` call in `InitTownTable` at
-`battle_interface/fast_reload_table.c:987`. The script RNG is still pending.
+Startup completes the town and fast-reload tables and reaches creation of
+the native `xinterface` class in `interface/baseinterface.c:11`. The native
+interface entity and menu rendering are still pending.

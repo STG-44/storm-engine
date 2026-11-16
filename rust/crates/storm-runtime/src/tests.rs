@@ -1,6 +1,108 @@
 use super::*;
 
 #[test]
+fn rand_and_frnd_share_the_original_windows_stream() -> Result<()> {
+    use storm_script::{Limits, Runtime, Value};
+    let mut runtime = Runtime::compile(
+        "int Draw(int limit) { return Rand(limit); } float Fraction() { return frnd(); }",
+    )?;
+    let mut host = NativeHost::with_random_seed(1)?;
+    let limits = Limits::default();
+    assert_eq!(
+        runtime.call("Draw", &[Value::Int(0)], &mut host, limits)?,
+        Value::Int(0)
+    );
+    assert_eq!(
+        runtime.call("Fraction", &[], &mut host, limits)?,
+        Value::Float(18467.0 / 32767.0),
+    );
+    for (limit, expected) in [(-10, -9), (i32::MAX, 26500), (i32::MIN, -19169), (100, 69)] {
+        assert_eq!(
+            runtime.call("Draw", &[Value::Int(limit)], &mut host, limits)?,
+            Value::Int(expected),
+        );
+    }
+    // Fixed-seed output published in the Microsoft Learn rand example.
+    let mut host = NativeHost::with_random_seed(1792)?;
+    for expected in [
+        5890, 1279, 19497, 1207, 11420, 3377, 15317, 29489, 9716, 23323,
+    ] {
+        assert_eq!(
+            runtime.call("Draw", &[Value::Int(32767)], &mut host, limits)?,
+            Value::Int(expected),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Result<()> {
+    let temp = Temporary::new()?;
+    let texts = temp.0.join("RESOURCE/INI/TEXTS");
+    std::fs::create_dir_all(texts.join("Russian"))?;
+    std::fs::write(
+        texts.join("language.ini"),
+        "[COMMON]\ndefaultLanguage=Russian\n[DIRECTORY]\nRussian=Russian\n",
+    )?;
+    let (legacy, _, replaced) = encoding_rs::WINDOWS_1251.encode(
+        "\r\nPort  {  Барбадос  }\r\nPORT {дубликат}\r\nHelp\r\n{\r\nпервая\r\nвторая\r\n}\r\nEmpty {}\r\nPrevious label\r\nIgnored label {строка}\r\n",
+    );
+    assert!(!replaced);
+    std::fs::write(texts.join("Russian/Places.TXT"), legacy)?;
+    std::fs::write(texts.join("Russian/other.txt"), "Quest {Привет}\n")?;
+    std::fs::write(texts.join("Russian/empty.txt"), "")?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "script_interface_functions"
+        native int LanguageOpenFile(string file);
+        native void LanguageCloseFile(int id);
+        native string LanguageConvertString(int id, string key);
+        void Main() {
+            int first = LanguageOpenFile("places.txt");
+            int second = LanguageOpenFile("PLACES.TXT");
+            int other = LanguageOpenFile("other.txt");
+            Trace("ids=" + first + "," + second + "," + other);
+            Trace(LanguageConvertString(first, "PoRt"));
+            Trace(LanguageConvertString(first, "help"));
+            Trace("[" + LanguageConvertString(first, "Empty") + LanguageConvertString(other, "missing") + "]");
+            Trace(LanguageConvertString(first, "Previous label") + "[" + LanguageConvertString(first, "Ignored label") + "]");
+            LanguageCloseFile("places.txt");
+            LanguageCloseFile(first);
+            Trace(LanguageConvertString(second, "port"));
+            LanguageCloseFile(second);
+            Trace("[" + LanguageConvertString(first, "port") + "]");
+            Trace("failed=" + LanguageOpenFile("empty.txt") + "," + LanguageOpenFile("missing.txt"));
+            Trace("reopened=" + LanguageOpenFile("places.txt"));
+            Trace(LanguageConvertString(other, "quest"));
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:ids=0,0,1",
+            "script:Барбадос",
+            "script:первая\r\nвторая",
+            "script:[]",
+            "script:строка[]",
+            "script:Барбадос",
+            "script:[]",
+            "script:failed=-1,-1",
+            "script:reopened=0",
+            "script:Привет",
+        ],
+    );
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn configured_startup_allows_longer_main_without_widening_frame_fuel() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
