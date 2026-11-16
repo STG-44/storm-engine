@@ -341,6 +341,13 @@ impl Host for NativeHost {
         self.entities
             .send_message_with_attributes(id, message, store)
     }
+    fn take_entity_posts(&mut self, id: EntityId) -> Vec<(&'static str, i32)> {
+        self.interfaces
+            .as_ref()
+            .and_then(|interfaces| interfaces.take_video_post(id))
+            .into_iter()
+            .collect()
+    }
     fn attribute_changed(
         &mut self,
         id: EntityId,

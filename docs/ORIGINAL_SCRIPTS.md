@@ -256,6 +256,13 @@ The desktop audio device opens on the first playback request. Linux
 builds of the runtime require ALSA development headers (`libasound2-dev`
 on Debian and Ubuntu). Positional sound remains pending.
 
+`CAviPlayer` registers the original video layers and resolves clip names
+under `RESOURCE/VIDEOS`. For a missing clip it posts `ievntEndVideo` with
+the original one-millisecond delay. Its Execute fallback also signals
+completion while simulation time is paused. The script handles cleanup
+and schedules the next logo. A clip present on disk requires WMV playback,
+which remains pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -316,7 +323,7 @@ For an external, pinned upstream checkout, configured startup uses:
 
 ~~~sh
 cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
-  --script-encoding utf8 --frame-ms 0,1
+  --script-encoding utf8 --frame-ms 0,1,16,16,16,16,16,16,16,16,16,16
 ~~~
 
 The pinned Russian checkout compiles all 201 startup source files and enters
@@ -326,6 +333,7 @@ control setup. With installed island locator models under `resource/models`,
 Startup completes the town and fast-reload tables and initializes
 `xinterface`, `obj_strservice`, `ILogAndActions`, and `BITimer`.
 `Main` returns successfully, and the first frame runs the weather update.
-The next timed frame dispatches the first logo event, creates `Sound` and
-resets its scheme and playback. Startup then stops when the script
-attempts to create `CAviPlayer` at `interface/interface.c:1271`.
+The next timed frame starts the logo sequence and resets `Sound`. With
+the logo files absent, the script advances through AkellaLogo, Blackmark,
+and Title. Startup then reaches the loading screen and stops when it
+attempts to create `InfoHandler` at `interface/interface.c:1737`.

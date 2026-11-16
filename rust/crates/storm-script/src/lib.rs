@@ -84,6 +84,10 @@ pub trait Host {
     ) -> Result<u64> {
         bail!("entity messages are not bound by this host")
     }
+    /// Payload-free events posted by the preceding native entity message.
+    fn take_entity_posts(&mut self, _entity: EntityId) -> Vec<(&'static str, i32)> {
+        Vec::new()
+    }
     fn attribute_changed(
         &mut self,
         _entity: EntityId,

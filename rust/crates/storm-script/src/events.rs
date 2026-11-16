@@ -57,6 +57,10 @@ fn event_name(name: &str) -> Result<String> {
 }
 
 impl Handlers {
+    pub(crate) fn post(&mut self, name: &str, delay: i32, message: Option<Message>) -> Result<()> {
+        self.queue.post(name, delay, message)
+    }
+
     pub(crate) fn with_limits(limits: EventLimits) -> Self {
         Self {
             limits,
@@ -534,7 +538,7 @@ impl Program {
                     } else {
                         None
                     };
-                    execution.events.queue.post(event, delay, message)?;
+                    execution.events.post(event, delay, message)?;
                 }
                 Ok(Value::Void)
             }

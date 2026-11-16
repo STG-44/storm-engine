@@ -99,12 +99,15 @@ pub(crate) fn call(
             let id = entity(&arguments[0])?;
             let mut prepared = messages::make(&arguments[1..], &execution.world)?;
             prepared.message.move_to_start();
-            execution.world.initialize(None, |store, _| {
+            let result = execution.world.initialize(None, |store, _| {
                 execution
                     .host
                     .send_message(id, &mut prepared.message, store)
-                    .map(Value::Ptr)
-            })
+            })?;
+            for (event, delay) in execution.host.take_entity_posts(id) {
+                execution.events.post(event, delay, None)?;
+            }
+            Ok(Value::Ptr(result))
         }
         "createentity" => {
             // Loading a plain object already made a stack copy; only ref

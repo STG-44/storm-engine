@@ -1,6 +1,105 @@
 use super::*;
 
 #[test]
+fn missing_videos_finish_through_execute_or_the_script_queue() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object video;
+        int count;
+        #event_handler("next_logo","StartVideo");
+        #event_handler("unfreeze","UnfreezeVideo");
+        #event_handler("resume_time","ResumeTime");
+        void StartVideo() {
+            count++;
+            SetEventHandler("ievntEndVideo","EndVideo",0);
+            CreateEntity(&video,"CAviPlayer");
+            SendMessage(&video,"ll",49002,1);
+            string resource = "logos\missing" + count + ".wmv";
+            SendMessage(&video,"ls",49000,resource);
+            Trace("start="+count);
+            if (count==2) LayerFreeze(10,true);
+        }
+        void EndVideo() {
+            Trace("finish="+count+";delta="+GetDeltaTime());
+            DeleteClass(&video);
+            DelEventHandler("ievntEndVideo","EndVideo");
+            LayerFreeze(10,false);
+            if (count<3) PostEvent("next_logo",1);
+        }
+        void UnfreezeVideo() { LayerFreeze(10,false); }
+        void ResumeTime() { SetTimeScale(1); }
+        void Main() {
+            StartVideo();
+            LayerFreeze(10,true);
+            SetTimeScale(0);
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:start=1"]);
+    let player = engine.host.entities.first_id("CAviPlayer").unwrap();
+    assert!(
+        engine
+            .host
+            .entities
+            .layer_ids(storm_core::LayerType::Realize)
+            .contains(&player)
+    );
+
+    let mut message = Message::new("", vec![])?;
+    engine.emit_event("unfreeze", &mut message)?;
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:finish=1;delta=0"]);
+    assert!(engine.host.entities.first_id("CAviPlayer").is_none());
+    engine.frame(16)?;
+    assert!(trace.take().is_empty());
+    engine.emit_event("resume_time", &mut message)?;
+    engine.frame(1)?;
+    assert_eq!(trace.take(), ["script:start=2"]);
+    engine.frame(1)?;
+    assert_eq!(trace.take(), ["script:finish=2;delta=1"]);
+    engine.frame(1)?;
+    assert_eq!(trace.take(), ["script:start=3", "script:finish=3;delta=1"]);
+    engine.frame(16)?;
+    assert!(trace.take().is_empty());
+    assert!(engine.host.entities.first_id("CAviPlayer").is_none());
+    Ok(())
+}
+
+#[test]
+fn available_videos_report_the_missing_decoder() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::create_dir_all(temp.0.join("Resource/Videos"))?;
+    std::fs::write(temp.0.join("Resource/Videos/AkellaLogo.WMV"), b"fixture")?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object video;
+        void Main() {
+            CreateEntity(&video,"CAviPlayer");
+            SendMessage(&video,"ls",49000,"akellalogo.wmv");
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let error = engine.frame(16).unwrap_err();
+    assert!(
+        format!("{error:#}")
+            .contains("video decoding is unavailable for RESOURCE/VIDEOS/akellalogo.wmv")
+    );
+    Ok(())
+}
+
+#[test]
 fn configured_renderer_records_glow_from_the_original_script_library() -> Result<()> {
     use storm_render::GlowParameters;
 

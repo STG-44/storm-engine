@@ -161,6 +161,15 @@ impl Engine {
             self.host
                 .entities
                 .process_entity_stage(id, Stage::Execute, delta_ms)?;
+            if self.host.entities.is_valid(id)
+                && let Some(event) = self
+                    .host
+                    .interfaces
+                    .as_ref()
+                    .and_then(|interfaces| interfaces.take_video_event(id))
+            {
+                self.event(event)?;
+            }
         }
         Ok(())
     }

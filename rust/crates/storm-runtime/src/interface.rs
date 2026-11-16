@@ -3,6 +3,7 @@ mod log;
 mod quest_text;
 mod settings;
 mod timer;
+mod video;
 
 use crate::{GameDirectory, NativeHost, WindowSettings};
 use anyhow::{Context, Result, bail};
@@ -52,6 +53,8 @@ struct Shared {
     states: RefCell<BTreeMap<u64, InterfaceState>>,
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
     timers: RefCell<BTreeMap<u64, BattleTimerState>>,
+    // Each pending completion also indicates whether to enqueue its delayed event.
+    finished_videos: RefCell<BTreeMap<u64, bool>>,
 }
 
 impl Shared {
@@ -76,6 +79,7 @@ impl Interfaces {
             states: RefCell::default(),
             logs: RefCell::default(),
             timers: RefCell::default(),
+            finished_videos: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
         host.entities
@@ -87,6 +91,10 @@ impl Interfaces {
         let shared = interfaces.0.clone();
         host.entities.register_class("BITimer", move || {
             Ok(Box::new(timer::TimerActor::new(shared.clone())))
+        })?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("CAviPlayer", move || {
+            Ok(Box::new(video::VideoActor::new(shared.clone())))
         })?;
         host.interfaces = Some(interfaces);
         Ok(())
@@ -111,6 +119,18 @@ impl Interfaces {
 
     pub fn take_timer_event(&self, id: EntityId) -> Option<String> {
         self.0.timers.borrow_mut().get_mut(&id.raw())?.take_event()
+    }
+    pub fn take_video_event(&self, id: EntityId) -> Option<&'static str> {
+        self.0
+            .finished_videos
+            .borrow_mut()
+            .remove(&id.raw())
+            .map(|_| video::END_EVENT)
+    }
+    pub fn take_video_post(&self, id: EntityId) -> Option<(&'static str, i32)> {
+        let mut videos = self.0.finished_videos.borrow_mut();
+        let needs_post = videos.get_mut(&id.raw())?;
+        std::mem::take(needs_post).then_some((video::END_EVENT, 1))
     }
 
     pub fn events(&self, id: EntityId) -> Result<Vec<(&'static str, Message)>> {
