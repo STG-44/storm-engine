@@ -1,6 +1,147 @@
 use super::*;
 
 #[test]
+fn configured_startup_allows_longer_main_without_widening_frame_fuel() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #event_handler("frame", "Tick");
+        void Busy() {
+            int i, sum;
+            for (i=0; i<20000; i++) sum += i;
+        }
+        void Main() { Busy(); Trace("main done"); }
+        void Tick() { Busy(); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    let error = engine.frame(0).expect_err("normal frame instruction limit");
+    let error = format!("{error:#}");
+    assert!(
+        error.contains("event frame, handler tick")
+            && error.contains("script instruction budget exhausted")
+    );
+    assert_eq!(*trace.borrow(), ["script:main done"]);
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
+fn configured_island_locator_populates_original_groups_through_a_script_reference() -> Result<()> {
+    let temp = Temporary::new()?;
+    let models = temp.0.join("RESOURCE/Models/Islands/Barbados");
+    std::fs::create_dir_all(&models)?;
+    let labels = [
+        ("Reload", "reload_1", [12.5, -3.0, 4.0]),
+        ("reload_1", "berth_a", [8.0, 0.0, 5.0]),
+        ("reload_1", "berth_b", [9.0, 0.0, 6.0]),
+        ("Quest_Ships", "quest_1", [1.0, 2.0, 3.0]),
+        ("net_team", "team_1", [13.0, 0.0, 0.0]),
+        ("fire", "fire_1", [0.0, 7.0, 0.0]),
+        ("IslandShips1", "spawn_a", [0.0, 0.0, 22.0]),
+    ];
+    let mut names = Vec::new();
+    let mut name_offsets = std::collections::BTreeMap::new();
+    let mut records = Vec::new();
+    for (group, name, position) in labels {
+        let mut record = [0u32; 27];
+        for (index, name) in [group, name].into_iter().enumerate() {
+            record[index] = *name_offsets.entry(name).or_insert_with(|| {
+                let offset = names.len() as u32;
+                names.extend_from_slice(name.as_bytes());
+                names.push(0);
+                offset
+            });
+        }
+        // Unit Y and forward +X yield a positive pi/2 heading.
+        let matrix: [f32; 16] = [
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            position[0],
+            position[1],
+            position[2],
+            1.0,
+        ];
+        for (word, value) in record[3..19].iter_mut().zip(matrix) {
+            *word = value.to_bits();
+        }
+        records.extend(record.into_iter().flat_map(u32::to_le_bytes));
+    }
+    let mut words = [0u32; 18];
+    words[0] = u32::from_le_bytes(*b"50.1");
+    words[2] = names.len() as u32;
+    words[3] = name_offsets.len() as u32;
+    words[7] = labels.len() as u32;
+    let mut gm = words
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    gm.extend(names);
+    gm.extend(name_offsets.into_values().flat_map(u32::to_le_bytes));
+    gm.extend(records);
+    std::fs::write(models.join("Barbados_Locators.gm"), gm)?;
+
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object islands[2], locator;
+        void Main() {
+            islands[0].filespath.models = "islands\barbados";
+            islands[0].locators = "barbados_locators";
+            islands[0].reload.port.name = "RELOAD_1";
+            islands[0].reload.missing.name = "unmatched";
+            islands[0].Quest_ships.description = "keep";
+            islands[0].LoadGroup.g1 = "IslandShips1";
+            islands[1].locators = "absent";
+            CreateEntity(&locator, "locator");
+            SendMessage(&locator, "le", 1504, &islands[0]);
+            SendMessage(&locator, "le", 1504, &islands[1]);
+            Trace(islands[0].reload.port.x + "," + islands[0].reload.port.y + "," + islands[0].reload.port.ay);
+            Trace(islands[0].reload.port.ships.l0.x + "," + islands[0].reload.port.ships.l1.z);
+            Trace("missing=" + CheckAttribute(&islands[0], "reload.missing.x"));
+            Trace(islands[0].Quest_ships.description + "," + islands[0].Quest_ships.quest_1.z);
+            Trace(islands[0].net_team.team_1.x + "," + islands[0].IslandShips1.spawn_a.z);
+            Trace(islands[0].fire.fire_1.y + "," + CheckAttribute(&islands[0], "fire.fire_1.ay"));
+            Trace("unloaded=" + CheckAttribute(&islands[1], "reload"));
+            DeleteClass(&locator);
+        }"#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    assert_eq!(
+        *trace.borrow(),
+        [
+            "script:12.5,-3,1.5708",
+            "script:8,6",
+            "script:missing=0",
+            "script:keep,3",
+            "script:13,22",
+            "script:7,0",
+            "script:unloaded=0",
+        ],
+    );
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn configured_controls_dispatch_ordered_desktop_edges_and_tree_commands() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

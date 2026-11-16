@@ -39,6 +39,7 @@ pub struct Engine {
     runtime: Runtime,
     services: Vec<Box<dyn Service>>,
     limits: Limits,
+    startup_instructions: u64,
     phase: Phase,
     exit_requested: bool,
     exit_event_emitted: bool,
@@ -50,10 +51,15 @@ impl Engine {
             host,
             services: Vec::new(),
             limits: Limits::default(),
+            startup_instructions: Limits::default().instructions,
             phase: Phase::Ready,
             exit_requested: false,
             exit_event_emitted: false,
         }
+    }
+    pub(crate) fn with_startup_instructions(mut self, instructions: u64) -> Self {
+        self.startup_instructions = instructions;
+        self
     }
     pub fn phase(&self) -> Phase {
         self.phase
@@ -157,8 +163,11 @@ impl Engine {
     fn frame_inner(&mut self, delta_ms: u32) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
         if self.phase == Phase::Ready {
-            self.runtime
-                .call("Main", &[], &mut self.host, self.limits)?;
+            let limits = Limits {
+                instructions: self.startup_instructions,
+                ..self.limits
+            };
+            self.runtime.call("Main", &[], &mut self.host, limits)?;
             self.phase = Phase::Running;
         }
         let posted_events = self

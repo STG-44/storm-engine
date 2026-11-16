@@ -2,6 +2,9 @@ use crate::{Engine, GameDirectory, GameSource, NativeHost, ScriptEncoding};
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeMap;
 
+// The installed game's initial ship, island and weather tables run in one Main call.
+const GAME_STARTUP_INSTRUCTIONS: u64 = 1_000_000;
+
 pub struct Startup {
     pub program_directory: String,
     pub run: String,
@@ -98,7 +101,11 @@ impl Startup {
         for library in runtime.libraries() {
             host.register_game_library(&library.name, game)?;
         }
+        crate::locator::register(&mut host, game.clone())?;
         host.configure_script_source(source, game.clone());
-        Ok(Engine::from_runtime(runtime, host))
+        Ok(
+            Engine::from_runtime(runtime, host)
+                .with_startup_instructions(GAME_STARTUP_INSTRUCTIONS),
+        )
     }
 }

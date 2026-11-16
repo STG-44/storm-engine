@@ -203,6 +203,13 @@ feeds keyboard and mouse input to the same service used by the headless
 tests. Text input and camera consumption of raw mouse axes remain pending.
 The VM also supplies `Sin`, integer and float `Sqrt`, and `ARGB` color packing.
 
+The `locator` class handles the island initialization message `LM_LOCATE_I`.
+It reads GM model labels without loading textures and writes reload points,
+their ship berths, quest and multiplayer spawns, fire positions and named
+`LoadGroup` entries to the original script object. Other locator messages
+remain pending. The configured game startup has a separate fuel allowance
+for `Main`, since its ship, island and weather tables initialize in one call.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -260,7 +267,7 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 
 The pinned Russian checkout compiles all 201 startup source files and enters
 `Main` in `seadogs.c`. The original `controls\init_pc.c` completes its first
-control setup. Startup proceeds through encounters, cannons and ships, then
-stops when `IslandsInit` creates the native `locator` class in
-`islands/islands_init.c:23`. That class is needed to read locator groups from
-the installed island models.
+control setup. With installed island locator models under `resource/models`,
+`IslandsInit` reports 34 islands and `WeatherInit` reports 34 weather presets.
+Startup then reaches the `Rand` call in `InitTownTable` at
+`battle_interface/fast_reload_table.c:987`. The script RNG is still pending.
