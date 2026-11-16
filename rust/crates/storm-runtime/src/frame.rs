@@ -183,6 +183,22 @@ impl Engine {
     /// Retains the supported CoreImpl::Run order. State loading, clock
     /// globals, Steam callbacks and dynamic service creation remain separate ports.
     pub fn frame(&mut self, delta_ms: u32) -> Result<FrameResult> {
+        self.frame_with_deltas(delta_ms, None)
+    }
+    /// The native TIMER's fixed delta overrides script time scaling while
+    /// input still advances by the measured interval.
+    pub fn frame_with_timer(&mut self, timer: &crate::clock::Timer) -> Result<FrameResult> {
+        let clock = timer.snapshot();
+        self.frame_with_deltas(
+            clock.real_delta_ms,
+            clock.fixed.then_some(clock.fixed_value),
+        )
+    }
+    fn frame_with_deltas(
+        &mut self,
+        real_delta_ms: u32,
+        fixed_delta: Option<u32>,
+    ) -> Result<FrameResult> {
         ensure!(
             matches!(self.phase, Phase::Ready | Phase::Running),
             "engine cannot run after fault or shutdown"
@@ -194,13 +210,19 @@ impl Engine {
                 posted_events: 0,
             });
         }
-        let result = self.frame_inner(delta_ms);
+        let scale = self.host.time_scale.get();
+        let delta_ms = match fixed_delta {
+            Some(delta) => delta,
+            None if scale == 1.0 => real_delta_ms,
+            None => (real_delta_ms as f32 * scale) as u32,
+        };
+        let result = self.frame_inner(delta_ms, real_delta_ms);
         if result.is_err() {
             self.phase = Phase::Faulted;
         }
         result
     }
-    fn frame_inner(&mut self, delta_ms: u32) -> Result<FrameResult> {
+    fn frame_inner(&mut self, delta_ms: u32, real_delta_ms: u32) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
@@ -239,7 +261,7 @@ impl Engine {
         self.services(Section::Realize, true, &mut context)?;
         self.realize_entities(delta_ms)?;
         self.services(Section::Realize, false, &mut context)?;
-        self.process_controls(delta_ms)?;
+        self.process_controls(real_delta_ms)?;
         self.host.entities.new_lifecycle()?;
         self.services(Section::All, false, &mut context)?;
         Ok(FrameResult {

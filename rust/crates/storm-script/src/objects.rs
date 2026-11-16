@@ -70,7 +70,7 @@ pointer_identity!(
 );
 
 impl World {
-    fn prepare(&self, additional: usize) -> Result<()> {
+    fn prepare(&self, nodes: usize, names: usize) -> Result<()> {
         let mut store = self
             .0
             .attributes
@@ -80,17 +80,17 @@ impl World {
             store.drop_root(id)?;
         }
         ensure!(
-            store.len() + additional <= MAX_NODES,
+            store.len() + nodes <= MAX_NODES,
             "script attribute node budget"
         );
         ensure!(
-            store.name_count() + additional <= MAX_NAMES,
+            store.name_count() + names <= MAX_NAMES,
             "script attribute name budget"
         );
         Ok(())
     }
     pub fn object(&self, entity: EntityId) -> Result<Object> {
-        self.prepare(1)?;
+        self.prepare(1, 1)?;
         let root = self.0.attributes.borrow_mut().create_root()?;
         Ok(Object(Rc::new(Owner {
             world: self.clone(),
@@ -101,7 +101,7 @@ impl World {
     }
     /// Read attributes from the same store that native entities borrow.
     pub fn read<T>(&self, action: impl FnOnce(&AttributeStore) -> T) -> Result<T> {
-        self.prepare(0)?;
+        self.prepare(0, 0)?;
         Ok(action(&self.0.attributes.borrow()))
     }
     pub fn live_nodes(&self) -> Result<usize> {
@@ -130,7 +130,7 @@ impl World {
                 "foreign attribute world"
             );
         }
-        self.prepare(0)?;
+        self.prepare(0, 0)?;
         let mut store = self
             .0
             .attributes
@@ -163,8 +163,8 @@ impl Object {
     }
     pub(crate) fn copied(&self) -> Result<Self> {
         let world = &self.0.world;
-        let count = world.read(|s| s.len())?;
-        world.prepare(count)?; // Conservative reservation for a bounded deep copy.
+        let count = world.read(|s| s.subtree_len(self.0.root))??;
+        world.prepare(count, 0)?;
         let root = world.0.attributes.borrow_mut().copy(self.0.root)?;
         Ok(Self(Rc::new(Owner {
             world: world.clone(),
@@ -197,7 +197,7 @@ impl AttributeReference {
     }
     fn owner(&self) -> Result<Rc<Owner>> {
         let owner = self.owner.upgrade().context("expired attribute owner")?;
-        owner.world.prepare(0)?;
+        owner.world.prepare(0, 0)?;
         ensure!(
             owner.world.0.attributes.borrow().get(self.node).is_some(),
             "stale attribute reference"
@@ -206,12 +206,13 @@ impl AttributeReference {
     }
     pub(crate) fn walk(&self, segments: &[(String, bool)], create: bool) -> Result<Self> {
         let owner = self.owner()?;
-        let additional = segments
+        let names = segments
             .iter()
+            .filter(|(_, dynamic)| create || *dynamic)
             .map(|(s, dynamic)| if *dynamic { s.split('.').count() } else { 1 })
             .sum();
         // Dynamic lookup interns names even when the requested path is missing.
-        owner.world.prepare(additional)?;
+        owner.world.prepare(if create { names } else { 0 }, names)?;
         let mut store = owner.world.0.attributes.borrow_mut();
         let mut current = self.node;
         for (name, dynamic) in segments {
@@ -292,8 +293,9 @@ impl AttributeReference {
             "foreign attribute world"
         );
         let world = &destination.world;
-        let count = world.read(|s| s.len())?;
-        world.prepare(count)?;
+        // replace_with_copy snapshots the source before freeing destination children.
+        let count = world.read(|s| s.subtree_len(source.node))??;
+        world.prepare(count, 0)?;
         world
             .0
             .attributes
@@ -303,9 +305,10 @@ impl AttributeReference {
     pub(crate) fn builtin(&self, name: &str, argument: Option<&Value>) -> Result<Value> {
         let owner = self.owner()?;
         if matches!(name, "checkattribute" | "deleteattribute") {
-            owner
-                .world
-                .prepare(argument.context("missing path")?.text()?.split('.').count())?;
+            owner.world.prepare(
+                0,
+                argument.context("missing path")?.text()?.split('.').count(),
+            )?;
         }
         let mut store = owner.world.0.attributes.borrow_mut();
         Ok(match name {

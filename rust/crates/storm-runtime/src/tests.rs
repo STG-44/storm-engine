@@ -1,6 +1,105 @@
 use super::*;
 
 #[test]
+fn configured_renderer_records_glow_from_the_original_script_library() -> Result<()> {
+    use storm_render::GlowParameters;
+
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\nPostProcess=0\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"#libriary "DX9RENDER_SCRIPT_LIBRIARY"
+        native int SetGlowParams(float fBlurBrushSize, int intensity, int blurPasses);
+        #event_handler("new_glow","UpdateGlow");
+        void Main() { Trace("glow="+SetGlowParams(1.0,50,2)); }
+        void UpdateGlow() { Trace("changed="+SetGlowParams(3,350,0.5)); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    assert_eq!(engine.host.glow_parameters(), GlowParameters::default());
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:glow=0"]);
+    assert_eq!(
+        engine.host.glow_parameters(),
+        GlowParameters {
+            blur_size: 0.0,
+            intensity: 50,
+            blur_passes: 0
+        }
+    );
+    engine.emit_event("new_glow", &mut Message::new("", vec![])?)?;
+    assert_eq!(trace.take(), ["script:changed=0"]);
+    assert_eq!(
+        engine.host.glow_parameters(),
+        GlowParameters {
+            blur_size: 0.5,
+            intensity: 350,
+            blur_passes: 3
+        }
+    );
+    Ok(())
+}
+
+#[test]
+fn time_scale_changes_the_next_script_frame_and_preserves_input_and_fixed_timing() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        native int AddControlTreeNode(int parent, string base, string output, float timeout);
+        object journal;
+        #event_handler("frame","Tick");
+        #event_handler("after","After");
+        #event_handler("resume","Resume");
+        #event_handler("Control Activation","Pressed");
+        void Tick() { Trace("frame="+GetDeltaTime()); }
+        void After() { Trace("after="+GetDeltaTime()); }
+        void Resume() { SendMessage(&journal,"lsf",45029,"SetTimeScale",2.5); }
+        void Pressed() { Trace("pressed="+GetEventData()); }
+        void Main() {
+            CreateEntity(&journal,"ILogAndActions");
+            MapControl(CreateControl("Prefix"),80);
+            AddControlTreeNode(-1,"Prefix","Solo",0.05);
+            PostEvent("after",125);
+            SetTimeScale(0);
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:frame=16"]);
+    engine.control_input(ControlInput::Button {
+        code: 80,
+        pressed: true,
+    });
+    engine.frame(50)?;
+    assert_eq!(trace.take(), ["script:frame=0", "script:pressed=Prefix"]);
+    engine.control_input(ControlInput::Button {
+        code: 80,
+        pressed: false,
+    });
+    engine.frame(50)?;
+    assert_eq!(trace.take(), ["script:frame=0", "script:pressed=Solo"]);
+
+    engine.emit_event("resume", &mut Message::new("", vec![])?)?;
+    engine.frame(21)?;
+    assert_eq!(trace.take(), ["script:frame=52"]);
+    let mut timer = clock::Timer::default();
+    timer.set_delta(17);
+    timer.advance(std::time::Duration::from_millis(30))?;
+    engine.frame_with_timer(&timer)?;
+    assert_eq!(trace.take(), ["script:frame=17"]);
+    assert_eq!(engine.frame(16)?.posted_events, 1);
+    assert_eq!(trace.take(), ["script:after=40", "script:frame=40"]);
+    Ok(())
+}
+
+#[test]
 fn configured_battle_timer_expires_in_realize_and_can_restart_or_cancel() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

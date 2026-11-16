@@ -1,8 +1,11 @@
 use crate::{GameDirectory, host::NativeFunction};
 use anyhow::{Context, Result, bail, ensure};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 use storm_formats::texture::Texture;
-use storm_render::texture_paths::TexturePaths;
+use storm_render::{GlowParameters, texture_paths::TexturePaths};
 use storm_script::Value;
 
 pub(crate) const RENDERER_LIBRARY: &str = "dx9render_script_libriary";
@@ -91,7 +94,8 @@ fn texture_size(texture: &Texture) -> usize {
 pub(crate) fn functions(
     game: GameDirectory,
     paths: Rc<RefCell<TexturePaths>>,
-) -> [(&'static str, NativeFunction); 3] {
+    glow: Rc<Cell<GlowParameters>>,
+) -> [(&'static str, NativeFunction); 4] {
     let textures = Rc::new(RefCell::new(Textures {
         game,
         slots: Vec::new(),
@@ -111,6 +115,38 @@ pub(crate) fn functions(
                     .context("reentrant renderer texture paths")?
                     .set(*level, prefix)?;
                 Ok(Value::Int(i32::from(changed)))
+            }),
+        ),
+        (
+            "setglowparams",
+            NativeFunction::new(move |args| {
+                let [passes, intensity, size] = args else {
+                    bail!("SetGlowParams expects three arguments");
+                };
+                // The legacy callback pops in this order and reads the raw
+                // float and integer slots, with no numeric conversions.
+                // Inactive slots are zero instead of carrying stale stack data.
+                let blur_size = if let Value::Float(value) = size {
+                    *value
+                } else {
+                    0.0
+                };
+                let intensity = if let Value::Int(value) = intensity {
+                    *value
+                } else {
+                    0
+                };
+                let blur_passes = if let Value::Int(value) = passes {
+                    *value
+                } else {
+                    0
+                };
+                glow.set(GlowParameters {
+                    blur_size,
+                    intensity,
+                    blur_passes,
+                });
+                Ok(Value::Int(0))
             }),
         ),
         (

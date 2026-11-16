@@ -212,7 +212,7 @@ impl Application<'_> {
         self.last_frame = now;
         self.next_frame =
             now + Duration::from_millis(u64::from(self.options.settings.minimum_frame_ms()));
-        let frame = self.engine.frame(delta)?;
+        let frame = self.engine.frame_with_timer(&self.timer)?;
         if !frame.continued {
             event_loop.exit();
             return Ok(());

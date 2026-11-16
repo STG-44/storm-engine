@@ -47,6 +47,7 @@ impl InterfaceState {
 struct Shared {
     game: GameDirectory,
     paths: Rc<RefCell<TexturePaths>>,
+    time_scale: Rc<Cell<f32>>,
     window: Cell<Option<[u32; 2]>>,
     states: RefCell<BTreeMap<u64, InterfaceState>>,
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
@@ -70,6 +71,7 @@ impl Interfaces {
         let interfaces = Self(Rc::new(Shared {
             game,
             paths: host.texture_paths.clone(),
+            time_scale: host.time_scale.clone(),
             window: Cell::new(None),
             states: RefCell::default(),
             logs: RefCell::default(),

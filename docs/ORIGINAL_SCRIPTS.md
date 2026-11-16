@@ -232,8 +232,20 @@ action settings, maintains fading and pinned entries, and emits
 `BI_FastCommand` through the original named control. `BITimer` reads its
 layout from the script, handles start and cancel messages, and emits the
 configured quest event during the Realize stage. The expiry handler can
-restart the timer in the same frame. Battle HUD drawing and time-scale
-changes through the log entity remain pending.
+restart the timer in the same frame. Battle HUD drawing remains pending.
+
+The core `SetTimeScale` function and the battle log message of the same
+name update the next frame's simulation delta. Posted events, native
+services, and entities use that delta. The control tree advances on the
+measured interval, including when the simulation is paused. The native
+TIMER's fixed delta still overrides scaling for simulation steps.
+
+`SetGlowParams` records the legacy renderer's settings and returns zero.
+It reads arguments in native stack order and treats inactive numeric slots as zero.
+The retained renderer disables regular postprocessing when it loads
+`engine.ini`. Drawing the glow and underwater postprocessing passes remains
+pending. Object copies reserve space only for the source subtree and reuse
+the interned names in the current script world.
 
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
@@ -287,7 +299,7 @@ For an external, pinned upstream checkout, configured startup uses:
 
 ~~~sh
 cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
-  --script-encoding utf8 --frame-ms 0
+  --script-encoding utf8 --frame-ms 0,1
 ~~~
 
 The pinned Russian checkout compiles all 201 startup source files and enters
@@ -295,7 +307,7 @@ The pinned Russian checkout compiles all 201 startup source files and enters
 control setup. With installed island locator models under `resource/models`,
 `IslandsInit` reports 34 islands and `WeatherInit` reports 34 weather presets.
 Startup completes the town and fast-reload tables and initializes
-`xinterface`, `obj_strservice`, `ILogAndActions`, and `BITimer`. The
-unchanged script reaches `SetGlowParams` at `seadogs.c:284`, the final
-statement of `Main`. That renderer binding and drawing the battle HUD
-remain pending.
+`xinterface`, `obj_strservice`, `ILogAndActions`, and `BITimer`.
+`Main` returns successfully, and the first frame runs the weather update.
+The next timed frame dispatches the first logo event and stops when
+`InitSound` attempts to create the native `Sound` entity at `sound.c:840`.

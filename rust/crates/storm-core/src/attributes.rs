@@ -374,23 +374,25 @@ impl AttributeStore {
         }
         Ok(Some(current))
     }
-    /// Deep copy retains names/values/order and clears all break flags, as Copy.
-    /// Parent handles are repaired, rather than retaining C++ move temporaries.
-    pub fn copy(&mut self, source: AttributeId) -> Result<AttributeId> {
-        let node = self
-            .get(source)
-            .ok_or_else(|| anyhow!("invalid attribute handle"))?
-            .clone();
-        let mut stack = vec![source];
+    /// Number of live nodes rooted at this handle, including the root.
+    pub fn subtree_len(&self, root: AttributeId) -> Result<usize> {
+        ensure!(self.get(root).is_some(), "invalid attribute handle");
+        let mut stack = vec![root];
         let mut count = 0;
         while let Some(id) = stack.pop() {
             count += 1;
             stack.extend(self.get(id).expect("live child").children.iter().copied());
         }
+        Ok(count)
+    }
+    /// Deep copy retains names/values/order and clears all break flags, as Copy.
+    /// Parent handles are repaired, rather than retaining C++ move temporaries.
+    pub fn copy(&mut self, source: AttributeId) -> Result<AttributeId> {
         ensure!(
-            self.nodes.len() + count <= MAX_NODES,
+            self.nodes.len() + self.subtree_len(source)? <= MAX_NODES,
             "attribute node limit exceeded"
         );
+        let node = self.get(source).expect("checked source").clone();
         let root = self.allocate(node.name_code, None, node.value.as_deref())?;
         let mut stack = node
             .children

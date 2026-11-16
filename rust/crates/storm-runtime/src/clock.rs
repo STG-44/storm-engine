@@ -1,5 +1,5 @@
 //! Retained TIMER scalar state with an explicit monotonic elapsed-time provider.
-//! Core time scaling, script clock globals and profiling remain separate ports.
+//! Script clock globals and profiling remain separate ports.
 use anyhow::{Result, ensure};
 use std::time::Duration;
 

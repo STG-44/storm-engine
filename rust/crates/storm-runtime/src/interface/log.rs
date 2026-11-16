@@ -1,6 +1,6 @@
 //! Script-driven battle log and quick-action state.
 use super::{Shared, load_texture};
-use anyhow::{Result, bail, ensure};
+use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::{AttributeId, AttributeStore, Entity, EntityDestroy, EntityInit, Message, Stage};
 use storm_formats::texture::Texture;
@@ -302,7 +302,7 @@ impl Entity for LogActor {
             LI_SET_VISIBLE => state.visible = message.long()? != 0,
             LI_CLEAR_STRINGS => state.lines.clear(),
             LI_OTHER_MSG if message.string()?.eq_ignore_ascii_case("SetTimeScale") => {
-                bail!("SetTimeScale from the battle log is not connected");
+                self.shared.time_scale.set(message.float()?);
             }
             _ => {}
         }

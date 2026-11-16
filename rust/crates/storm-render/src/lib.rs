@@ -8,6 +8,25 @@ pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
 pub mod model;
 pub mod texture_paths;
 
+/// The retained DX9 renderer's stored glow parameters. Its regular
+/// postprocessing path is disabled during configured startup.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GlowParameters {
+    pub blur_size: f32,
+    pub intensity: i32,
+    pub blur_passes: i32,
+}
+
+impl Default for GlowParameters {
+    fn default() -> Self {
+        Self {
+            blur_size: 0.8,
+            intensity: 200,
+            blur_passes: 4,
+        }
+    }
+}
+
 /// Reject unavailable backends instead of silently selecting a different API.
 pub fn create_instance(backends: wgpu::Backends) -> Result<wgpu::Instance> {
     let enabled = backends & wgpu::Instance::enabled_backend_features();

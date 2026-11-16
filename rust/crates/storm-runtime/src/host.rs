@@ -1,11 +1,11 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
-use storm_render::texture_paths::TexturePaths;
+use storm_render::{GlowParameters, texture_paths::TexturePaths};
 use storm_script::{Host, SourceLoader, Value, World};
 
 type NativeCallback = dyn FnMut(&[Value], &World, &EntityManager) -> Result<Value>;
@@ -41,6 +41,8 @@ pub struct NativeHost {
     pub(crate) interfaces: Option<crate::interface::Interfaces>,
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
+    pub(crate) time_scale: Rc<Cell<f32>>,
+    glow_parameters: Rc<Cell<GlowParameters>>,
     pub(crate) delta_ms: u32,
 }
 impl NativeHost {
@@ -75,6 +77,8 @@ impl NativeHost {
             interfaces: None,
             interface_language: None,
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
+            time_scale: Rc::new(Cell::new(1.0)),
+            glow_parameters: Rc::default(),
             delta_ms: 0,
         })
     }
@@ -109,6 +113,9 @@ impl NativeHost {
         if let Some(interfaces) = &self.interfaces {
             interfaces.set_window(width, height);
         }
+    }
+    pub fn glow_parameters(&self) -> GlowParameters {
+        self.glow_parameters.get()
     }
     pub fn interface_state(
         &self,
@@ -190,6 +197,7 @@ impl NativeHost {
                     host.bind_library(textures::functions(
                         game.clone(),
                         host.texture_paths.clone(),
+                        host.glow_parameters.clone(),
                     ))
                 })
             }
@@ -276,6 +284,15 @@ impl Host for NativeHost {
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
         if let Some(function) = self.functions.get_mut(name) {
             return (function.0)(arguments, &self.world, &self.entities);
+        }
+        if name == "settimescale" {
+            let scale = match arguments {
+                [Value::Float(scale)] => *scale,
+                [Value::Int(scale)] => *scale as f32,
+                _ => bail!("SetTimeScale expects one numeric argument"),
+            };
+            self.time_scale.set(scale);
+            return Ok(Value::Void);
         }
         self.controls
             .script_call(name, arguments)

@@ -252,6 +252,44 @@ fn source_rejects_invalid_alias_commands_and_unsupported_attribute_mutations() {
 }
 
 #[test]
+fn copies_reserve_the_source_subtree_in_a_large_world() -> Result<()> {
+    let world = World::default();
+    let weather = world.object(EntityId::INVALID)?;
+    weather.root().create_path("Wind.Speed")?.set_value("5")?;
+    let unrelated = world.object(EntityId::INVALID)?;
+    world.initialize(Some(&unrelated.root()), |store, root| {
+        let root = root.unwrap();
+        for _ in 0..20_000 {
+            store.create_attribute(root, "preset", None)?;
+        }
+        Ok(())
+    })?;
+
+    let original_nodes = world.live_nodes()?;
+    let loaded = Variable::new(Value::Object(weather.clone())).load()?;
+    let Value::Object(copy) = loaded else {
+        panic!("expected an object copy");
+    };
+    assert_eq!(world.live_nodes()?, original_nodes + 3);
+    copy.root().create_path("Wind.Speed")?.set_value("9")?;
+    weather.replace(&copy)?;
+    let wind_speed = weather.root().create_path("Wind.Speed")?;
+    assert_eq!(wind_speed.value()?, "9");
+
+    for error in [
+        unrelated.copied().unwrap_err(),
+        weather.replace(&unrelated).unwrap_err(),
+    ] {
+        assert!(format!("{error:#}").contains("script attribute node budget"));
+    }
+    assert_eq!(wind_speed.value()?, "9");
+    assert_eq!(world.live_nodes()?, original_nodes + 3);
+    drop(copy);
+    assert_eq!(world.live_nodes()?, original_nodes);
+    Ok(())
+}
+
+#[test]
 fn cyclic_aliases_and_name_budget_fail_without_leaking_or_poisoning_live_trees() -> Result<()> {
     let slot = Variable::new(Value::Reference(Reference::default()));
     slot.assign(slot.reference(), true)?;
