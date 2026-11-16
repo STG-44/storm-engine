@@ -238,6 +238,17 @@ impl Runtime {
     pub fn is_initialized(&self) -> bool {
         self.state.is_some()
     }
+    /// Read a live global in the engine's script world, without copying its attribute tree.
+    pub fn global(&mut self, name: &str, host: &mut impl Host) -> Result<Option<Value>> {
+        self.prepare(host)?;
+        let segments = self.state.as_ref().expect("initialized").segments.borrow();
+        if let Some(crate::storage::Slot::Global(index, _)) =
+            segments.global(&name.to_ascii_lowercase())
+        {
+            return Ok(Some(segments.variable(index)?.value()?));
+        }
+        Ok(None)
+    }
     pub fn call(
         &mut self,
         name: &str,

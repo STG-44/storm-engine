@@ -1,6 +1,6 @@
 use crate::{ControlInput, NativeHost};
 use anyhow::{Result, ensure};
-use storm_core::{Message, Stage, Value as MessageValue};
+use storm_core::{LayerType, Message, Stage, Value as MessageValue};
 use storm_script::{Limits, Runtime, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,6 +140,46 @@ impl Engine {
         }
         Ok(())
     }
+    fn execute_entities(&mut self, delta_ms: u32) -> Result<()> {
+        for id in self.host.entities.layer_ids(LayerType::Execute) {
+            if self.host.controls.activated("BIFastCommand") {
+                let action = self
+                    .host
+                    .log_and_actions_state(id)
+                    .filter(|state| state.visible)
+                    .and_then(|state| state.active_name.clone());
+                if let Some(action) = action {
+                    let mut message = Message::new("s", vec![MessageValue::String(action)])?;
+                    self.runtime.emit(
+                        "BI_FastCommand",
+                        &mut message,
+                        &mut self.host,
+                        self.limits,
+                    )?;
+                }
+            }
+            self.host
+                .entities
+                .process_entity_stage(id, Stage::Execute, delta_ms)?;
+        }
+        Ok(())
+    }
+    fn realize_entities(&mut self, delta_ms: u32) -> Result<()> {
+        for id in self.host.entities.layer_ids(LayerType::Realize) {
+            self.host
+                .entities
+                .process_entity_stage(id, Stage::Realize, delta_ms)?;
+            if let Some(event) = self
+                .host
+                .interfaces
+                .as_ref()
+                .and_then(|interfaces| interfaces.take_timer_event(id))
+            {
+                self.event(&event)?;
+            }
+        }
+        Ok(())
+    }
     /// Retains the supported CoreImpl::Run order. State loading, clock
     /// globals, Steam callbacks and dynamic service creation remain separate ports.
     pub fn frame(&mut self, delta_ms: u32) -> Result<FrameResult> {
@@ -163,6 +203,13 @@ impl Engine {
     fn frame_inner(&mut self, delta_ms: u32) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
         if self.phase == Phase::Ready {
+            if self.host.interfaces.is_some()
+                && let Some(Value::Object(render)) =
+                    self.runtime.global("Render", &mut self.host)?
+                && let Some(interfaces) = &self.host.interfaces
+            {
+                interfaces.initialize_render_attributes(&render)?;
+            }
             let limits = Limits {
                 instructions: self.startup_instructions,
                 ..self.limits
@@ -187,10 +234,10 @@ impl Engine {
             });
         }
         self.services(Section::Execute, true, &mut context)?;
-        self.host.entities.process_stage(Stage::Execute, delta_ms)?;
+        self.execute_entities(delta_ms)?;
         self.services(Section::Execute, false, &mut context)?;
         self.services(Section::Realize, true, &mut context)?;
-        self.host.entities.process_stage(Stage::Realize, delta_ms)?;
+        self.realize_entities(delta_ms)?;
         self.services(Section::Realize, false, &mut context)?;
         self.process_controls(delta_ms)?;
         self.host.entities.new_lifecycle()?;

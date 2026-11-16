@@ -1,7 +1,7 @@
 //! The original entity lookup/deletion and compiler notification switch.
 use crate::{AttributeReference, Execution, Host, Program, Type, Value};
 use anyhow::{Context, Result, bail, ensure};
-use storm_core::{EntityId, Message};
+use storm_core::EntityId;
 
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
@@ -176,14 +176,9 @@ fn create(
         })
         .and_then(|id| {
             if id != EntityId::INVALID {
-                for &event in execution.host.entity_init_events(id) {
+                for (event, message) in execution.host.entity_init_events(id)? {
                     let value = program
-                        .dispatch_message(
-                            event,
-                            Some(Message::new("", vec![])?),
-                            execution,
-                            depth + 1,
-                        )
+                        .dispatch_message(event, Some(message), execution, depth + 1)
                         .with_context(|| format!("Init entity {class}, script event {event}"))?;
                     execution
                         .host

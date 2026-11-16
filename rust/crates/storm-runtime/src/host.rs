@@ -119,6 +119,24 @@ impl NativeHost {
         }
         self.interfaces.as_ref()?.state(id)
     }
+    pub fn log_and_actions_state(
+        &self,
+        id: EntityId,
+    ) -> Option<std::cell::Ref<'_, crate::interface::LogAndActionsState>> {
+        if !self.entities.is_valid(id) {
+            return None;
+        }
+        self.interfaces.as_ref()?.log(id)
+    }
+    pub fn battle_timer_state(
+        &self,
+        id: EntityId,
+    ) -> Option<std::cell::Ref<'_, crate::interface::BattleTimerState>> {
+        if !self.entities.is_valid(id) {
+            return None;
+        }
+        self.interfaces.as_ref()?.timer(id)
+    }
     pub(crate) fn configure_script_source(
         &mut self,
         source: crate::GameSource,
@@ -281,10 +299,10 @@ impl Host for NativeHost {
             .create(class, store, root)
             .with_context(|| format!("create native class {class}"))
     }
-    fn entity_init_events(&self, entity: EntityId) -> &'static [&'static str] {
+    fn entity_init_events(&self, entity: EntityId) -> Result<Vec<(&'static str, Message)>> {
         self.interfaces
             .as_ref()
-            .map_or(&[], |interfaces| interfaces.events(entity))
+            .map_or_else(|| Ok(Vec::new()), |interfaces| interfaces.events(entity))
     }
     fn entity_init_result(
         &mut self,

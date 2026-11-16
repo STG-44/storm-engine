@@ -475,13 +475,22 @@ impl EntityManager {
             Stage::Realize => LayerType::Realize,
         };
         for id in self.layer_ids(kind) {
-            if let Some(entry) = self.entry_mut(id).filter(|e| e.valid) {
-                entry
-                    .entity
-                    .try_borrow_mut()
-                    .context("reentrant entity callback")?
-                    .process_stage_checked(stage, delta_ms)?;
-            }
+            self.process_entity_stage(id, stage, delta_ms)?;
+        }
+        Ok(())
+    }
+    pub fn process_entity_stage(
+        &mut self,
+        id: EntityId,
+        stage: Stage,
+        delta_ms: u32,
+    ) -> Result<()> {
+        if let Some(entry) = self.entry_mut(id).filter(|e| e.valid) {
+            entry
+                .entity
+                .try_borrow_mut()
+                .context("reentrant entity callback")?
+                .process_stage_checked(stage, delta_ms)?;
         }
         Ok(())
     }

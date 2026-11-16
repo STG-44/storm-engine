@@ -1,6 +1,8 @@
 //! XINTERFACE startup state, including its original script callbacks.
+mod log;
 mod quest_text;
 mod settings;
+mod timer;
 
 use crate::{GameDirectory, NativeHost, WindowSettings};
 use anyhow::{Context, Result, bail};
@@ -10,12 +12,14 @@ use std::{
     collections::BTreeMap,
     rc::Rc,
 };
-use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message};
+use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
 use storm_formats::texture::Texture;
 use storm_render::texture_paths::TexturePaths;
 use storm_script::{Reference, Value};
 
+pub use log::{ActionHint, ActionLayout, LogAndActionsState, LogLayout, LogLine};
 pub use settings::{InterfaceCursor, InterfaceScreen};
+pub use timer::{BattleTimerState, TimerImage};
 const INIT_EVENTS: &[&str] = &["GetQuestTextFileName", "evGetMouseWeel"];
 
 pub struct InterfaceState {
@@ -45,6 +49,18 @@ struct Shared {
     paths: Rc<RefCell<TexturePaths>>,
     window: Cell<Option<[u32; 2]>>,
     states: RefCell<BTreeMap<u64, InterfaceState>>,
+    logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
+    timers: RefCell<BTreeMap<u64, BattleTimerState>>,
+}
+
+impl Shared {
+    fn viewport(&self) -> Result<[u32; 2]> {
+        if let Some(window) = self.window.get() {
+            return Ok(window);
+        }
+        let settings = WindowSettings::load(&self.game)?;
+        Ok([settings.width, settings.height])
+    }
 }
 
 pub(crate) struct Interfaces(Rc<Shared>);
@@ -56,14 +72,21 @@ impl Interfaces {
             paths: host.texture_paths.clone(),
             window: Cell::new(None),
             states: RefCell::default(),
+            logs: RefCell::default(),
+            timers: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
-        if host
-            .entities
-            .register_class("xinterface", move || Ok(Box::new(Actor(shared.clone()))))?
-        {
-            host.interfaces = Some(interfaces);
-        }
+        host.entities
+            .register_class("xinterface", move || Ok(Box::new(Actor(shared.clone()))))?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("ILogAndActions", move || {
+            Ok(Box::new(log::LogActor::new(shared.clone())))
+        })?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("BITimer", move || {
+            Ok(Box::new(timer::TimerActor::new(shared.clone())))
+        })?;
+        host.interfaces = Some(interfaces);
         Ok(())
     }
 
@@ -77,15 +100,53 @@ impl Interfaces {
         Ref::filter_map(self.0.states.borrow(), |states| states.get(&id.raw())).ok()
     }
 
-    pub fn events(&self, id: EntityId) -> &'static [&'static str] {
+    pub fn log(&self, id: EntityId) -> Option<Ref<'_, LogAndActionsState>> {
+        Ref::filter_map(self.0.logs.borrow(), |logs| logs.get(&id.raw())).ok()
+    }
+    pub fn timer(&self, id: EntityId) -> Option<Ref<'_, BattleTimerState>> {
+        Ref::filter_map(self.0.timers.borrow(), |timers| timers.get(&id.raw())).ok()
+    }
+
+    pub fn take_timer_event(&self, id: EntityId) -> Option<String> {
+        self.0.timers.borrow_mut().get_mut(&id.raw())?.take_event()
+    }
+
+    pub fn events(&self, id: EntityId) -> Result<Vec<(&'static str, Message)>> {
         if self.0.states.borrow().contains_key(&id.raw()) {
-            INIT_EVENTS
-        } else {
-            &[]
+            return INIT_EVENTS
+                .iter()
+                .map(|&name| Ok((name, Message::new("", vec![])?)))
+                .collect();
         }
+        if let Some(log) = self.log(id) {
+            let [width, height] = log.viewport;
+            let payload = [width as i32, height as i32, 0]
+                .into_iter()
+                .map(Field::Long)
+                .collect();
+            return Ok(vec![("SetWindowSize", Message::new("lll", payload)?)]);
+        }
+        Ok(Vec::new())
+    }
+
+    pub fn initialize_render_attributes(&self, render: &storm_script::Object) -> Result<()> {
+        let [width, height] = self.0.viewport()?;
+        let fullscreen = WindowSettings::load(&self.0.game)?.fullscreen;
+        let root = render.root();
+        for (name, value) in [
+            ("full_screen", u32::from(fullscreen)),
+            ("screen_x", width),
+            ("screen_y", height),
+        ] {
+            root.create_path(name)?.set_value(&value.to_string())?;
+        }
+        Ok(())
     }
 
     pub fn result(&self, id: EntityId, event: &str, value: Option<Value>) -> Result<()> {
+        if event == "SetWindowSize" {
+            return Ok(());
+        }
         let mut states = self.0.states.borrow_mut();
         let state = states
             .get_mut(&id.raw())
@@ -119,15 +180,10 @@ struct Actor(Rc<Shared>);
 impl Entity for Actor {
     fn init(&mut self, context: &mut EntityInit<'_>) -> Result<bool> {
         let shared = &self.0;
-        let window = if let Some(window) = shared.window.get() {
-            window
-        } else {
-            let window = WindowSettings::load(&shared.game)?;
-            [window.width, window.height]
-        };
+        let window = shared.viewport()?;
         let (screen, mut cursor) = settings::load(&shared.game, window)?;
         if let Some(cursor) = &mut cursor {
-            cursor.texture = load_cursor(shared, &cursor.name)?;
+            cursor.texture = load_texture(shared, &cursor.name)?;
         }
         let game_time = context
             .attributes
@@ -160,7 +216,7 @@ impl Entity for Actor {
     }
 }
 
-fn load_cursor(shared: &Shared, name: &str) -> Result<Option<Texture>> {
+fn load_texture(shared: &Shared, name: &str) -> Result<Option<Texture>> {
     for candidate in shared.paths.borrow().candidates(name)? {
         let path = format!("RESOURCE/Textures/{}", candidate.file);
         if let Some(bytes) = shared.game.read_optional(&path, 16 * 1024 * 1024)?

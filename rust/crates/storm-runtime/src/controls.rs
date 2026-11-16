@@ -186,6 +186,15 @@ impl Controls {
     pub fn len(&self) -> usize {
         self.bindings.len()
     }
+    pub fn activated(&self, name: &str) -> bool {
+        !self.locked
+            && self
+                .names
+                .get(&name.to_ascii_lowercase())
+                .is_some_and(|&id| {
+                    self.bindings[id].state(&self.hardware, &self.tree) == State::Activated
+                })
+    }
 
     pub fn edge(&self, id: usize) -> Option<(&'static str, &str)> {
         let binding = &self.bindings[id];

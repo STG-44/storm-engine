@@ -60,8 +60,11 @@ pub trait Host {
         bail!("entity creation is not bound by this host")
     }
     /// Native Init may synchronously query a script before binding the caller's entity ID.
-    fn entity_init_events(&self, _entity: EntityId) -> &'static [&'static str] {
-        &[]
+    fn entity_init_events(
+        &self,
+        _entity: EntityId,
+    ) -> Result<Vec<(&'static str, storm_core::Message)>> {
+        Ok(Vec::new())
     }
     fn entity_init_result(
         &mut self,

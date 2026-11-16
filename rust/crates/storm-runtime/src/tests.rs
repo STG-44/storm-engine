@@ -1,6 +1,198 @@
 use super::*;
 
 #[test]
+fn configured_battle_timer_expires_in_realize_and_can_restart_or_cancel() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object timer;
+        int timeouts;
+        #event_handler("expired","Expired");
+        #event_handler("cancel_timer","Cancel");
+        void Expired() {
+            timeouts++;
+            Trace("expired="+timeouts);
+            SendMessage(&timer,"lfs",0,0.125,"expired");
+        }
+        void Cancel() { SendMessage(&timer,"l",1); }
+        void Main() {
+            timer.timerpos="10,20,110,50";
+            timer.timeroffset="2,3,4,5";
+            timer.timerforeuv="0,0.5,1,1";
+            timer.timerforecolor=255;
+            CreateEntity(&timer,"BITimer");
+            LayerAddObject(1,&timer,0);
+            SendMessage(&timer,"lfs",0,0.25,"expired");
+        }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    let id = engine.host.entities.first_id("BITimer").unwrap();
+    engine.frame(125)?;
+    {
+        let timer = engine.host.battle_timer_state(id).unwrap();
+        assert_eq!(timer.background.rect, [10, 20, 110, 50]);
+        assert_eq!(timer.foreground.rect, [12, 23, 106, 45]);
+        assert_eq!(timer.foreground.uv, [0.0, 0.5, 1.0, 1.0]);
+        assert_eq!(timer.foreground.color, 255);
+        assert_eq!(timer.remaining_fraction(), 0.5);
+    }
+    assert!(trace.take().is_empty());
+    engine.frame(125)?;
+    assert_eq!(trace.take(), ["script:expired=1"]);
+    assert_eq!(
+        engine
+            .host
+            .battle_timer_state(id)
+            .unwrap()
+            .remaining_seconds,
+        0.125
+    );
+    engine.frame(125)?;
+    assert_eq!(trace.take(), ["script:expired=2"]);
+    engine.emit_event("cancel_timer", &mut Message::new("", vec![])?)?;
+    engine.frame(2000)?;
+    assert!(trace.take().is_empty());
+    assert_eq!(
+        engine
+            .host
+            .battle_timer_state(id)
+            .unwrap()
+            .remaining_fraction(),
+        0.0
+    );
+    engine.shutdown()?;
+    assert!(engine.host.battle_timer_state(id).is_none());
+    Ok(())
+}
+
+#[test]
+fn configured_battle_log_receives_viewport_messages_and_runs_quick_actions() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(
+        temp.0.join("engine.ini"),
+        "run=main.c\nscreen_x=640\nscreen_y=480\n",
+    )?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object Render, journal;
+        #event_handler("SetWindowSize","WindowSize");
+        #event_handler("BI_FastCommand","FastAction");
+        #event_handler("test_visibility","Visibility");
+        #event_handler("test_prune","Prune");
+        #event_handler("test_clear","Clear");
+        void WindowSize() {
+            int width = GetEventData();
+            int height = GetEventData();
+            int television = GetEventData();
+            Trace(width+","+height+","+television+","+IsEntity(&journal));
+        }
+        void FastAction() { Trace("action="+GetEventData()); }
+        void Visibility() { SendMessage(&journal,"ll",45027,GetEventData()); }
+        void Prune() { SendMessage(&journal,"lls",45020,1,""); }
+        void Clear() { SendMessage(&journal,"l",45028); }
+        void Main() {
+            Trace(Render.screen_x+","+Render.screen_y+","+Render.full_screen);
+            int control = CreateControl("BIFastCommand");
+            MapControl(control,114);
+            CreateEntity(&journal,"ILogAndActions");
+            journal.Log.width=300;
+            journal.Log.height=65;
+            journal.Log.right=224;
+            journal.Log.offsetString=20;
+            journal.Log.speed=0.5;
+            journal.Log.color_speed=0.5;
+            journal.ActiveActions.horzQ=4;
+            journal.ActiveActions.vertQ=2;
+            journal.ActiveActions.width=48;
+            journal.ActiveActions.top=17;
+            journal.ActiveActions.Action.IconNum=5;
+            journal.ActiveActions.text1.text="F3";
+            SendMessage(&journal,"lll",45022,1,1);
+            SendMessage(&journal,"ls",45021,"Action");
+            SendMessage(&journal,"lls",45020,0,"first");
+            SendMessage(&journal,"lls",45020,0,"FIRST");
+            SendMessage(&journal,"lls",45020,1,"old");
+            SendMessage(&journal,"lls",45020,1,"pinned");
+            SendMessage(&journal,"lls",45020,0,"second");
+            LayerAddObject(0,&journal,0);
+        }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:1280,720,0", "script:1280,720,0,0"]);
+    let id = engine.host.entities.first_id("ILogAndActions").unwrap();
+    {
+        let state = engine.host.log_and_actions_state(id).unwrap();
+        assert_eq!(state.viewport, [1280, 720]);
+        assert!(state.visible && state.show_actions && state.show_log);
+        assert_eq!(state.log.as_ref().unwrap().right, 224);
+        let action = state.action.as_ref().unwrap();
+        assert_eq!(action.rect, [0, 17, 48, 64]);
+        assert_eq!(action.uv, Some([0.25, 0.5, 0.5, 1.0]));
+        assert_eq!(action.hints[0].as_ref().unwrap().text, "F3");
+        assert_eq!(
+            state
+                .lines
+                .iter()
+                .map(|line| (line.text.as_str(), line.offset))
+                .collect::<Vec<_>>(),
+            [("first", 0.0), ("pinned", 20.0), ("second", 40.0)]
+        );
+    }
+    engine.control_input(ControlInput::Button {
+        code: 114,
+        pressed: true,
+    });
+    engine.frame(10)?;
+    assert!(trace.take().is_empty());
+    engine.frame(10)?;
+    assert_eq!(trace.take(), ["script:action=Action"]);
+    let visible = |value| Message::new("l", vec![storm_core::Value::Long(value)]);
+    engine.emit_event("test_visibility", &mut visible(0)?)?;
+    engine.frame(200)?;
+    {
+        let state = engine.host.log_and_actions_state(id).unwrap();
+        assert_eq!(
+            state
+                .lines
+                .iter()
+                .map(|line| line.alpha)
+                .collect::<Vec<_>>(),
+            [245.0, 10000.0, 245.0]
+        );
+    }
+    engine.emit_event("test_visibility", &mut visible(1)?)?;
+    engine.frame(500)?;
+    assert_eq!(
+        engine.host.log_and_actions_state(id).unwrap().lines[0].text,
+        "pinned"
+    );
+    engine.emit_event("test_prune", &mut Message::new("", vec![])?)?;
+    engine.emit_event("test_clear", &mut Message::new("", vec![])?)?;
+    assert!(
+        engine
+            .host
+            .log_and_actions_state(id)
+            .unwrap()
+            .lines
+            .is_empty()
+    );
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn configured_xinterface_uses_the_live_viewport_and_synchronous_script_callbacks() -> Result<()> {
     let temp = Temporary::new()?;
     let game_dir = &temp.0;

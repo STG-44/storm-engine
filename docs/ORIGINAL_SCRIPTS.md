@@ -226,6 +226,15 @@ quest text files and the live script reference for the mouse wheel. The
 IDs and reference counts. Dialog nodes, interface rendering, and quest
 parameter substitution remain pending.
 
+`ILogAndActions` sends the synchronous `SetWindowSize` event with the
+current window dimensions during initialization. It reads the log and
+action settings, maintains fading and pinned entries, and emits
+`BI_FastCommand` through the original named control. `BITimer` reads its
+layout from the script, handles start and cancel messages, and emits the
+configured quest event during the Realize stage. The expiry handler can
+restart the timer in the same frame. Battle HUD drawing and time-scale
+changes through the log entity remain pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -285,7 +294,8 @@ The pinned Russian checkout compiles all 201 startup source files and enters
 `Main` in `seadogs.c`. The original `controls\init_pc.c` completes its first
 control setup. With installed island locator models under `resource/models`,
 `IslandsInit` reports 34 islands and `WeatherInit` reports 34 weather presets.
-Startup completes the town and fast-reload tables, initializes `xinterface`,
-and creates `obj_strservice`. It then reaches `ILogAndActions` creation in
-`battle_interface/loginterface.c:19`. The native log and actions HUD is
-still pending.
+Startup completes the town and fast-reload tables and initializes
+`xinterface`, `obj_strservice`, `ILogAndActions`, and `BITimer`. The
+unchanged script reaches `SetGlowParams` at `seadogs.c:284`, the final
+statement of `Main`. That renderer binding and drawing the battle HUD
+remain pending.
