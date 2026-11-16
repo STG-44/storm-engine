@@ -1,6 +1,46 @@
 use super::*;
 
 #[test]
+fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
+    let program = Program::compile(
+        "float Wave(int n){return sin(n);} int IntegerRoot(){return sqrt(12);} float Root(float n){return sqrt(n);}
+         int Color(){return argb(255, 60, 128, 200);} int Spill(){return argb(0,0,0,256);}",
+    )?;
+    let limits = Limits::default();
+    assert_eq!(
+        program.call("Wave", &[Value::Int(0)], &mut (), limits)?,
+        Value::Float(0.0)
+    );
+    assert_eq!(
+        program.call("IntegerRoot", &[], &mut (), limits)?,
+        Value::Int(3)
+    );
+    assert_eq!(
+        program.call("Root", &[Value::Float(25.0)], &mut (), limits)?,
+        Value::Float(5.0)
+    );
+    let Value::Float(negative_zero) =
+        program.call("Root", &[Value::Float(-0.0)], &mut (), limits)?
+    else {
+        panic!("sqrt(float) must return float");
+    };
+    assert_eq!(negative_zero.to_bits(), (-0.0f32).to_bits());
+    let error = program
+        .call("Root", &[Value::Float(-1.0)], &mut (), limits)
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("negative sqrt argument"));
+    assert_eq!(
+        program.call("Color", &[], &mut (), limits)?,
+        Value::Int(0xff3c80c8u32 as i32),
+    );
+    assert_eq!(
+        program.call("Spill", &[], &mut (), limits)?,
+        Value::Int(256)
+    );
+    Ok(())
+}
+
+#[test]
 fn original_native_names_link_without_declarations_and_validate_the_host_result() -> Result<()> {
     struct RandomHost(Value);
     impl Host for RandomHost {

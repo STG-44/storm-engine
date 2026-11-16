@@ -178,7 +178,7 @@ translations. It resolves the selected directory and strings file through
 `language.ini`, reads the original common string records, and preserves
 case-insensitive first-match lookup and spaces inside quoted text. Text
 files support UTF-8 and Windows-1251. User string files, language switching,
-and interface controls remain pending.
+and interface-specific control helpers remain pending.
 
 `script_rigging_files` exposes attribute templates with decimal numeric
 formats for UI strings and the original sail power loss calculation with
@@ -195,6 +195,19 @@ return zero and leave the linked script symbols and handlers intact.
 handlers immediately. `SegmentIsLoaded` continues to recognize the segment
 until frame cleanup, after which it can be loaded again. Function names
 and global slot indices stay reserved for code that already linked to them.
+
+The PC controls service creates named bindings, accepts the original key
+codes and flags, and runs timed control trees. It sends the original control
+activation, deactivation and wheel events to scripts. The desktop window
+feeds keyboard and mouse input to the same service used by the headless
+tests. Text input and camera consumption of raw mouse axes remain pending.
+The VM also supplies `Sin`, integer and float `Sqrt`, and `ARGB` color packing.
+
+The segment-loading revision passed 478 CPU tests on each of four CI hosts.
+Linux also passed 26 software Vulkan tests and the native-window check.
+All four archive digests, 144 scenario reports and four startup traces
+matched the baseline.
+[GitHub Actions run 43761108599](https://github.com/STG-44/storm-engine/actions/runs/43761108599)
 
 The common-translations revision passed 474 CPU tests on Windows, Linux,
 and both macOS architectures. Linux passed another 26 software Vulkan
@@ -246,7 +259,8 @@ cargo run -p storm-engine --locked -- --game-dir /path/to/sd-teho-public \
 ~~~
 
 The pinned Russian checkout compiles all 201 startup source files and enters
-`Main` in `seadogs.c`. `ControlsInit` loads the unchanged
-`controls\init_pc.c` and invokes `ExternControlsInit`. The script registers
-the key codes and then reaches its first native `CreateControl` call in
-`controls/controls.c:141`. The native controls service is still pending.
+`Main` in `seadogs.c`. The original `controls\init_pc.c` completes its first
+control setup. Startup proceeds through encounters, cannons and ships, then
+stops when `IslandsInit` creates the native `locator` class in
+`islands/islands_init.c:23`. That class is needed to read locator groups from
+the installed island models.

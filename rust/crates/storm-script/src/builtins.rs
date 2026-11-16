@@ -4,6 +4,8 @@ use anyhow::{Result, ensure};
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "getengineversion" => (0, Type::Int),
+        "argb" => (4, Type::Int),
+        "sin" | "sqrt" => (1, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
         "getarraysize" => (1, Type::Int),
@@ -30,12 +32,39 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
         // ENGINE_SCRIPT_VERSION in the retained core_impl.h.
         return Ok(Value::Int(54128));
     }
+    if name == "argb" {
+        let mut packed = 0;
+        for (argument, shift) in arguments.iter().zip([24, 16, 8, 0]) {
+            let Value::Int(channel) = argument.resolved()? else {
+                anyhow::bail!("ARGB channel requires int");
+            };
+            // The original shifts and combines the full values without masking each channel.
+            packed |= channel << shift;
+        }
+        return Ok(Value::Int(packed));
+    }
     let value = arguments[0].resolved();
     if name == "checkattribute" && (value.is_err() || matches!(value, Ok(Value::AReference(None))))
     {
         return Ok(Value::Int(0));
     }
     let value = value?;
+    if matches!(name, "sin" | "sqrt") {
+        return match (name, value) {
+            ("sin", Value::Int(value)) => Ok(Value::Float((value as f32).sin())),
+            ("sin", Value::Float(value)) => Ok(Value::Float(f64::from(value).sin() as f32)),
+            ("sqrt", Value::Int(value)) if value >= 0 => {
+                Ok(Value::Int((value as f32).sqrt() as i32))
+            }
+            ("sqrt", Value::Float(value)) => {
+                // The native comparison permits NaN and preserves signed zero.
+                ensure!(value.is_nan() || value >= 0.0, "negative sqrt argument");
+                Ok(Value::Float(value.sqrt()))
+            }
+            ("sqrt", Value::Int(_)) => anyhow::bail!("negative sqrt argument"),
+            _ => anyhow::bail!("invalid {name} argument"),
+        };
+    }
     if matches!(name, "sti" | "makeint" | "stf" | "makefloat") {
         let kind = if matches!(name, "sti" | "makeint") {
             Type::Int
