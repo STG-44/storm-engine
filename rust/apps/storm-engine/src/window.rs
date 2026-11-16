@@ -1,4 +1,5 @@
 //! Desktop window adapter over the same configured engine and model services.
+use crate::input;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     sync::Arc,
@@ -7,14 +8,14 @@ use std::{
 use storm_core::Message;
 use storm_render::Gpu;
 use storm_runtime::{
-    Engine, Phase, WindowSettings,
+    ControlInput, Engine, Phase, WindowSettings,
     clock::Timer,
     model::{Draw, ModelScenes, Models},
 };
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::WindowEvent,
+    event::{DeviceEvent, DeviceId, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Fullscreen, Window, WindowId},
 };
@@ -265,7 +266,17 @@ impl ApplicationHandler for Application<'_> {
     }
     fn suspended(&mut self, _: &ActiveEventLoop) {
         // Keep the Engine/CPU world; surface/device resources rebuild on resume.
+        self.engine.control_input(ControlInput::FocusLost);
         self.surface = None;
+    }
+    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+        if self.focused
+            && self.surface.is_some()
+            && let DeviceEvent::MouseMotion { delta: (x, y) } = event
+        {
+            self.engine
+                .control_input(ControlInput::MouseMotion { x, y });
+        }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let Some(surface) = self.surface.as_mut() else {
@@ -279,13 +290,28 @@ impl ApplicationHandler for Application<'_> {
             WindowEvent::Resized(size) => surface.resize(size),
             WindowEvent::Focused(focused) => {
                 self.focused = focused;
-                // Original CoreImpl::AppState only notifies Controls. It emits
-                // no script event; controls/audio focus hooks remain pending.
                 if focused {
                     surface.occluded = false;
                     surface.window.request_redraw();
+                } else {
+                    self.engine.control_input(ControlInput::FocusLost);
                 }
                 Ok(())
+            }
+            WindowEvent::KeyboardInput { event, .. } if self.focused => {
+                if let Some(input) = input::keyboard(event) {
+                    self.engine.control_input(input);
+                }
+                Ok(())
+            }
+            WindowEvent::MouseInput { state, button, .. } if self.focused => {
+                if let Some(input) = input::button(button, state.is_pressed()) {
+                    self.engine.control_input(input);
+                }
+                Ok(())
+            }
+            WindowEvent::MouseWheel { delta, .. } if self.focused => {
+                self.engine.mouse_wheel(input::wheel(delta))
             }
             WindowEvent::Occluded(occluded) => {
                 surface.occluded = occluded;

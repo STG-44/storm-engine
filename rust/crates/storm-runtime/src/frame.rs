@@ -1,6 +1,6 @@
-use crate::NativeHost;
+use crate::{ControlInput, NativeHost};
 use anyhow::{Result, ensure};
-use storm_core::{Message, Stage};
+use storm_core::{Message, Stage, Value as MessageValue};
 use storm_script::{Limits, Runtime, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +73,17 @@ impl Engine {
     pub fn request_exit(&mut self) {
         self.exit_requested = true;
     }
+    pub fn control_input(&mut self, input: ControlInput) {
+        self.host.controls.input(input);
+    }
+    pub fn mouse_wheel(&mut self, steps: i32) -> Result<()> {
+        self.control_input(ControlInput::MouseWheel(steps));
+        if self.phase == Phase::Running && steps != 0 {
+            let mut message = Message::new("l", vec![MessageValue::Long(i32::from(steps as i16))])?;
+            self.emit_event("evMouseWeel", &mut message)?;
+        }
+        Ok(())
+    }
     /// Platform events arrive between frames, after Main has initialized the
     /// program. Native stage-to-script reentrancy remains a separate boundary.
     pub fn emit_event(&mut self, name: &str, message: &mut Message) -> Result<Option<Value>> {
@@ -110,8 +121,21 @@ impl Engine {
         )?;
         Ok(())
     }
-    /// Retains the supported CoreImpl::Run order. Input/state loading, clock
-    /// globals, Steam and dynamic service creation remain separate ports.
+    fn process_controls(&mut self, delta_ms: u32) -> Result<()> {
+        self.host.controls.advance(delta_ms);
+        let mut id = 0;
+        while id < self.host.controls.len() {
+            if let Some((event, name)) = self.host.controls.edge(id) {
+                let mut message = Message::new("s", vec![MessageValue::String(name.to_owned())])?;
+                self.runtime
+                    .emit(event, &mut message, &mut self.host, self.limits)?;
+            }
+            id += 1;
+        }
+        Ok(())
+    }
+    /// Retains the supported CoreImpl::Run order. State loading, clock
+    /// globals, Steam callbacks and dynamic service creation remain separate ports.
     pub fn frame(&mut self, delta_ms: u32) -> Result<FrameResult> {
         ensure!(
             matches!(self.phase, Phase::Ready | Phase::Running),
@@ -159,6 +183,7 @@ impl Engine {
         self.services(Section::Realize, true, &mut context)?;
         self.host.entities.process_stage(Stage::Realize, delta_ms)?;
         self.services(Section::Realize, false, &mut context)?;
+        self.process_controls(delta_ms)?;
         self.host.entities.new_lifecycle()?;
         self.services(Section::All, false, &mut context)?;
         Ok(FrameResult {

@@ -36,6 +36,7 @@ pub struct NativeHost {
     loading_libraries: BTreeSet<String>,
     script_source: Option<(crate::GameSource, crate::GameDirectory)>,
     trace: TraceSink,
+    pub(crate) controls: crate::controls::Controls,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) delta_ms: u32,
 }
@@ -63,6 +64,7 @@ impl NativeHost {
                 eprintln!("{text}");
                 Ok(())
             }),
+            controls: crate::controls::Controls::default(),
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             delta_ms: 0,
         })
@@ -227,11 +229,12 @@ impl Host for NativeHost {
         self.world.clone()
     }
     fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value> {
-        let function = self
-            .functions
-            .get_mut(name)
-            .with_context(|| format!("native function is not registered: {name}"))?;
-        (function.0)(arguments, &self.world, &self.entities)
+        if let Some(function) = self.functions.get_mut(name) {
+            return (function.0)(arguments, &self.world, &self.entities);
+        }
+        self.controls
+            .script_call(name, arguments)
+            .with_context(|| format!("native function is not registered: {name}"))?
     }
     fn is_entity(&self, id: EntityId) -> Result<bool> {
         Ok(self.entities.is_valid(id))

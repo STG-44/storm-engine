@@ -3,6 +3,7 @@ use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use storm_runtime::model::{ModelScenes, Models};
 use storm_runtime::{GameDirectory, NativeHost, ScriptEncoding, Startup};
+mod input;
 mod window;
 
 #[derive(Clone, Copy, ValueEnum)]

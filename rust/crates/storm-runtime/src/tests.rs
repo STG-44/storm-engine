@@ -1,6 +1,116 @@
 use super::*;
 
 #[test]
+fn configured_controls_dispatch_ordered_desktop_edges_and_tree_commands() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        native int AddControlTreeNode(int parent, string base, string output, float timeout);
+        #event_handler("Control Activation","Pressed");
+        #event_handler("Control Deactivation","Released");
+        #event_handler("evMouseWeel","WheelMoved");
+        #event_handler("toggle","ToggleLock");
+        int locked;
+        void Pressed() { Trace("+" + GetEventData()); }
+        void Released() { Trace("-" + GetEventData()); }
+        void WheelMoved() { Trace("wheel=" + GetEventData()); }
+        void ToggleLock() {
+            locked = 1 - locked;
+            LockControl("ICancel", locked);
+        }
+        int Bind(string name, int system) {
+            int id = CreateControl(name);
+            MapControl(id, system);
+            return id;
+        }
+        void Main() {
+            int cancel = Bind("ICancel", 27);
+            Trace("duplicate=" + (cancel == CreateControl("icancel")));
+            Bind("IAction", 32);
+            Bind("Click", 1);
+            Bind("Wheel", 258);
+            int axis = Bind("Motion", 256);
+            SetControlFlags(axis, 1);
+            SetControlTreshold(axis, 0.1);
+            Bind("Shift",16);
+            Bind("Prefix",80);
+            Bind("Chord",87);
+            int parent = AddControlTreeNode(-1,"Prefix","Solo",0.05);
+            AddControlTreeNode(parent,"Chord","Combo",0.0);
+            MapControl(-1,27);
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    let button = |code, pressed| ControlInput::Button { code, pressed };
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:duplicate=1"]);
+
+    for input in [
+        button(32, true),
+        button(27, true),
+        button(1, true),
+        ControlInput::MouseMotion { x: 2.5, y: -3.0 },
+        button(161, true),
+    ] {
+        engine.control_input(input);
+    }
+    engine.mouse_wheel(1)?;
+    assert_eq!(trace.take(), ["script:wheel=1"]);
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "script:+ICancel",
+            "script:+IAction",
+            "script:+Click",
+            "script:+Wheel",
+            "script:+Motion",
+            "script:+Shift"
+        ],
+    );
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:-Wheel", "script:-Motion"]);
+    engine.emit_event("toggle", &mut Message::new("", vec![])?)?;
+    engine.control_input(ControlInput::FocusLost);
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        ["script:-IAction", "script:-Click", "script:-Shift"]
+    );
+
+    engine.control_input(button(80, true));
+    engine.control_input(button(87, true));
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        ["script:+Prefix", "script:+Chord", "script:+Combo"]
+    );
+    engine.control_input(button(80, false));
+    engine.control_input(button(87, false));
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        ["script:-Prefix", "script:-Chord", "script:-Combo"]
+    );
+
+    engine.control_input(button(80, true));
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:+Prefix"]);
+    engine.control_input(button(80, false));
+    engine.frame(50)?;
+    assert_eq!(trace.take(), ["script:-Prefix", "script:+Solo"]);
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:-Solo"]);
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn configured_segments_link_globals_and_externs_and_unload_at_frame_boundaries() -> Result<()> {
     let temp = Temporary::new()?;
     let program = temp.0.join("PROGRAM");
