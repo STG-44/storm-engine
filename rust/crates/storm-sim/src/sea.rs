@@ -8,6 +8,7 @@ pub mod weather;
 pub const SIDE: usize = 128;
 pub const CELLS: usize = SIDE * SIDE;
 pub const FRAMES: usize = 64;
+pub const MAX_TGA_BYTES: usize = 128 * 1024;
 
 #[derive(Debug)]
 pub struct Frames {
@@ -32,6 +33,19 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     ]
 }
 impl Frames {
+    /// Reads the original uncompressed BGRA TGAs in their numbered order.
+    /// The caller supplies file access and applies the same byte limit.
+    pub fn from_tga_series(mut read: impl FnMut(&str) -> Result<Vec<u8>>) -> Result<Self> {
+        use anyhow::Context;
+        let mut heights = Vec::with_capacity(FRAMES);
+        for i in 0..FRAMES {
+            let name = format!("sea{i:04}.tga");
+            let bytes = read(&name).with_context(|| format!("read SEA frame {name}"))?;
+            heights.push(blue_bytes(&bytes).with_context(|| format!("decode SEA frame {name}"))?);
+        }
+        Self::new(heights)
+    }
+
     /// Blue bytes in original file order. Init's five-frame filter is dead code:
     /// the actual assignment copies the current raw frame unchanged.
     pub fn new(heights: Vec<Vec<u8>>) -> Result<Self> {
@@ -89,6 +103,25 @@ impl Frames {
         )
         .unwrap()
     }
+}
+
+fn blue_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
+    ensure!(
+        (18 + CELLS * 4..=MAX_TGA_BYTES).contains(&bytes.len()),
+        "invalid sea TGA length"
+    );
+    ensure!(
+        bytes[0..3] == [0, 0, 2]
+            && u16::from_le_bytes([bytes[12], bytes[13]]) as usize == SIDE
+            && u16::from_le_bytes([bytes[14], bytes[15]]) as usize == SIDE
+            && bytes[16] == 32,
+        "SEA requires raw 128x128 32-bit TGA without ID/color map"
+    );
+    // Native Init walks raw BGRA after TGA_H, irrespective of origin flags.
+    Ok(bytes[18..18 + CELLS * 4]
+        .chunks_exact(4)
+        .map(|pixel| pixel[0])
+        .collect())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

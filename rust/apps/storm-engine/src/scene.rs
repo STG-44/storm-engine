@@ -22,6 +22,7 @@ pub(crate) struct SceneFrame<'a> {
     pub pictures: Option<Rc<LoadingPictures>>,
     pub fades: &'a [FadeDraw],
     pub correction: Option<ColorCorrection>,
+    pub sea: Option<storm_runtime::sea::Surface>,
 }
 
 pub(crate) struct SceneRenderer {
@@ -105,6 +106,7 @@ impl SceneRenderer {
             fades: fades.as_deref().unwrap_or_default(),
             // The display ramp is applied after the original capture.
             correction: None,
+            sea: host.sea_draw(),
         };
         storm_render::render_offscreen_with(gpu, SIDE, SIDE, seconds, |encoder, target| {
             self.encode(gpu, encoder, Some(&source), [width, height], &frame)?;
@@ -139,8 +141,19 @@ impl SceneRenderer {
             [width, height],
             frame.fades,
             |encoder, view| {
-                self.models
-                    .encode(gpu, encoder, view, width, height, frame.seconds)?;
+                if let Some(sea) = &frame.sea {
+                    self.models.encode_with_sea(
+                        gpu,
+                        encoder,
+                        view,
+                        [width, height],
+                        frame.seconds,
+                        sea,
+                    )?;
+                } else {
+                    self.models
+                        .encode(gpu, encoder, view, width, height, frame.seconds)?;
+                }
                 if let Some((_, screen)) = &self.loading {
                     screen.encode(gpu, encoder, view, [width, height]);
                 }

@@ -14,6 +14,7 @@ storm-core = { path = "../storm-core" }
 storm-script = { path = "../storm-script" }
 storm-render = { path = "../storm-render" }
 storm-formats = { path = "../storm-formats" }
+storm-sim = { path = "../storm-sim" }
 wgpu.workspace = true
 
 [dev-dependencies]

@@ -283,6 +283,7 @@ impl Application<'_> {
                     pictures: self.engine.host.loading_draw(),
                     fades: fades.as_deref().unwrap_or_default(),
                     correction: self.engine.host.color_correction(),
+                    sea: self.engine.host.sea_draw(),
                 };
                 if let Some(progress) = self.engine.host.loading_progress() {
                     surface.capture_scene(&frame)?;

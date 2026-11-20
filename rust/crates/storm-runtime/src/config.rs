@@ -145,6 +145,7 @@ impl Startup {
         }
         crate::locator::register(&mut host, game.clone())?;
         crate::particles::register(&mut host, game.clone())?;
+        crate::sea::Seas::register(&mut host, game.clone())?;
         crate::teleport::register(&mut host, game.clone())?;
         storm_script::Host::world(&host).use_game_limits();
         crate::interface::Interfaces::register(&mut host, game.clone())?;

@@ -1,4 +1,30 @@
 use super::*;
+
+#[test]
+fn raw_tga_contract_uses_blue_bytes_in_file_order() {
+    let mut bytes = vec![0u8; 18 + CELLS * 4 + 26];
+    bytes[2] = 2;
+    bytes[12] = 128;
+    bytes[14] = 128;
+    bytes[16] = 32;
+    bytes[17] = 8;
+    for i in 0..CELLS {
+        bytes[18 + i * 4..22 + i * 4].copy_from_slice(&[(i % 256) as u8, 3, 7, 255]);
+    }
+    let expected = blue_bytes(&bytes).unwrap();
+    assert_eq!(
+        expected,
+        (0..CELLS).map(|i| (i % 256) as u8).collect::<Vec<_>>()
+    );
+    bytes[17] = 40;
+    assert_eq!(blue_bytes(&bytes).unwrap(), expected);
+    bytes[2] = 10;
+    assert!(blue_bytes(&bytes).is_err());
+    bytes[2] = 2;
+    bytes[0] = 1;
+    assert!(blue_bytes(&bytes).is_err());
+    assert!(blue_bytes(&bytes[..100]).is_err());
+}
 use crate::ship_rocking::SeaSurface;
 use serde_json::Value;
 fn f(v: &Value) -> f32 {

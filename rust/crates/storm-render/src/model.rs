@@ -4,6 +4,8 @@ mod crew;
 mod effects;
 mod managed_particles;
 mod native_sea;
+mod ocean;
+pub use ocean::OceanRenderer;
 mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
@@ -415,6 +417,22 @@ fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
         .create_view(&Default::default())
 }
 
+fn opaque_depth() -> wgpu::DepthStencilState {
+    wgpu::DepthStencilState {
+        format: wgpu::TextureFormat::Depth32Float,
+        depth_write_enabled: Some(true),
+        depth_compare: Some(wgpu::CompareFunction::LessEqual),
+        stencil: Default::default(),
+        bias: Default::default(),
+    }
+}
+
+enum Water<'a> {
+    None,
+    Fleet,
+    Configured(&'a mut OceanRenderer, &'a storm_sim::sea::Surface),
+}
+
 pub(crate) fn upload_texture(
     gpu: &Gpu,
     source: &storm_formats::texture::Texture,
@@ -727,13 +745,7 @@ impl ModelScene {
                 ],
             }));
         }
-        let depth = Some(wgpu::DepthStencilState {
-            format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: Some(true),
-            depth_compare: Some(wgpu::CompareFunction::LessEqual),
-            stencil: Default::default(),
-            bias: Default::default(),
-        });
+        let depth = Some(opaque_depth());
         let target = Some(wgpu::ColorTargetState {
             format,
             blend: None,
@@ -849,36 +861,7 @@ impl ModelScene {
             multiview_mask: None,
             cache: None,
         });
-        let ocean_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Preview ocean"),
-            source: wgpu::ShaderSource::Wgsl(OCEAN_SHADER.into()),
-        });
-        let ocean_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Ocean camera layout"),
-            bind_group_layouts: &[Some(&camera_layout)],
-            immediate_size: 0,
-        });
-        let ocean = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Preview ocean pipeline"),
-            layout: Some(&ocean_layout),
-            vertex: wgpu::VertexState {
-                module: &ocean_shader,
-                entry_point: Some("vertex_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: Default::default(),
-            depth_stencil: depth,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &ocean_shader,
-                entry_point: Some("fragment_main"),
-                compilation_options: Default::default(),
-                targets: &[target],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let ocean = ocean::pipeline(gpu, format, &camera_layout, depth);
         let mut meshes = Vec::new();
         for source in &asset.meshes {
             let vertices = bytemuck::cast_slice(&source.vertices);
@@ -1062,7 +1045,16 @@ impl ModelScene {
         wind: SailWind,
     ) -> Result<()> {
         Self::draw_collection(
-            scenes, gpu, encoder, target, width, height, seconds, camera, wind, true,
+            scenes,
+            gpu,
+            encoder,
+            target,
+            width,
+            height,
+            seconds,
+            camera,
+            wind,
+            Water::Fleet,
         )
     }
     /// Runtime static models without the preview ocean. Empty registered scenes
@@ -1080,9 +1072,48 @@ impl ModelScene {
         wind: SailWind,
     ) -> Result<()> {
         Self::draw_collection(
-            scenes, gpu, encoder, target, width, height, seconds, camera, wind, false,
+            scenes,
+            gpu,
+            encoder,
+            target,
+            width,
+            height,
+            seconds,
+            camera,
+            wind,
+            Water::None,
         )
     }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_models_with_sea(
+        scenes: &mut [Self],
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        camera: &OrbitCamera,
+        renderer: &mut OceanRenderer,
+        surface: &storm_sim::sea::Surface,
+    ) -> Result<()> {
+        Self::draw_collection(
+            scenes,
+            gpu,
+            encoder,
+            target,
+            size[0],
+            size[1],
+            seconds,
+            camera,
+            SailWind {
+                speed: 0.0,
+                ..Default::default()
+            },
+            Water::Configured(renderer, surface),
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn draw_collection(
         scenes: &mut [Self],
@@ -1094,13 +1125,13 @@ impl ModelScene {
         seconds: f32,
         camera: &OrbitCamera,
         wind: SailWind,
-        ocean: bool,
+        mut water: Water<'_>,
     ) -> Result<()> {
         ensure!(
-            (!ocean || !scenes.is_empty()) && scenes.len() <= 16,
+            (!matches!(&water, Water::Fleet) || !scenes.is_empty()) && scenes.len() <= 16,
             "fleet scene count must be 1..=16"
         );
-        if scenes.is_empty() {
+        if scenes.is_empty() && matches!(&water, Water::None) {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Empty runtime model scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1136,6 +1167,23 @@ impl ModelScene {
         for scene in scenes.iter_mut() {
             scene.prepare_frame(gpu, width, height, seconds, camera, wind)?;
         }
+        if let Water::Configured(renderer, surface) = &mut water {
+            renderer.prepare(
+                gpu,
+                [width, height],
+                seconds,
+                camera,
+                surface,
+                scenes.is_empty(),
+            )?;
+        }
+        let depth = if let Some(scene) = scenes.first() {
+            &scene.depth
+        } else if let Water::Configured(renderer, _) = &water {
+            renderer.depth().expect("prepared SEA depth")
+        } else {
+            unreachable!("nonempty model render pass")
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1148,7 +1196,7 @@ impl ModelScene {
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &scenes[0].depth,
+                view: depth,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Store,
@@ -1157,10 +1205,14 @@ impl ModelScene {
             }),
             ..Default::default()
         });
-        if ocean {
-            pass.set_bind_group(0, &scenes[0].camera_group, &[0]);
-            pass.set_pipeline(&scenes[0].ocean);
-            pass.draw(0..3, 0..1);
+        match &water {
+            Water::None => {}
+            Water::Fleet => {
+                pass.set_bind_group(0, &scenes[0].camera_group, &[0]);
+                pass.set_pipeline(&scenes[0].ocean);
+                pass.draw(0..3, 0..1);
+            }
+            Water::Configured(renderer, _) => renderer.encode(&mut pass),
         }
         for particles in [false, true] {
             for scene in scenes.iter() {

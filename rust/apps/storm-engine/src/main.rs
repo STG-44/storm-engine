@@ -158,6 +158,7 @@ fn main() -> Result<()> {
                                 pictures: engine.host.loading_draw(),
                                 fades,
                                 correction: engine.host.color_correction(),
+                                sea: engine.host.sea_draw(),
                             },
                         )?;
                     }
@@ -180,6 +181,7 @@ fn main() -> Result<()> {
                 pictures: engine.host.loading_draw(),
                 fades: fades.as_deref().unwrap_or_default(),
                 correction: engine.host.color_correction(),
+                sea: engine.host.sea_draw(),
             };
             let frame = storm_render::render_offscreen_with(
                 &gpu,
@@ -203,8 +205,13 @@ fn main() -> Result<()> {
             )?;
             frame.save_png(&path)?;
             eprintln!(
-                "Rendered {} script-created static models{} to {}",
+                "Rendered {} script-created static models{}{} to {}",
                 draws.len(),
+                if progress.is_none() && scene.sea.is_some() {
+                    " and the sea"
+                } else {
+                    ""
+                },
                 if progress.is_some() {
                     " and a loading indicator"
                 } else if scene.pictures.is_some() {

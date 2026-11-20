@@ -3,7 +3,7 @@ use super::*;
 mod stages;
 mod weather;
 use std::path::Path;
-use storm_sim::sea::{CELLS, FRAMES, Frames, Parameters, Sea};
+use storm_sim::sea::{Frames, MAX_TGA_BYTES, Parameters, Sea};
 
 pub(super) struct State {
     pub sea: Rc<RefCell<Sea>>,
@@ -12,40 +12,17 @@ pub(super) struct State {
     stages: Option<stages::Stages>,
 }
 
-fn blue_bytes(bytes: &[u8]) -> Result<Vec<u8>> {
-    ensure!(
-        bytes.len() >= 18 + CELLS * 4 && bytes.len() <= 128 * 1024,
-        "invalid sea TGA length"
-    );
-    ensure!(
-        bytes[0] == 0
-            && bytes[1] == 0
-            && bytes[2] == 2
-            && u16::from_le_bytes([bytes[12], bytes[13]]) == 128
-            && u16::from_le_bytes([bytes[14], bytes[15]]) == 128
-            && bytes[16] == 32,
-        "SEA requires raw 128x128 32-bit TGA without ID/color map"
-    );
-    // Native Init walks raw BGRA after TGA_H. Do not flip by origin flags or
-    // use display-oriented image decoding; ignore alpha/red/green/footer.
-    Ok(bytes[18..18 + CELLS * 4]
-        .chunks_exact(4)
-        .map(|p| p[0])
-        .collect())
-}
 impl State {
     pub fn load(folder: Option<&Path>) -> Result<Self> {
         let frames = if let Some(folder) = folder {
-            let mut frames = Vec::with_capacity(FRAMES);
-            for i in 0..FRAMES {
-                let file = folder.join(format!("sea{i:04}.tga"));
+            Frames::from_tga_series(|name| {
+                let file = folder.join(name);
                 ensure!(
-                    std::fs::metadata(&file)?.len() <= 128 * 1024,
+                    std::fs::metadata(&file)?.len() <= MAX_TGA_BYTES as u64,
                     "sea TGA too large"
                 );
-                frames.push(blue_bytes(&std::fs::read(file)?)?);
-            }
-            Frames::new(frames)?
+                Ok(std::fs::read(file)?)
+            })?
         } else {
             Frames::fixture()
         };
@@ -131,31 +108,6 @@ impl Fleet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn raw_tga_contract_uses_blue_bytes_in_file_order() {
-        let mut bytes = vec![0u8; 18 + CELLS * 4 + 26];
-        bytes[2] = 2;
-        bytes[12] = 128;
-        bytes[14] = 128;
-        bytes[16] = 32;
-        bytes[17] = 8;
-        for i in 0..CELLS {
-            bytes[18 + i * 4..22 + i * 4].copy_from_slice(&[(i % 256) as u8, 3, 7, 255]);
-        }
-        let expected = blue_bytes(&bytes).unwrap();
-        assert_eq!(
-            expected,
-            (0..CELLS).map(|i| (i % 256) as u8).collect::<Vec<_>>()
-        );
-        bytes[17] = 40;
-        assert_eq!(blue_bytes(&bytes).unwrap(), expected);
-        bytes[2] = 10;
-        assert!(blue_bytes(&bytes).is_err());
-        bytes[2] = 2;
-        bytes[0] = 1;
-        assert!(blue_bytes(&bytes).is_err());
-        assert!(blue_bytes(&bytes[..100]).is_err());
-    }
     #[test]
     fn coupled_sea_is_partition_independent_and_released_ship_keeps_its_grid() {
         fn fleet() -> Fleet {

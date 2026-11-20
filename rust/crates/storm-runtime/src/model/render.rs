@@ -2,7 +2,7 @@ use super::*;
 use std::collections::BTreeSet;
 use storm_render::{
     Frame, Gpu,
-    model::{ModelScene, OrbitCamera, SailWind, native_model_matrix},
+    model::{ModelScene, OceanRenderer, OrbitCamera, SailWind, native_model_matrix},
 };
 
 /// GPU scenes follow the registry's draw order and asset revision. This bounded
@@ -14,6 +14,7 @@ pub struct ModelScenes {
     camera: OrbitCamera,
     framed: bool,
     format: wgpu::TextureFormat,
+    ocean: Option<OceanRenderer>,
 }
 struct Owner {
     id: u64,
@@ -51,6 +52,7 @@ impl ModelScenes {
             camera: OrbitCamera::from_bounds([0.0; 3].into(), 1.0),
             framed: false,
             format,
+            ocean: None,
         }
     }
     pub fn cached(&self) -> usize {
@@ -175,6 +177,42 @@ impl ModelScenes {
                 speed: 0.0,
                 ..Default::default()
             },
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_with_sea(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        surface: &crate::sea::Surface,
+    ) -> Result<()> {
+        let water_view = (!self.framed).then(|| {
+            // The model-independent orbit keeps the eye above the wave envelope
+            // until an actual scene selects its camera.
+            let wave_height = surface
+                .parameters
+                .amplitude
+                .iter()
+                .map(|v| v.abs())
+                .sum::<f32>();
+            OrbitCamera::from_bounds([0.0, wave_height, 0.0].into(), wave_height.max(1.0) * 4.0)
+        });
+        let ocean = self
+            .ocean
+            .get_or_insert_with(|| OceanRenderer::new(gpu, self.format));
+        ModelScene::draw_models_with_sea(
+            &mut self.scenes[..self.active],
+            gpu,
+            encoder,
+            target,
+            size,
+            seconds,
+            water_view.as_ref().unwrap_or(&self.camera),
+            ocean,
+            surface,
         )
     }
     pub fn offscreen(&mut self, gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Result<Frame> {

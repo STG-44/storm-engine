@@ -423,10 +423,10 @@ the IDs and reference counts of localized catalogs available in the new
 language.
 
 On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
-enters `InitInterface`. It now creates `scrshoter` and begins setting up the
-background. The pinned run reaches `CreateSea` in `sea_ai/AISea.c` and stops at
-the missing configured `sea` entity. The original source files were unchanged
-in this run.
+enters `InitInterface`. It creates `scrshoter`, selects a weather preset and
+creates `sea` inside `CreateSea` in `sea_ai/AISea.c`. The pinned run proceeds
+through the ship-light setup segment and stops when it attempts to create
+`ShipLights`. The original source files were unchanged in this run.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
 window and PNG renderer. The thumbnail uses the original 128 × 128 integer
@@ -439,6 +439,12 @@ capture, preview reading and cache release independently from menu startup.
 
 The Rust geometry reader can decode separately installed `MainMenu.gm`
 (20 meshes) and `MainMenu_locators.gm` (nine labels). The extracted game
-resources also contain the expected 64 raw BGRA sea height frames. Rendering
-the original menu still requires the configured sea, the background scene
-and the menu interface services.
+resources supply the 64 raw BGRA sea height frames to the configured `SEA`
+entity. The demo and configured engine share the TGA decoder and retained
+wave solver. Configured scripts control the two wave layers, maximum wave
+height, query distance and Stop/Realize behavior. The runtime publishes the
+surface to the same window, PNG and thumbnail renderer. It uses the existing
+water shader, depth-tests against registered models and supports an isolated
+sea draw before static models are available. The original view, reflection,
+sun-road, foam and underwater passes remain pending, along with the
+background scene and the menu interface services.

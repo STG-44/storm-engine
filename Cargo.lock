@@ -2079,6 +2079,7 @@ dependencies = [
  "storm-formats",
  "storm-render",
  "storm-script",
+ "storm-sim",
  "wgpu",
 ]
 

@@ -42,6 +42,7 @@ pub struct NativeHost {
     pub(crate) random: Rc<RefCell<crate::random::Random>>,
     pub(crate) controls: crate::controls::Controls,
     pub(crate) interfaces: Option<Interfaces>,
+    pub(crate) seas: Option<crate::sea::Seas>,
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) time_scale: Rc<Cell<f32>>,
@@ -80,6 +81,7 @@ impl NativeHost {
             random: Rc::new(RefCell::new(crate::random::Random::new(seed))),
             controls: crate::controls::Controls::default(),
             interfaces: None,
+            seas: None,
             interface_language: None,
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             time_scale: Rc::new(Cell::new(1.0)),
@@ -137,6 +139,13 @@ impl NativeHost {
     }
     pub fn screenshot_image(&self, handle: i32) -> Option<Rc<storm_formats::texture::Mip>> {
         self.interfaces.as_ref()?.screenshot_image(handle)
+    }
+    pub fn sea_draw(&self) -> Option<crate::sea::Surface> {
+        self.seas.as_ref()?.draw()
+    }
+    pub fn sea_surface(&self, id: EntityId) -> Option<crate::sea::Surface> {
+        self.entities.is_valid(id).then_some(())?;
+        self.seas.as_ref()?.surface(id)
     }
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()

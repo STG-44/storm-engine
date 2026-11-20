@@ -312,6 +312,9 @@ impl Engine {
         if let Some(interfaces) = &self.host.interfaces {
             interfaces.begin_frame();
         }
+        if let Some(seas) = &self.host.seas {
+            seas.begin_frame();
+        }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
                 && let Some(Value::Object(render)) =
@@ -378,6 +381,9 @@ impl Engine {
         }
         if let Some(interfaces) = &self.host.interfaces {
             interfaces.clear_draws();
+        }
+        if let Some(seas) = &self.host.seas {
+            seas.begin_frame();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {

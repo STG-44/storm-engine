@@ -2,6 +2,93 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers() -> Result<()> {
+    use storm_sim::sea::{CELLS, FRAMES};
+
+    let temp = Temporary::new()?;
+    let waves = temp.0.join("RESOURCE").join("Sea");
+    std::fs::create_dir_all(&waves)?;
+    let mut tga = vec![0; 18 + CELLS * 4];
+    tga[2] = 2;
+    tga[12] = 128;
+    tga[14] = 128;
+    tga[16] = 32;
+    for index in 0..FRAMES {
+        for pixel in tga[18..].chunks_exact_mut(4) {
+            pixel.copy_from_slice(&[(index * 3) as u8, 175, 250, 255]);
+        }
+        std::fs::write(waves.join(format!("sea{index:04}.tga")), &tga)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object water;
+        #event_handler("freeze","FreezeSea");
+        #event_handler("refresh","RefreshSea");
+        #event_handler("stop","StopSea");
+        #event_handler("resume","ResumeSea");
+        #event_handler("erase","EraseSea");
+        void Main() {
+            CreateEntity(&water,"sea");
+            LayerAddObject(1,&water,65530);
+            water.Sea2.Amp1=6.0;
+            water.Sea2.Amp2=2.0;
+            water.MaxSeaHeight=4.0;
+            water.Sea2.AnimSpeed1=4.0;
+            water.Sea2.AnimSpeed2=2.0;
+        }
+        void FreezeSea() { LayerFreeze(1,true); }
+        void RefreshSea() { water.isDone.refresh = ""; }
+        void StopSea() { LayerFreeze(1,false); water.Stop=true; }
+        void ResumeSea() { water.Stop=false; }
+        void EraseSea() { DeleteClass(&water); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(0)?;
+    let id = engine
+        .host
+        .entities
+        .first_id("sea")
+        .expect("registered SEA");
+    let start = engine.host.sea_draw().expect("first SEA draw");
+    assert_eq!(start.parameters.amplitude, [3.0, 1.0]);
+    assert_eq!(start.animation.frame, [0.0, 10.0]);
+    assert!((start.sample(12.0, -53.0)?.height - 30.0 / 255.0).abs() < 1e-7);
+    engine.frame(250)?;
+    let surface = engine.host.sea_draw().expect("advancing SEA draw");
+    assert_eq!(surface.animation.frame, [1.0, 10.5]);
+    assert!((surface.sample(12.0, -53.0)?.height - 40.5 / 255.0).abs() < 1e-7);
+
+    let mut event = Message::new("", vec![])?;
+    for name in ["freeze", "stop"] {
+        engine.emit_event(name, &mut event)?;
+        engine.frame(250)?;
+        assert!(engine.host.sea_draw().is_none());
+        assert_eq!(
+            engine.host.sea_surface(id).unwrap().animation.frame,
+            [1.0, 10.5]
+        );
+        engine.emit_event("refresh", &mut event)?;
+        assert_eq!(
+            engine.host.sea_draw().map(|sea| sea.animation.frame),
+            (name == "freeze").then_some([1.0, 10.5])
+        );
+    }
+    engine.emit_event("resume", &mut event)?;
+    engine.frame(250)?;
+    assert_eq!(engine.host.sea_draw().unwrap().animation.frame, [2.0, 11.0]);
+    engine.emit_event("erase", &mut event)?;
+    engine.frame(250)?;
+    assert!(engine.host.sea_surface(id).is_none());
+    assert!(engine.host.sea_draw().is_none());
+    Ok(())
+}
+
+#[test]
 fn scrshoter_retries_and_signals_after_publication_in_realize_order() -> Result<()> {
     use storm_formats::save_thumbnail::{RGBA_BYTES, SIDE};
 

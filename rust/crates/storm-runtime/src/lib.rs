@@ -11,6 +11,7 @@ mod locator;
 mod particles;
 mod random;
 mod script_libraries;
+pub mod sea;
 mod shared_headers;
 mod sound;
 mod teleport;
