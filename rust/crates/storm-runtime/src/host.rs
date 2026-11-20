@@ -43,6 +43,7 @@ pub struct NativeHost {
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) time_scale: Rc<Cell<f32>>,
+    pub(crate) ambient_light: Rc<Cell<Option<[u8; 3]>>>,
     glow_parameters: Rc<Cell<GlowParameters>>,
     pub(crate) delta_ms: u32,
 }
@@ -79,6 +80,7 @@ impl NativeHost {
             interface_language: None,
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             time_scale: Rc::new(Cell::new(1.0)),
+            ambient_light: Rc::default(),
             glow_parameters: Rc::default(),
             delta_ms: 0,
         })
@@ -238,7 +240,11 @@ impl NativeHost {
                         .interfaces
                         .clone()
                         .context("native interface unavailable")?;
-                    host.bind_library(location::functions(interfaces, host.random.clone()))
+                    host.bind_library(location::functions(
+                        interfaces,
+                        host.random.clone(),
+                        host.ambient_light.clone(),
+                    ))
                 })
             }
             interface::INTERFACE_LIBRARY => {

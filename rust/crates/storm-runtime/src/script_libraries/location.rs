@@ -1,7 +1,12 @@
-//! Native location and character lookups from location_script_lib.cpp.
+//! Native location functions from location_script_lib.cpp.
 use crate::{host::NativeFunction, interface::Interfaces, random::Random};
 use anyhow::{Result, bail, ensure};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    thread,
+    time::Duration,
+};
 use storm_script::{Array, Value};
 
 pub(crate) const LOCATION_LIBRARY: &str = "scriptlocationlibrary";
@@ -79,7 +84,8 @@ fn find<const N: usize>(cache: &mut [CacheEntry; N], args: &[Value]) -> Result<V
 pub(crate) fn functions(
     interfaces: Interfaces,
     random: Rc<RefCell<Random>>,
-) -> [(&'static str, NativeFunction); 9] {
+    ambient_light: Rc<Cell<Option<[u8; 3]>>>,
+) -> [(&'static str, NativeFunction); 11] {
     let mut characters: [CacheEntry; 16] = std::array::from_fn(|_| CacheEntry::default());
     let mut locations: [CacheEntry; 8] = std::array::from_fn(|_| CacheEntry::default());
     let progress_start = interfaces.clone();
@@ -170,6 +176,51 @@ pub(crate) fn functions(
             NativeFunction::new(move |args| {
                 ensure!(args.is_empty(), "ReloadProgressEnd expects no arguments");
                 interfaces.end_loading_progress();
+                Ok(Value::Void)
+            }),
+        ),
+        (
+            "systemdelay",
+            NativeFunction::new(|args| {
+                let [delay] = args else {
+                    bail!("SystemDelay expects one argument");
+                };
+                let Value::Int(delay) = delay.resolved()? else {
+                    bail!("SystemDelay expects milliseconds as an integer");
+                };
+                thread::sleep(Duration::from_millis(delay.max(1) as u64));
+                Ok(Value::Void)
+            }),
+        ),
+        (
+            "executetechnique",
+            NativeFunction::new(move |args| {
+                let [name] = args else {
+                    bail!("ExecuteTechnique expects one argument");
+                };
+                let Value::String(name) = name.resolved()? else {
+                    bail!("ExecuteTechnique expects a technique name");
+                };
+                let color = match name.to_ascii_lowercase().as_str() {
+                    // Packed D3DRS_AMBIENT values in location/old_ambient.fx.
+                    "amb_cave" => Some([0x2c, 0x2c, 0x30]),
+                    // The game loader prefixes the effect's original name.
+                    "inca_temple" | "amb_inca_temple" => Some([0x30, 0x30, 0x2c]),
+                    "amb_house" | "amb_shop" | "amb_other" => Some([0x30; 3]),
+                    "amb_tavern" => Some([0x30, 0x2c, 0x2c]),
+                    "amb_residence" => Some([0x85, 0x85, 0x80]),
+                    "amb_church" => Some([0x60, 0x60, 0x58]),
+                    "amb_jail" => Some([0x20, 0x20, 0x1c]),
+                    "amb_dungeon" => Some([0x20, 0x20, 0x30]),
+                    "" => None,
+                    _ => {
+                        eprintln!("warning: unsupported render technique {name:?}");
+                        None
+                    }
+                };
+                if let Some(color) = color {
+                    ambient_light.set(Some(color));
+                }
                 Ok(Value::Void)
             }),
         ),

@@ -1828,6 +1828,63 @@ fn configured_location_library_uses_live_arrays_and_entity_attributes() -> Resul
 }
 
 #[test]
+fn location_bindings_select_ambient_presets_and_wait_in_real_milliseconds() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"#libriary "ScriptLocationLibrary"
+        native void ExecuteTechnique(string preset);
+        native void SystemDelay(int milliseconds);
+        void Main() { ExecuteTechnique("AMB_DUNGEON"); }"#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    assert_eq!(engine.host.ambient_light.get(), None);
+    engine.frame(16)?;
+    assert_eq!(engine.host.ambient_light.get(), Some([0x20, 0x20, 0x30]));
+    for (name, expected) in [
+        ("inca_temple", [0x30, 0x30, 0x2c]),
+        ("amb_residence", [0x85, 0x85, 0x80]),
+        ("amb_inca_temple", [0x30, 0x30, 0x2c]),
+        ("", [0x30, 0x30, 0x2c]),
+        ("unknown_effect", [0x30, 0x30, 0x2c]),
+    ] {
+        assert_eq!(
+            engine
+                .host
+                .call("executetechnique", &[Value::String(name.into())])?,
+            Value::Void,
+        );
+        assert_eq!(engine.host.ambient_light.get(), Some(expected));
+    }
+    for (requested, minimum) in [(-5, 1), (0, 1), (7, 7)] {
+        let start = std::time::Instant::now();
+        assert_eq!(
+            engine.host.call("systemdelay", &[Value::Int(requested)])?,
+            Value::Void
+        );
+        assert!(start.elapsed() >= std::time::Duration::from_millis(minimum));
+        assert_eq!(engine.host.delta_ms, 16);
+    }
+    assert!(
+        engine
+            .host
+            .call("systemdelay", &[Value::Float(1.0)])
+            .is_err()
+    );
+    assert!(
+        engine
+            .host
+            .call("executetechnique", &[Value::Int(1)])
+            .is_err()
+    );
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn configured_game_uses_the_original_offline_steam_results() -> Result<()> {
     use storm_script::{Host, Value};
     let temp = Temporary::new()?;

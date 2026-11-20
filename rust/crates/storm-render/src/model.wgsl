@@ -5,7 +5,7 @@ struct Camera {
     light: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> camera: Camera;
-struct Object { matrix:mat4x4<f32>, damage:vec4<u32>, }
+struct Object { matrix:mat4x4<f32>, damage:vec3<u32>, ambient:u32, }
 @group(0) @binding(1) var<uniform> object: Object;
 @group(1) @binding(0) var surface: texture_2d<f32>;
 @group(1) @binding(1) var surface_sampler: sampler;
@@ -78,6 +78,12 @@ fn shade(input:Output,texel:vec4<f32>,alpha:f32)->vec4<f32> {
     let texel = textureSample(surface, surface_sampler, input.uv);
     if texel.a < 0.25 {
         discard;
+    }
+    if object.ambient != 0u {
+        let rgb = vec3u(object.ambient >> 16u, object.ambient >> 8u, object.ambient) & vec3u(255u);
+        let ambient = vec3f(rgb) / 255.0;
+        let direct = 0.65 * abs(dot(normal, normalize(camera.light.xyz)));
+        return vec4(texel.rgb * input.color.rgb * min(ambient + vec3f(direct), vec3f(1.0)), 1.0);
     }
     let light = 0.35 + 0.65 * abs(dot(normal, normalize(camera.light.xyz)));
     return vec4(texel.rgb * input.color.rgb * light * vec3(1.02, 1.0, 0.96), 1.0);

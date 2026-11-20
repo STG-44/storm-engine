@@ -319,6 +319,62 @@ fn original_model_messages_load_static_hierarchies_into_the_shared_script_runtim
 
 #[test]
 #[ignore = "requires a native GPU or software Vulkan"]
+fn location_techniques_change_the_pixels_of_an_existing_model() -> Result<()> {
+    let files = fixture()?;
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"#libriary "scriptLocationLibrary"
+        native void ExecuteTechnique(string name);
+        object model;
+        #event_handler("residence","Residence");
+        void Main() {
+            ExecuteTechnique("amb_jail");
+            CreateEntity(&model,"MODELR");
+            SendMessage(&model,"ls",20500,"root");
+            LayerAddObject(1,&model,0);
+        }
+        void Residence() { ExecuteTechnique("amb_residence"); }"#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine =
+        crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    let instance = storm_render::create_instance(wgpu::Backends::PRIMARY)?;
+    let gpu = pollster::block_on(storm_render::Gpu::request(&instance, None))?;
+    let mut scenes = ModelScenes::default();
+    engine.frame(0)?;
+    let jail = models.take_draws()?;
+    assert_eq!(jail[0].ambient_light, Some([0x20, 0x20, 0x1c]));
+    let live = models.live_ids()?;
+    scenes.prepare(&gpu, &jail, &live)?;
+    let dark = scenes.offscreen(&gpu, 320, 240, 0.0)?;
+    engine.emit_event("residence", &mut Message::new("", vec![])?)?;
+    engine.frame(0)?;
+    let residence = models.take_draws()?;
+    assert_eq!(residence[0].ambient_light, Some([0x85, 0x85, 0x80]));
+    assert!(Rc::ptr_eq(&jail[0].asset, &residence[0].asset));
+    scenes.prepare(&gpu, &residence, &live)?;
+    let light = scenes.offscreen(&gpu, 320, 240, 0.0)?;
+    let red = |frame: &storm_render::Frame| -> u32 {
+        frame
+            .rgba
+            .chunks_exact(4)
+            .map(|pixel| u32::from(pixel[0]))
+            .sum()
+    };
+    assert!(red(&dark) > 0 && red(&light) > red(&dark));
+    assert_eq!(scenes.cached(), 1);
+    scenes.prepare(&gpu, &jail, &live)?;
+    assert_eq!(dark.rgba, scenes.offscreen(&gpu, 320, 240, 0.0)?.rgba);
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires a native GPU or software Vulkan"]
 fn script_model_reloads_change_real_gpu_pixels_and_owner_removal_releases_cached_scenes()
 -> Result<()> {
     let files = fixture()?;

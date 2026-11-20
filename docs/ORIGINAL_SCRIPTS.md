@@ -170,8 +170,16 @@ statistics, overlay and DLC queries.
 two searches keep separate native-sized caches and check each cached index
 against current array contents. `NativeFindLoadCharacter` reads the current
 valid location entity's `index` attribute in storage order, and
-`GetNextLineString` returns CRLF. Progress-screen rendering, technique
-execution, and the delay service remain pending.
+`GetNextLineString` returns CRLF. `SystemDelay` waits synchronously for
+the specified real milliseconds, with the original one-millisecond minimum.
+
+`ExecuteTechnique` supports the location ambient presets from
+`src/techniques/location/old_ambient.fx`. The static `MODELR` shader
+uses the preset RGB as its ambient contribution, including in the desktop
+window and PNG output. Both `inca_temple` and the game loader's
+`amb_inca_temple` spelling select the temple preset. An empty technique
+leaves the current lighting state intact. Unsupported names warn and leave
+it intact as well. General Direct3D effect execution remains pending.
 
 `script_interface_functions` exposes the configured language and common
 translations. It resolves the selected directory and strings file through
@@ -394,3 +402,8 @@ the logo files absent, the script advances through AkellaLogo, Blackmark,
 and Title. Before the picture compositor was added, startup stopped as it
 attempted to create `InfoHandler` at `interface/interface.c:1737`.
 The compositor is verified with independently generated picture fixtures.
+
+With the current transition services, the same startup fixture reaches
+`Main_Start` after the logo sequence. Frame 10 of the command above
+exhausts the script instruction budget in `CI_GetKeyName` during the
+second control initialization.

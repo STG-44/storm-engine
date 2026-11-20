@@ -305,13 +305,15 @@ struct CameraUniform {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct ObjectUniform {
     matrix: [[f32; 4]; 4],
-    damage: [u32; 4],
+    damage: [u32; 3],
+    ambient: u32,
 }
 impl ObjectUniform {
-    fn new(matrix: Mat4, mask: u16, triangle: bool) -> Self {
+    fn new(matrix: Mat4, mask: u16, triangle: bool, ambient: u32) -> Self {
         Self {
             matrix: matrix.to_cols_array_2d(),
-            damage: [u32::from(mask), u32::from(triangle), 0, 0],
+            damage: [u32::from(mask), u32::from(triangle), 0],
+            ambient,
         }
     }
     fn native_normals(mut self, enabled: bool) -> Self {
@@ -377,6 +379,7 @@ pub struct ModelScene {
     pose_buffer: wgpu::Buffer,
     pose: ModelPose,
     model_root: Option<Mat4>,
+    ambient: u32,
     waves: storm_sim::Waves,
     rig: storm_sim::RigState,
     native_sail_geometry: bool,
@@ -942,6 +945,7 @@ impl ModelScene {
             native_sail_geometry: false,
             native_pose_math: false,
             model_root: None,
+            ambient: 0,
             wave_buffer,
             sea_map_buffer,
             sea_uniform_buffer,
@@ -956,6 +960,9 @@ impl ModelScene {
     }
     pub fn set_native_pose_math(&mut self, enabled: bool) {
         self.native_pose_math = enabled;
+    }
+    pub fn set_ambient_light(&mut self, rgb: Option<[u8; 3]>) {
+        self.ambient = rgb.map_or(0, |[r, g, b]| u32::from_be_bytes([255, r, g, b]));
     }
     fn pose_matrix(&self) -> Result<Mat4> {
         if let Some(matrix) = self.model_root {
@@ -1442,7 +1449,8 @@ impl ModelScene {
         );
         let base = self.pose_matrix()?;
         self.pose_bytes[..OBJECT_BYTES].copy_from_slice(bytemuck::bytes_of(
-            &ObjectUniform::new(base, 0, false).native_normals(self.model_root.is_some()),
+            &ObjectUniform::new(base, 0, false, self.ambient)
+                .native_normals(self.model_root.is_some()),
         ));
         for (i, mesh) in self.meshes.iter().enumerate() {
             let transform = mesh
@@ -1456,6 +1464,7 @@ impl ModelScene {
                     if matches!(&mesh.dynamic,Some((DynamicMesh::Particles(p),_)) if p.style.is_some()) {Mat4::IDENTITY} else {base * transform},
                     self.ship_state.sail_holes.get(&i).copied().unwrap_or(0),
                     mesh.sail.as_ref().is_some_and(|(p, _)| p.is_triangle()),
+                    self.ambient,
                 ).native_normals(self.model_root.is_some()),
             ));
         }

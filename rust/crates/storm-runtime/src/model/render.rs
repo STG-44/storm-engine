@@ -6,8 +6,7 @@ use storm_render::{
 };
 
 /// GPU scenes follow the registry's draw order and asset revision. This bounded
-/// static path reuses the existing shader/material foundation, not native
-/// lighting/technique, collision, animation or sea rendering.
+/// static path reuses the existing shader/material foundation.
 pub struct ModelScenes {
     owners: Vec<Owner>,
     scenes: Vec<ModelScene>,
@@ -104,6 +103,7 @@ impl ModelScenes {
                     .1
             };
             scene.set_native_model_matrix(Some(draw.matrix))?;
+            scene.set_ambient_light(draw.ambient_light);
             scenes.push(scene);
             owners.push(Owner::for_draw(draw));
         }

@@ -1,8 +1,11 @@
-//! Static MODELR messages and shared runtime ownership. Animation, native
-//! lighting/techniques, collision and complete NODER behavior remain pending.
+//! Static MODELR messages and shared runtime ownership.
 use crate::{GameDirectory, NativeHost, Section, Service, ServiceFrame};
 use anyhow::{Context, Result, bail, ensure};
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    rc::Rc,
+};
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, Message, Stage};
 use storm_render::{model::ModelAsset, texture_paths::TexturePaths};
 mod render;
@@ -23,6 +26,7 @@ pub struct Draw {
     pub asset: Rc<ModelAsset>,
     /// Original CMatrix bytes; renderer coordinate conversion is separate.
     pub matrix: [f32; 16],
+    pub ambient_light: Option<[u8; 3]>,
 }
 struct State {
     geometry: Option<Rc<ModelAsset>>,
@@ -42,6 +46,7 @@ struct Shared {
     game: GameDirectory,
     texture_path: RefCell<String>,
     texture_paths: Rc<RefCell<TexturePaths>>,
+    ambient_light: Rc<Cell<Option<[u8; 3]>>>,
     models: RefCell<BTreeMap<u64, Rc<RefCell<State>>>>,
     draws: RefCell<Vec<Draw>>,
 }
@@ -56,6 +61,7 @@ impl Models {
             game,
             texture_path: RefCell::default(),
             texture_paths: host.texture_paths.clone(),
+            ambient_light: host.ambient_light.clone(),
             models: RefCell::default(),
             draws: RefCell::default(),
         }));
@@ -115,6 +121,7 @@ impl Models {
             revision: state.revision,
             asset: asset.clone(),
             matrix: state.matrix,
+            ambient_light: self.0.ambient_light.get(),
         }))
     }
 }
