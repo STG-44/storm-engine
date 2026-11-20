@@ -135,6 +135,9 @@ impl NativeHost {
     pub fn mouse_axis(&self, name: &str) -> Option<f32> {
         self.controls.mouse_axis(name)
     }
+    pub fn screenshot_image(&self, handle: i32) -> Option<Rc<storm_formats::texture::Mip>> {
+        self.interfaces.as_ref()?.screenshot_image(handle)
+    }
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }

@@ -14,6 +14,7 @@ path = "src/bin/storm-assets.rs"
 anyhow.workspace = true
 clap.workspace = true
 encoding_rs.workspace = true
+flate2 = "1.1"
 serde_json.workspace = true
 
 [lints]

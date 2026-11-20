@@ -11,6 +11,7 @@ pub mod particle_project;
 pub mod particles;
 #[cfg(test)]
 mod presentation_tests;
+pub mod save_thumbnail;
 pub mod texture;
 pub mod waypoints;
 

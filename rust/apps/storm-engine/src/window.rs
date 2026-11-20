@@ -234,15 +234,38 @@ impl Application<'_> {
         self.last_frame = now;
         self.next_frame =
             now + Duration::from_millis(u64::from(self.options.settings.minimum_frame_ms()));
-        let frame = self.engine.frame_with_timer(&self.timer)?;
+        let next_elapsed = self
+            .elapsed_ms
+            .checked_add(u64::from(delta))
+            .context("window display clock overflow")?;
+        let frame = self
+            .engine
+            .frame_with_timer_and_screenshot(&self.timer, &mut |host| {
+                let Some(surface) = &self.surface else {
+                    return Ok(None);
+                };
+                let mut surface = surface.borrow_mut();
+                if !surface.configured {
+                    return Ok(None);
+                }
+                let Surface {
+                    scene, gpu, config, ..
+                } = &mut *surface;
+                scene
+                    .screenshot(
+                        gpu,
+                        [config.width, config.height],
+                        next_elapsed as f32 * 0.001,
+                        host,
+                        &self.models,
+                    )
+                    .map(Some)
+            })?;
         if !frame.continued {
             event_loop.exit();
             return Ok(());
         }
-        self.elapsed_ms = self
-            .elapsed_ms
-            .checked_add(u64::from(delta))
-            .context("window display clock overflow")?;
+        self.elapsed_ms = next_elapsed;
         if frame.skipped {
             return Ok(());
         }

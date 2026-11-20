@@ -1,7 +1,10 @@
 use crate::{ControlInput, NativeHost};
 use anyhow::{Result, ensure};
 use storm_core::{LayerType, Message, Stage, Value as MessageValue};
+use storm_render::Frame;
 use storm_script::{Limits, Runtime, Value};
+
+type ScreenshotSource<'a> = dyn FnMut(&NativeHost) -> Result<Option<Frame>> + 'a;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
@@ -193,7 +196,11 @@ impl Engine {
         }
         Ok(())
     }
-    fn realize_entities(&mut self, delta_ms: u32) -> Result<()> {
+    fn realize_entities(
+        &mut self,
+        delta_ms: u32,
+        screenshot: &mut ScreenshotSource<'_>,
+    ) -> Result<()> {
         for id in self.host.entities.layer_ids(LayerType::Realize) {
             self.host
                 .entities
@@ -206,27 +213,71 @@ impl Engine {
             {
                 self.event(&event)?;
             }
+            if self.host.entities.is_valid(id)
+                && let Some(interfaces) = &self.host.interfaces
+                && interfaces.screenshot_pending(id)
+            {
+                // Original SCRSHOTER flushes the scene at this point in Realize
+                // and sends the event before later layers and control edges.
+                let captured = screenshot(&self.host).and_then(|frame| {
+                    let Some(frame) = frame else {
+                        return Ok(false);
+                    };
+                    interfaces.finish_screenshot(id, frame)?;
+                    Ok(true)
+                });
+                match captured {
+                    Ok(true) => {}
+                    Ok(false) => storm_script::Host::trace(
+                        &mut self.host,
+                        "ERROR!!! screen shot create error",
+                    )?,
+                    Err(error) => {
+                        storm_script::Host::trace(
+                            &mut self.host,
+                            &format!("ERROR!!! screen shot create error: {error:#}"),
+                        )?;
+                    }
+                }
+                self.event("makescrshot")?;
+            }
         }
         Ok(())
     }
     /// Retains the supported CoreImpl::Run order. State loading, clock
     /// globals, Steam callbacks and dynamic service creation remain separate ports.
     pub fn frame(&mut self, delta_ms: u32) -> Result<FrameResult> {
-        self.frame_with_deltas(delta_ms, None)
+        self.frame_with_screenshot(delta_ms, &mut |_| Ok(None))
+    }
+    pub fn frame_with_screenshot(
+        &mut self,
+        delta_ms: u32,
+        screenshot: &mut ScreenshotSource<'_>,
+    ) -> Result<FrameResult> {
+        self.frame_with_deltas(delta_ms, None, screenshot)
     }
     /// The native TIMER's fixed delta overrides script time scaling while
     /// input still advances by the measured interval.
     pub fn frame_with_timer(&mut self, timer: &crate::clock::Timer) -> Result<FrameResult> {
+        self.frame_with_timer_and_screenshot(timer, &mut |_| Ok(None))
+    }
+    pub fn frame_with_timer_and_screenshot(
+        &mut self,
+        timer: &crate::clock::Timer,
+        screenshot: &mut ScreenshotSource<'_>,
+    ) -> Result<FrameResult> {
         let clock = timer.snapshot();
         self.frame_with_deltas(
             clock.real_delta_ms,
             clock.fixed.then_some(clock.fixed_value),
+            screenshot,
         )
     }
     fn frame_with_deltas(
         &mut self,
         real_delta_ms: u32,
         fixed_delta: Option<u32>,
+        screenshot: &mut ScreenshotSource<'_>,
     ) -> Result<FrameResult> {
         ensure!(
             matches!(self.phase, Phase::Ready | Phase::Running),
@@ -245,13 +296,18 @@ impl Engine {
             None if scale == 1.0 => real_delta_ms,
             None => (real_delta_ms as f32 * scale) as u32,
         };
-        let result = self.frame_inner(delta_ms, real_delta_ms);
+        let result = self.frame_inner(delta_ms, real_delta_ms, screenshot);
         if result.is_err() {
             self.phase = Phase::Faulted;
         }
         result
     }
-    fn frame_inner(&mut self, delta_ms: u32, real_delta_ms: u32) -> Result<FrameResult> {
+    fn frame_inner(
+        &mut self,
+        delta_ms: u32,
+        real_delta_ms: u32,
+        screenshot: &mut ScreenshotSource<'_>,
+    ) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
         if let Some(interfaces) = &self.host.interfaces {
             interfaces.begin_frame();
@@ -291,7 +347,7 @@ impl Engine {
         self.execute_entities(delta_ms)?;
         self.services(Section::Execute, false, &mut context)?;
         self.services(Section::Realize, true, &mut context)?;
-        self.realize_entities(delta_ms)?;
+        self.realize_entities(delta_ms, screenshot)?;
         self.services(Section::Realize, false, &mut context)?;
         self.process_controls(real_delta_ms)?;
         self.host.entities.new_lifecycle()?;

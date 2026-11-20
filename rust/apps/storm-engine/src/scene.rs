@@ -1,16 +1,18 @@
 //! Shared scene and transition rendering for the window and PNG output.
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
 use storm_render::{
-    Gpu,
+    Frame, Gpu,
     color::{ColorCorrection, ColorPass},
     fade::{FadeCompositor, FadeDraw},
     loading::{LoadingPictures, LoadingScreen},
+    screenshot::{SIDE, ScreenshotPass},
 };
 use storm_runtime::{
+    NativeHost,
     interface::LoadingProgress,
-    model::{Draw, ModelScenes},
+    model::{Draw, ModelScenes, Models},
 };
 
 pub(crate) struct SceneFrame<'a> {
@@ -28,6 +30,7 @@ pub(crate) struct SceneRenderer {
     loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
     fade: FadeCompositor,
     color: ColorPass,
+    screenshot: Option<ScreenshotPass>,
 }
 
 impl SceneRenderer {
@@ -38,6 +41,7 @@ impl SceneRenderer {
             loading: None,
             fade: FadeCompositor::new(gpu, format),
             color: ColorPass::new(format),
+            screenshot: None,
         }
     }
 
@@ -76,6 +80,39 @@ impl SceneRenderer {
             gpu.queue.submit([encoder.finish()]);
         }
         Ok(())
+    }
+
+    pub fn screenshot(
+        &mut self,
+        gpu: &Gpu,
+        [width, height]: [u32; 2],
+        seconds: f32,
+        host: &NativeHost,
+        models: &Models,
+    ) -> Result<Frame> {
+        let limit = gpu.device.limits().max_texture_dimension_2d;
+        ensure!(
+            (1..=limit).contains(&width) && (1..=limit).contains(&height),
+            "invalid screenshot viewport"
+        );
+        let source = self.color.source(gpu, [width, height]);
+        let fades = host.fade_draws();
+        let frame = SceneFrame {
+            draws: &models.draws()?,
+            live: &models.live_ids()?,
+            seconds,
+            pictures: host.loading_draw(),
+            fades: fades.as_deref().unwrap_or_default(),
+            // The display ramp is applied after the original capture.
+            correction: None,
+        };
+        storm_render::render_offscreen_with(gpu, SIDE, SIDE, seconds, |encoder, target| {
+            self.encode(gpu, encoder, Some(&source), [width, height], &frame)?;
+            self.screenshot
+                .get_or_insert_with(|| ScreenshotPass::new(gpu))
+                .encode(gpu, encoder, &source, target);
+            Ok(())
+        })
     }
 
     pub fn encode(

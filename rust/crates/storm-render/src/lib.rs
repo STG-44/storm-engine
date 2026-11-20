@@ -9,6 +9,7 @@ pub mod color;
 pub mod fade;
 pub mod loading;
 pub mod model;
+pub mod screenshot;
 pub mod texture_paths;
 
 /// The retained DX9 renderer's stored glow parameters. Its regular

@@ -2,6 +2,80 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn scrshoter_retries_and_signals_after_publication_in_realize_order() -> Result<()> {
+    use storm_formats::save_thumbnail::{RGBA_BYTES, SIDE};
+
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    let border = temp.0.join("RESOURCE/Textures/interfaces");
+    std::fs::create_dir_all(&border)?;
+    let mut texture = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    texture.extend([0, 0, 200, 128]);
+    std::fs::write(border.join("EmptyBorder.tga.tx"), texture)?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+            object camera;
+            #event_handler("makescrshot","PictureReady");
+            #event_handler("Control Activation","KeyDown");
+            void Main() {
+                CreateEntity(&camera,"SCRSHOTER");
+                LayerAddObject(1,&camera,-1);
+                Trace("initial="+sti(SendMessage(&camera,"l",45042)));
+                int key = CreateControl("MenuKey");
+                MapControl(key,65);
+            }
+            void PictureReady() {
+                string info = "previous";
+                int handle = sti(SendMessage(&camera,"l",45042));
+                int preview = sti(SendMessage(&camera,"lsse",45043,"","NewSave",&info));
+                Trace("capture="+handle+":"+preview+":"+info);
+            }
+            void KeyDown() { Trace("key"); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "script:initial=-1",
+            "script:ERROR!!! screen shot create error",
+            "script:capture=-1:-1:"
+        ]
+    );
+    engine.control_input(ControlInput::Button {
+        code: 65,
+        pressed: true,
+    });
+    engine.frame_with_screenshot(16, &mut |_| {
+        Ok(Some(storm_render::Frame {
+            width: SIDE,
+            height: SIDE,
+            rgba: [20, 40, 60, 5].repeat(RGBA_BYTES / 4),
+        }))
+    })?;
+    assert_eq!(trace.take(), ["script:capture=0:0:", "script:key"]);
+    let image = engine.host.screenshot_image(0).expect("captured texture");
+    assert!(
+        image
+            .rgba
+            .chunks_exact(4)
+            .all(|pixel| pixel == [110, 20, 30, 191])
+    );
+    engine.frame_with_screenshot(16, &mut |_| panic!("this entity already has a screenshot"))?;
+    assert!(trace.take().is_empty());
+    engine.shutdown()?;
+    assert!(engine.host.screenshot_image(0).is_none());
+    Ok(())
+}
+
+#[test]
 fn interface_loads_legacy_options_and_reports_an_empty_file_synchronously() -> Result<()> {
     let temp = Temporary::new()?;
     let ini = temp.0.join("RESOURCE/INI/INTERFACES");

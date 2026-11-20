@@ -5,6 +5,7 @@ mod log;
 mod options;
 mod progress;
 mod quest_text;
+mod screenshot;
 mod settings;
 mod timer;
 mod video;
@@ -64,6 +65,7 @@ struct Shared {
     states: RefCell<BTreeMap<u64, InterfaceState>>,
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
     timers: RefCell<BTreeMap<u64, BattleTimerState>>,
+    screenshots: RefCell<screenshot::Screenshots>,
     loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     previous_loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     progress: RefCell<progress::Progress>,
@@ -98,6 +100,7 @@ impl Interfaces {
             states: RefCell::default(),
             logs: RefCell::default(),
             timers: RefCell::default(),
+            screenshots: RefCell::default(),
             loading_draw: RefCell::default(),
             previous_loading_draw: RefCell::default(),
             progress: RefCell::default(),
@@ -134,6 +137,10 @@ impl Interfaces {
         host.entities.register_class("Fader", move || {
             Ok(Box::new(fader::FaderActor::new(shared.clone())))
         })?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("scrshoter", move || {
+            Ok(Box::new(screenshot::Actor::new(shared.clone())))
+        })?;
         host.interfaces = Some(interfaces);
         Ok(())
     }
@@ -166,6 +173,15 @@ impl Interfaces {
 
     pub fn take_timer_event(&self, id: EntityId) -> Option<String> {
         self.0.timers.borrow_mut().get_mut(&id.raw())?.take_event()
+    }
+    pub(crate) fn screenshot_pending(&self, id: EntityId) -> bool {
+        self.0.screenshots.borrow().pending(id)
+    }
+    pub(crate) fn finish_screenshot(&self, id: EntityId, frame: storm_render::Frame) -> Result<()> {
+        screenshot::finish(&self.0, id, frame)
+    }
+    pub(crate) fn screenshot_image(&self, handle: i32) -> Option<Rc<storm_formats::texture::Mip>> {
+        self.0.screenshots.borrow().image(handle)
     }
     pub fn clear_draws(&self) {
         self.0.loading_draw.replace(None);

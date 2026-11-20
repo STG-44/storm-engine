@@ -116,15 +116,27 @@ fn main() -> Result<()> {
         let mut elapsed_ms = 0u64;
         let mut headless: Option<(Gpu, SceneRenderer)> = None;
         for (index, delta_ms) in arguments.frame_ms.into_iter().enumerate() {
-            let frame = engine
-                .frame(delta_ms)
-                .with_context(|| format!("engine frame {index}"))?;
+            let next_elapsed = elapsed_ms
+                .checked_add(u64::from(delta_ms))
+                .context("engine display clock overflow")?;
+            let frame = if arguments.headless.is_some() {
+                engine.frame_with_screenshot(delta_ms, &mut |host| {
+                    if headless.is_none() {
+                        headless = Some(headless_renderer(arguments.backend.flags())?);
+                    }
+                    let (gpu, renderer) = headless.as_mut().expect("headless renderer initialized");
+                    renderer
+                        .screenshot(gpu, size, next_elapsed as f32 * 0.001, host, &models)
+                        .map(Some)
+                })
+            } else {
+                engine.frame(delta_ms)
+            }
+            .with_context(|| format!("engine frame {index}"))?;
             if !frame.continued {
                 break;
             }
-            elapsed_ms = elapsed_ms
-                .checked_add(u64::from(delta_ms))
-                .context("engine display clock overflow")?;
+            elapsed_ms = next_elapsed;
             if arguments.headless.is_some() && !frame.skipped {
                 let fades = engine.host.fade_draws();
                 let fades = fades.as_deref().unwrap_or_default();

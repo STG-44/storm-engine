@@ -423,11 +423,22 @@ the IDs and reference counts of localized catalogs available in the new
 language.
 
 On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
-enters `InitInterface`. The current run stops in `CreateScreenShoter` while
-creating `scrshoter`, before the background scene or menu is drawn. The
-original source files were unchanged in this run.
+enters `InitInterface`. It now creates `scrshoter` and begins setting up the
+background. The pinned run reaches `CreateSea` in `sea_ai/AISea.c` and stops at
+the missing configured `sea` entity. The original source files were unchanged
+in this run.
+
+`scrshoter` captures the current scene at its Realize layer in the desktop
+window and PNG renderer. The thumbnail uses the original 128 × 128 integer
+sampling and the optional `EmptyBorder.tga` blend. The script can retrieve the
+capture through `MSG_SCRSHOT_MAKE`; `makescrshot` fires after the image is
+available, or after a failed attempt so the script can proceed. The thumbnail
+reader accepts the original compressed save preview and releases cached images
+on request or when the entity is destroyed. The PNG and window fixture checks
+capture, preview reading and cache release independently from menu startup.
 
 The Rust geometry reader can decode separately installed `MainMenu.gm`
-(20 meshes) and `MainMenu_locators.gm` (nine labels). Rendering the original
-menu still requires the screenshot entity and the menu's background and
-interface services.
+(20 meshes) and `MainMenu_locators.gm` (nine labels). The extracted game
+resources also contain the expected 64 raw BGRA sea height frames. Rendering
+the original menu still requires the configured sea, the background scene
+and the menu interface services.
