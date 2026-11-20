@@ -1,18 +1,19 @@
 //! Loading picture composition for window and offscreen targets.
 use crate::{Gpu, model::upload_texture};
 use anyhow::{Result, ensure};
+use std::sync::Arc;
 use storm_formats::texture::Texture;
 use wgpu::util::DeviceExt;
 
 mod text;
 pub use text::LoadingText;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct LoadingPictures {
-    pub background: Option<Texture>,
-    pub foreground: Option<Texture>,
-    pub border: Option<Texture>,
-    pub text: Option<LoadingText>,
+    pub background: Option<Arc<Texture>>,
+    pub foreground: Option<Arc<Texture>>,
+    pub border: Option<Arc<Texture>>,
+    pub text: Option<Arc<LoadingText>>,
 }
 
 pub struct LoadingScreen {
@@ -47,14 +48,12 @@ impl LoadingScreen {
                 &[0; 4],
             )
             .create_view(&Default::default());
-        let texture = |source: &Option<Texture>| {
-            source
-                .as_ref()
-                .map_or_else(|| Ok(empty.clone()), |source| upload_texture(gpu, source))
+        let texture = |source: Option<&Texture>| {
+            source.map_or_else(|| Ok(empty.clone()), |source| upload_texture(gpu, source))
         };
-        let background = texture(&pictures.background)?;
-        let foreground = texture(&pictures.foreground)?;
-        let border = texture(&pictures.border)?;
+        let background = texture(pictures.background.as_deref())?;
+        let foreground = texture(pictures.foreground.as_deref())?;
+        let border = texture(pictures.border.as_deref())?;
         let text_size = pictures
             .text
             .as_ref()
@@ -290,9 +289,9 @@ mod tests {
         let instance = crate::create_instance(wgpu::Backends::PRIMARY)?;
         let gpu = pollster::block_on(Gpu::request(&instance, None))?;
         let pictures = LoadingPictures {
-            background: Some(pixel([0, 255, 0, 255])?),
-            foreground: Some(pixel([255, 0, 0, 255])?),
-            border: Some(pixel([0, 0, 255, 128])?),
+            background: Some(Arc::new(pixel([0, 255, 0, 255])?)),
+            foreground: Some(Arc::new(pixel([255, 0, 0, 255])?)),
+            border: Some(Arc::new(pixel([0, 0, 255, 128])?)),
             text: None,
         };
         let screen = LoadingScreen::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &pictures)?;
@@ -351,11 +350,11 @@ mod tests {
             row[4..12].fill(255);
         }
         let pictures = LoadingPictures {
-            text: Some(LoadingText {
+            text: Some(Arc::new(LoadingText {
                 width: 16,
                 height: 16,
                 coverage,
-            }),
+            })),
             ..LoadingPictures::default()
         };
         let screen = LoadingScreen::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &pictures)?;

@@ -14,6 +14,7 @@ use std::{
     cell::{Cell, Ref, RefCell},
     collections::BTreeMap,
     rc::Rc,
+    sync::Arc,
     time::Instant,
 };
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
@@ -151,11 +152,32 @@ impl Interfaces {
         self.0.loading_draw.borrow().clone()
     }
 
+    pub fn set_loading_progress_foreground(&self, name: String) {
+        self.0.progress.borrow_mut().set_foreground(name);
+    }
+
     pub fn start_loading_progress(&self) -> Result<()> {
-        let pictures = self
-            .loading_draw()
-            .or_else(|| self.0.previous_loading_draw.borrow().clone());
-        self.0.progress.borrow_mut().start(pictures, Instant::now())
+        self.0.progress.borrow_mut().start(Instant::now(), |name| {
+            let pictures = self
+                .loading_draw()
+                .or_else(|| self.0.previous_loading_draw.borrow().clone());
+            let Some(name) = name else {
+                return Ok(pictures);
+            };
+            let mut pictures = pictures.as_deref().cloned().unwrap_or_default();
+            pictures.foreground = if name.is_empty() {
+                None
+            } else {
+                load_texture(&self.0, name)?.map(Arc::new)
+            };
+            if pictures.foreground.is_none() {
+                pictures.border = None;
+            }
+            Ok((pictures.background.is_some()
+                || pictures.foreground.is_some()
+                || pictures.text.is_some())
+            .then(|| Rc::new(pictures)))
+        })
     }
 
     pub fn update_loading_progress(&self) -> Result<()> {

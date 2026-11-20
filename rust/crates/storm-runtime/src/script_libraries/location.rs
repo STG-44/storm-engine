@@ -75,11 +75,12 @@ fn find<const N: usize>(cache: &mut [CacheEntry; N], args: &[Value]) -> Result<V
     Ok(Value::Int(-1))
 }
 
-pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunction); 7] {
+pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunction); 8] {
     let mut characters: [CacheEntry; 16] = std::array::from_fn(|_| CacheEntry::default());
     let mut locations: [CacheEntry; 8] = std::array::from_fn(|_| CacheEntry::default());
     let progress_start = interfaces.clone();
     let progress_update = interfaces.clone();
+    let progress_picture = interfaces.clone();
     [
         (
             "nativefindcharacter",
@@ -113,6 +114,19 @@ pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunctio
             NativeFunction::new(|args| {
                 ensure!(args.is_empty(), "GetNextLineString expects no arguments");
                 Ok(Value::String("\r\n".into()))
+            }),
+        ),
+        (
+            "setreloadprogressbackimage",
+            NativeFunction::new(move |args| {
+                let [name] = args else {
+                    bail!("SetReloadProgressBackImage expects one argument");
+                };
+                let Value::String(name) = name.resolved()? else {
+                    bail!("SetReloadProgressBackImage expects a texture name");
+                };
+                progress_picture.set_loading_progress_foreground(name);
+                Ok(Value::Void)
             }),
         ),
         (

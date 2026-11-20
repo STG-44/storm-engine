@@ -20,6 +20,7 @@ type Presenter = dyn FnMut(&LoadingProgress) -> Result<()>;
 #[derive(Default)]
 pub(super) struct Progress {
     active: Option<Active>,
+    foreground_name: Option<String>,
     presenter: Option<Box<Presenter>>,
 }
 
@@ -30,10 +31,18 @@ struct Active {
 }
 
 impl Progress {
-    pub fn start(&mut self, pictures: Option<Rc<LoadingPictures>>, now: Instant) -> Result<()> {
+    pub fn set_foreground(&mut self, name: String) {
+        self.foreground_name = Some(name);
+    }
+
+    pub fn start(
+        &mut self,
+        now: Instant,
+        prepare_pictures: impl FnOnce(Option<&str>) -> Result<Option<Rc<LoadingPictures>>>,
+    ) -> Result<()> {
         if self.active.is_none() {
             self.active = Some(Active {
-                pictures,
+                pictures: prepare_pictures(self.foreground_name.as_deref())?,
                 last_update: now,
                 step: 0,
             });
@@ -55,6 +64,7 @@ impl Progress {
 
     pub fn end(&mut self) {
         self.active = None;
+        self.foreground_name = None;
     }
 
     pub fn view(&self) -> Option<LoadingProgress> {
@@ -98,8 +108,8 @@ mod tests {
             Ok(())
         });
         progress.update(start)?;
-        progress.start(None, start)?;
-        progress.start(None, start)?;
+        progress.start(start, |_| Ok(None))?;
+        progress.start(start, |_| panic!("duplicate start reloads the pictures"))?;
         progress.update(start + Duration::from_millis(49))?;
         assert_eq!(&*phases.borrow(), &[0.0]);
         for step in 1..=CYCLE_STEPS {
@@ -111,7 +121,7 @@ mod tests {
         progress.end();
         progress.end();
         assert!(progress.view().is_none());
-        progress.start(None, start)?;
+        progress.start(start, |_| Ok(None))?;
         assert_eq!(progress.view().unwrap().phase, 0.0);
         Ok(())
     }

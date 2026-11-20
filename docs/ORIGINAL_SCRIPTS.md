@@ -283,6 +283,13 @@ can present an update during synchronous script execution. Texture assets
 are optional. Updates are limited to one every 50 milliseconds of
 monotonic time, independently of the simulation speed.
 
+`SetReloadProgressBackImage` selects the centered foreground for
+`ReloadProgressStart`. The script can select a picture without creating an
+`InfoHandler`. An empty path or a missing texture omits the foreground,
+while a backdrop and caption from `InfoHandler` remain visible. Changes to
+the selection leave the active loading screen intact, and
+`ReloadProgressEnd` clears the selection.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces

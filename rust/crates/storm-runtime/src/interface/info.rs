@@ -1,6 +1,6 @@
 use super::{Shared, load_texture};
 use anyhow::Result;
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 use storm_core::{Entity, EntityInit, Message, Stage};
 use storm_render::loading::{LoadingPictures, LoadingText};
 
@@ -66,10 +66,10 @@ impl Entity for InfoActor {
                 None
             };
             self.pictures = Some(Rc::new(LoadingPictures {
-                background,
-                foreground,
-                border,
-                text,
+                background: background.map(Arc::new),
+                foreground: foreground.map(Arc::new),
+                border: border.map(Arc::new),
+                text: text.map(Arc::new),
             }));
         }
         Ok(true)

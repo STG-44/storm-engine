@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::Arc;
 
 #[test]
 fn reload_progress_commands_present_inside_the_script_and_retain_the_last_picture() -> Result<()> {
@@ -70,6 +71,116 @@ fn reload_progress_commands_present_inside_the_script_and_retain_the_last_pictur
     assert_eq!(trace.take(), ["present:false", "script:loaded"]);
     assert!(engine.host.loading_progress().is_none());
     engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
+fn reload_progress_uses_the_script_foreground_until_the_session_ends() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("Resource/Textures");
+    std::fs::create_dir_all(&textures)?;
+    for (name, red) in [
+        ("Panel", 60),
+        ("Backdrop", 80),
+        ("Frame", 100),
+        ("Selected", 120),
+    ] {
+        let mut bytes = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        bytes.extend([0, 0, red, 255]);
+        std::fs::write(textures.join(format!("{name}.tga.tx")), bytes)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "scriptLocationLibrary"
+        native void SetReloadProgressBackImage(string picture);
+        native void ReloadProgressStart();
+        native void ReloadProgressUpdate();
+        native void ReloadProgressEnd();
+        object loading;
+        #event_handler("preview","Preview");
+        #event_handler("select_picture","SelectPicture");
+        #event_handler("select_missing","SelectMissing");
+        #event_handler("clear_picture","ClearPicture");
+        #event_handler("start_progress","StartProgress");
+        #event_handler("end_progress","EndProgress");
+        void Main() { SelectPicture(); }
+        void Preview() {
+            loading.picfilename="panel.tga";
+            loading.picbackfilename="backdrop.tga";
+            loading.picborderfilename="frame.tga";
+            CreateEntity(&loading,"InfoHandler");
+            SendMessage(&loading,"l",1);
+        }
+        void SelectPicture() { SetReloadProgressBackImage("selected.tga"); }
+        void SelectMissing() { SetReloadProgressBackImage("missing.tga"); }
+        void ClearPicture() { SetReloadProgressBackImage(""); }
+        void StartProgress() {
+            ReloadProgressStart();
+            ReloadProgressUpdate();
+        }
+        void EndProgress() { ReloadProgressEnd(); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let current_pictures =
+        |engine: &Engine| engine.host.loading_progress().unwrap().pictures.unwrap();
+    let mut args = Message::new("", vec![])?;
+    engine.frame(0)?;
+    engine.emit_event("start_progress", &mut args)?;
+    let standalone = current_pictures(&engine);
+    assert_eq!(
+        standalone.foreground.as_ref().unwrap().mips[0].rgba,
+        [120, 0, 0, 255]
+    );
+    assert!(standalone.background.is_none());
+    engine.emit_event("end_progress", &mut args)?;
+
+    engine.emit_event("preview", &mut args)?;
+    let original = engine.host.loading_draw().unwrap();
+    engine.emit_event("select_picture", &mut args)?;
+    engine.emit_event("start_progress", &mut args)?;
+    let overridden = current_pictures(&engine);
+    assert_eq!(
+        overridden.foreground.as_ref().unwrap().mips[0].rgba,
+        [120, 0, 0, 255]
+    );
+    assert!(Arc::ptr_eq(
+        original.background.as_ref().unwrap(),
+        overridden.background.as_ref().unwrap(),
+    ));
+    assert!(Arc::ptr_eq(
+        original.border.as_ref().unwrap(),
+        overridden.border.as_ref().unwrap(),
+    ));
+    assert!(Rc::ptr_eq(&original, &engine.host.loading_draw().unwrap()));
+
+    engine.emit_event("clear_picture", &mut args)?;
+    engine.emit_event("start_progress", &mut args)?;
+    assert!(Rc::ptr_eq(&overridden, &current_pictures(&engine)));
+    engine.emit_event("end_progress", &mut args)?;
+    engine.emit_event("start_progress", &mut args)?;
+    assert!(Rc::ptr_eq(&original, &current_pictures(&engine)));
+    engine.emit_event("end_progress", &mut args)?;
+
+    for selection in ["select_missing", "clear_picture"] {
+        engine.emit_event(selection, &mut args)?;
+        engine.emit_event("start_progress", &mut args)?;
+        let pictures = current_pictures(&engine);
+        assert!(pictures.foreground.is_none());
+        assert!(pictures.border.is_none());
+        assert!(Arc::ptr_eq(
+            original.background.as_ref().unwrap(),
+            pictures.background.as_ref().unwrap(),
+        ));
+        engine.emit_event("end_progress", &mut args)?;
+    }
     Ok(())
 }
 
