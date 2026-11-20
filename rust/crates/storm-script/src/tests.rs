@@ -1,6 +1,23 @@
 use super::*;
 
 #[test]
+fn legacy_color_bit_functions_keep_the_signed_integer_bits() -> Result<()> {
+    assert_eq!(
+        eval("int", "and(4278190080, argb(128,32,64,4))")?,
+        Value::Int(i32::MIN)
+    );
+    assert_eq!(eval("int", "shr(argb(128,32,64,4),24)")?, Value::Int(-128));
+    assert_eq!(
+        eval("int", "or(shl(255,24),123)")?,
+        Value::Int(0xff00_007b_u32 as i32)
+    );
+    assert_eq!(eval("int", "and(7.0,3)")?, Value::Int(0));
+    assert!(eval("int", "shl(1,32)").is_err());
+    assert!(eval("int", "shr(9,-1)").is_err());
+    Ok(())
+}
+
+#[test]
 fn script_string_tests_use_byte_offsets_and_only_fold_ascii() -> Result<()> {
     let program = Program::compile(
         r#"

@@ -422,13 +422,5 @@ fn load_loading_picture(shared: &Shared, name: &str) -> Result<Option<Arc<Textur
 }
 
 fn load_texture(shared: &Shared, name: &str) -> Result<Option<Texture>> {
-    for candidate in shared.paths.borrow().candidates(name)? {
-        let path = format!("RESOURCE/Textures/{}", candidate.file);
-        if let Some(bytes) = shared.game.read_optional(&path, 16 * 1024 * 1024)?
-            && let Ok(texture) = Texture::read(&bytes)
-        {
-            return Ok(Some(texture));
-        }
-    }
-    Ok(None)
+    shared.game.load_texture(&shared.paths.borrow(), name)
 }

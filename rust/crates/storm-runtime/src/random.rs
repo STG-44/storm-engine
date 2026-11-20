@@ -29,6 +29,10 @@ impl Random {
     pub(crate) fn unit(&mut self) -> f32 {
         self.next() as f32 / RAND_MAX as f32
     }
+    pub(crate) fn range(&mut self, min: f32, max: f32) -> f32 {
+        // Native RRnd rounds the scale before multiplying by a CRT draw.
+        min + self.next() as f32 * ((max - min) * (1.0 / RAND_MAX as f32))
+    }
 
     pub fn script_call(&mut self, name: &str, arguments: &[Value]) -> Option<Result<Value>> {
         Some(match name {

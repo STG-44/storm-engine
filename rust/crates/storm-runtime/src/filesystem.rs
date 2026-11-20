@@ -5,6 +5,8 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+use storm_formats::texture::Texture;
+use storm_render::texture_paths::TexturePaths;
 
 #[derive(Clone)]
 pub struct GameDirectory {
@@ -87,6 +89,17 @@ impl GameDirectory {
         self.resolve_optional(name)?
             .map(|path| Self::read_file(path, name, limit))
             .transpose()
+    }
+    pub(crate) fn load_texture(&self, paths: &TexturePaths, name: &str) -> Result<Option<Texture>> {
+        for candidate in paths.candidates(name)? {
+            let path = format!("RESOURCE/Textures/{}", candidate.file);
+            if let Some(bytes) = self.read_optional(&path, 16 * 1024 * 1024)?
+                && let Ok(texture) = Texture::read(&bytes)
+            {
+                return Ok(Some(texture));
+            }
+        }
+        Ok(None)
     }
     fn read_file(path: PathBuf, name: &str, limit: usize) -> Result<Vec<u8>> {
         let file = File::open(path).with_context(|| format!("open game file {name}"))?;

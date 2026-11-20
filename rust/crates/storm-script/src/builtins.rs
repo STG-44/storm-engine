@@ -7,6 +7,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "strlen" => (1, Type::Int),
         "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
+        "and" | "or" | "shl" | "shr" => (2, Type::Int),
         "sin" | "sqrt" => (1, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
@@ -51,6 +52,30 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
         return Ok(Value::Int(0));
     }
     let value = value?;
+    if matches!(name, "and" | "or" | "shl" | "shr") {
+        // The original initializes the first DATA::Get output to zero.
+        let first = if let Value::Int(value) = value {
+            value
+        } else {
+            0
+        };
+        let Value::Int(second) = arguments[1].resolved()? else {
+            anyhow::bail!("{name} requires an integer second argument");
+        };
+        return Ok(Value::Int(match name {
+            "and" => first & second,
+            "or" => first | second,
+            "shl" | "shr" => {
+                ensure!((0..32).contains(&second), "bit shift count must be 0..31");
+                if name == "shl" {
+                    first << second
+                } else {
+                    first >> second
+                }
+            }
+            _ => unreachable!(),
+        }));
+    }
     if name == "strlen" {
         return Ok(Value::Int(value.text()?.len() as i32));
     }

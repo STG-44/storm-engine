@@ -164,6 +164,20 @@ impl Engine {
             self.host
                 .entities
                 .process_entity_stage(id, Stage::Execute, delta_ms)?;
+            if let Some(hour) = self
+                .host
+                .weather
+                .as_ref()
+                .and_then(|weather| weather.take_time_update(id))
+            {
+                let mut message = Message::new("f", vec![MessageValue::Float(hour)])?;
+                self.runtime.emit(
+                    "WeatherTimeUpdate",
+                    &mut message,
+                    &mut self.host,
+                    self.limits,
+                )?;
+            }
             if let Some(notifications) = self
                 .host
                 .interfaces
@@ -354,6 +368,9 @@ impl Engine {
         self.services(Section::Realize, false, &mut context)?;
         self.process_controls(real_delta_ms)?;
         self.host.entities.new_lifecycle()?;
+        if let Some(ship_lights) = &self.host.ship_lights {
+            ship_lights.retain_owners(|id| self.host.entities.is_valid(id));
+        }
         self.services(Section::All, false, &mut context)?;
         Ok(FrameResult {
             continued: true,

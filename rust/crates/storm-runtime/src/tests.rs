@@ -2,6 +2,201 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn configured_weather_applies_settings_and_emits_native_midnight_updates() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object skySettings;
+        #event_handler("WeatherTimeUpdate","HourChanged");
+        #event_handler("lock_time","LockTime");
+        #event_handler("end_weather","EndWeather");
+        void Main() {
+            CreateEntity(&skySettings,"Weather");
+            LayerAddObject(0,&skySettings,10);
+            skySettings.Fog.Enable = true;
+            skySettings.Fog.Start = 12.5;
+            skySettings.Fog.Density = 0.0625;
+            skySettings.Fog.Color = argb(255,40,50,60);
+            skySettings.Wind.Angle = 1.25;
+            skySettings.Wind.Speed = 9.0;
+            skySettings.Sun.Color = argb(255,200,180,160);
+            skySettings.Sun.Ambient = argb(255,33,55,77);
+            skySettings.Time.Time = 23.75;
+            skySettings.Time.Speed = 1.0;
+            skySettings.Time.UpdateFrequence = 4.0;
+            skySettings.isDone = "";
+        }
+        void HourChanged() {
+            float timestamp = GetEventData();
+            Trace("hour="+makeint(timestamp*100.0));
+            skySettings.Wind.Speed = timestamp;
+        }
+        void LockTime() {
+            skySettings.Time.Speed = 0.0;
+            skySettings.Sun.HeightAngle = 0.0;
+            skySettings.Sun.AzimuthAngle = 0.0;
+            skySettings.isDone = "";
+        }
+        void EndWeather() { DeleteClass(&skySettings); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    let night = engine.host.weather_state().unwrap();
+    assert!(night.moon_present && !night.sun_present);
+    assert!(night.light_position[1] > 0.0);
+    assert_eq!((night.wind_angle, night.wind_speed), (1.25, 9.0));
+    assert!(night.fog_enabled);
+    assert_eq!(
+        (night.fog_start, night.fog_density, night.fog_color),
+        (12.5, 0.0625, 0xff28323c)
+    );
+    assert_eq!(night.sun_color, 0xffc8b4a0);
+    assert_eq!(engine.host.ambient_light.get(), Some([33, 55, 77]));
+    engine.frame(250)?;
+    assert_eq!(trace.take(), ["script:hour=2400"]);
+    engine.frame(250)?;
+    assert_eq!(trace.take(), ["script:hour=25"]);
+    let after = engine.host.weather_state().unwrap();
+    assert_eq!((after.hour, after.wind_speed), (0.25, 0.25));
+    assert_ne!(night.light_position, after.light_position);
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("lock_time", &mut event)?;
+    engine.frame(250)?;
+    let locked = engine.host.weather_state().unwrap();
+    assert_eq!(locked.hour, 0.25);
+    assert_eq!(locked.light_position, [5000.0, 0.0, 0.0]);
+    assert!(trace.take().is_empty());
+    engine.emit_event("end_weather", &mut event)?;
+    engine.frame(250)?;
+    assert!(engine.host.weather_state().is_none());
+    Ok(())
+}
+
+#[test]
+fn configured_ship_lights_load_script_catalog_and_follow_native_masts_and_yards() -> Result<()> {
+    use crate::ship_lights::ShipLightPose;
+    use std::collections::BTreeMap;
+    use storm_formats::geometry::Label;
+    use storm_sim::sea::camera::Matrix;
+
+    fn translated(x: f32, y: f32, z: f32) -> Matrix {
+        [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, x, y, z, 1.0,
+        ]
+    }
+
+    let temp = Temporary::new()?;
+    let texture_dir = temp.0.join("Resource/Textures/ShipsFlares");
+    std::fs::create_dir_all(&texture_dir)?;
+    let mut texture = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    texture.extend([61, 83, 210, 255]);
+    std::fs::write(texture_dir.join("corona.tga.tx"), &texture)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object lights, ship;
+        #event_handler("remove_ship","RemoveShip");
+        void Main() {
+            lights.LightTypes.default.light.g = 0.9;
+            lights.LightTypes.default.light.range = 15.0;
+            lights.LightTypes.default.light.Attenuation1 = 0.3;
+            lights.LightTypes.flare.corona.Size = 0.5;
+            lights.CoronaTexture = "ShipsFlares\corona.tga";
+            lights.MaxD3DLights = 2;
+            CreateEntity(&lights,"ShipLights");
+            LayerAddObject(0,&lights,0);
+            SendMessage(&lights,"l",50201);
+            CreateEntity(&ship,"test_body");
+        }
+        void RemoveShip() { DeleteClass(&ship); }
+    "#,
+    )?;
+    struct Body;
+    impl Entity for Body {}
+    let game = GameDirectory::open(&temp.0)?;
+    let mut host = NativeHost::with_random_seed(17)?;
+    host.entities
+        .register_class("test_body", || Ok(Box::new(Body)))?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host)?;
+    engine.frame(0)?;
+    let ship = engine.host.entities.first_id("test_body").unwrap();
+    assert!(engine.host.ship_corona_texture(false).is_none());
+    let nodes = BTreeMap::from([
+        ("mast2".to_owned(), translated(10.0, 0.0, 0.0)),
+        ("rey_b2".to_owned(), translated(20.0, 0.0, 0.0)),
+        ("rey_b301".to_owned(), translated(60.0, 0.0, 0.0)),
+    ]);
+    let root = translated(100.0, 0.0, 0.0);
+    let pose = ShipLightPose {
+        root: &root,
+        nodes: &nodes,
+    };
+    let labels = [
+        ("lights", "L1", 1.0),
+        ("lights", "LM2", 3.0),
+        ("flares", "FM2b", 1.0),
+        ("flares", "FR301b30101", 1.0),
+        ("flares", "FR405", 1.0), // Missing mast405.
+        ("reload", "L0", 1.0),
+    ]
+    .map(|(group, name, x)| Label {
+        group: group.into(),
+        name: name.into(),
+        matrix: translated(x, 2.0, 3.0),
+    });
+    assert_eq!(engine.host.attach_ship_lights(ship, &labels, &pose)?, 4);
+    assert_eq!(
+        engine.host.ship_corona_texture(false).unwrap().mips[0].rgba,
+        [210, 83, 61, 255]
+    );
+    assert!(engine.host.ship_coronas().is_empty());
+    engine.host.reset_ship_lights(true);
+    let before = engine.host.ship_coronas();
+    let points = engine.host.ship_point_lights(ship, [0.0; 3]);
+    assert_eq!(points.len(), 2);
+    assert_eq!(points[0].position, [3.0, 2.0, 3.0]);
+    assert_eq!(points[1].position, [101.0, 2.0, 3.0]);
+    assert_eq!(points[0].range, 15.0);
+    assert_eq!(points[0].attenuation, [1.0, 0.3, 0.0]);
+
+    let updated = BTreeMap::from([
+        ("mast2".to_owned(), translated(15.0, 0.0, 0.0)),
+        ("rey_b2".to_owned(), translated(18.0, 0.0, 0.0)),
+        ("rey_b301".to_owned(), translated(66.0, 0.0, 0.0)),
+    ]);
+    engine.host.update_ship_light_pose(
+        ship,
+        &ShipLightPose {
+            root: &root,
+            nodes: &updated,
+        },
+    )?;
+    engine.frame(125)?;
+    let after = engine.host.ship_coronas();
+    assert_eq!(after[1].position, [8.0, 2.0, 3.0]);
+    assert_eq!(after[2].position, [-1.0, 2.0, 3.0]);
+    assert_eq!(after[3].position, [7.0, 2.0, 3.0]);
+    assert_ne!(before[2].size, after[2].size);
+    engine.host.reset_ship_lights(false);
+    assert!(engine.host.ship_coronas().is_empty());
+    engine.host.reset_ship_lights(true);
+    engine.emit_event("remove_ship", &mut Message::new("", vec![])?)?;
+    engine.frame(16)?;
+    assert!(engine.host.ship_coronas().is_empty());
+    assert!(engine.host.ship_point_lights(ship, [0.0; 3]).is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers() -> Result<()> {
     use storm_sim::sea::{CELLS, FRAMES};
 

@@ -424,9 +424,25 @@ language.
 
 On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
 enters `InitInterface`. It creates `scrshoter`, selects a weather preset and
-creates `sea` inside `CreateSea` in `sea_ai/AISea.c`. The pinned run proceeds
-through the ship-light setup segment and stops when it attempts to create
-`ShipLights`. The original source files were unchanged in this run.
+creates `sea` and `ShipLights` inside `CreateSea` in `sea_ai/AISea.c`. The
+pinned run also creates `Weather`, blends the fog and sun colors, and
+reaches `WhrCreateRainEnvironment`. Startup stops when the script creates
+the missing `rain` entity. The original source files were unchanged.
+
+`ShipLights` loads the script-owned light catalog and corona textures on the
+first attachment request. The native attachment API follows the original GM
+`lights` and `flares` locators on the hull, masts and yards. CPU checks cover
+transforms, brightness oscillators, the reset switch and point-light
+selection. The extracted models contain 243 locators in those groups across
+40 ship directories. The original `SHIP` owner, the corona and point-light
+draws and sun-road reflection are still pending in the configured engine.
+
+`Weather` receives wind, fog, sunlight and time attributes, applies the
+ambient color on `isDone`, and publishes sun and moon positions. Its native
+Execute stage advances time and dispatches the floating-point
+`WeatherTimeUpdate` event at the original cadence. The script VM implements
+the signed integer masking and shifting used to blend packed colors.
+Rendering weather effects still requires the rain, sky and atmosphere passes.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
 window and PNG renderer. The thumbnail uses the original 128 × 128 integer
