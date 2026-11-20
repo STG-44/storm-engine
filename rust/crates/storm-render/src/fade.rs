@@ -1,5 +1,61 @@
-//! Full-screen dimming over an encoded scene.
-use crate::Gpu;
+//! Scene transitions over an encoded scene.
+use crate::{
+    Gpu,
+    loading::{LoadingPictures, LoadingScreen},
+};
+use anyhow::Result;
+use std::sync::Arc;
+
+pub struct FadeDraw {
+    pub pictures: Option<Arc<LoadingPictures>>,
+    pub opacity: f32,
+}
+
+pub struct FadeCompositor {
+    black: FadeOverlay,
+    format: wgpu::TextureFormat,
+    screens: Vec<Option<(Arc<LoadingPictures>, LoadingScreen)>>,
+}
+
+impl FadeCompositor {
+    pub fn new(gpu: &Gpu, format: wgpu::TextureFormat) -> Self {
+        Self {
+            black: FadeOverlay::new(gpu, format),
+            format,
+            screens: Vec::new(),
+        }
+    }
+
+    pub fn encode(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        draws: &[FadeDraw],
+    ) -> Result<()> {
+        // Each draw uses a separate uniform buffer, even when several faders
+        // share the same images in one command encoder.
+        self.screens.resize_with(draws.len(), || None);
+        for (cache, draw) in self.screens.iter_mut().zip(draws) {
+            let Some(pictures) = &draw.pictures else {
+                *cache = None;
+                self.black.encode(encoder, target, draw.opacity);
+                continue;
+            };
+            if cache
+                .as_ref()
+                .is_none_or(|(old, _)| !Arc::ptr_eq(old, pictures))
+            {
+                let screen = LoadingScreen::new(gpu, self.format, pictures)?;
+                *cache = Some((pictures.clone(), screen));
+            }
+            let (_, screen) = cache.as_ref().expect("fade screen prepared");
+            screen.encode_fade(gpu, encoder, target, size, draw.opacity);
+        }
+        Ok(())
+    }
+}
 
 pub struct FadeOverlay(wgpu::RenderPipeline);
 

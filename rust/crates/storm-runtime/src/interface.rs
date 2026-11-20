@@ -10,6 +10,7 @@ mod video;
 
 use crate::{GameDirectory, NativeHost, WindowSettings};
 use anyhow::{Context, Result, bail};
+use progress::PictureLayer;
 use quest_text::QuestText;
 use std::{
     cell::{Cell, Ref, RefCell},
@@ -20,7 +21,7 @@ use std::{
 };
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
 use storm_formats::texture::Texture;
-use storm_render::{loading::LoadingPictures, texture_paths::TexturePaths};
+use storm_render::{fade::FadeDraw, loading::LoadingPictures, texture_paths::TexturePaths};
 use storm_script::{Reference, Value};
 
 pub use log::{ActionHint, ActionLayout, LogAndActionsState, LogLayout, LogLine};
@@ -62,7 +63,7 @@ struct Shared {
     loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     previous_loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     progress: RefCell<progress::Progress>,
-    fade_opacity: Cell<f32>,
+    fade_draws: RefCell<Vec<FadeDraw>>,
     fader_notifications: RefCell<BTreeMap<u64, fader::Notifications>>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
@@ -94,7 +95,7 @@ impl Interfaces {
             loading_draw: RefCell::default(),
             previous_loading_draw: RefCell::default(),
             progress: RefCell::default(),
-            fade_opacity: Cell::default(),
+            fade_draws: RefCell::default(),
             fader_notifications: RefCell::default(),
             finished_videos: RefCell::default(),
         }));
@@ -148,12 +149,12 @@ impl Interfaces {
     pub fn clear_draws(&self) {
         self.0.loading_draw.replace(None);
         self.0.previous_loading_draw.replace(None);
-        self.0.fade_opacity.set(0.0);
+        self.0.fade_draws.borrow_mut().clear();
         self.end_loading_progress();
     }
 
     pub fn begin_frame(&self) {
-        self.0.fade_opacity.set(0.0);
+        self.0.fade_draws.borrow_mut().clear();
         self.0
             .previous_loading_draw
             .replace(self.0.loading_draw.take());
@@ -163,8 +164,8 @@ impl Interfaces {
         self.0.loading_draw.borrow().clone()
     }
 
-    pub fn fade_opacity(&self) -> f32 {
-        self.0.fade_opacity.get()
+    pub fn fade_draws(&self) -> Ref<'_, [FadeDraw]> {
+        Ref::map(self.0.fade_draws.borrow(), Vec::as_slice)
     }
 
     pub fn take_fader_notifications(&self, id: EntityId) -> Option<fader::Notifications> {
@@ -172,25 +173,29 @@ impl Interfaces {
     }
 
     pub fn set_loading_progress_foreground(&self, name: String) {
-        self.0.progress.borrow_mut().set_foreground(name);
+        self.0
+            .progress
+            .borrow_mut()
+            .set_picture(PictureLayer::Foreground, name);
     }
 
     pub fn start_loading_progress(&self) -> Result<()> {
-        self.0.progress.borrow_mut().start(Instant::now(), |name| {
+        self.0.progress.borrow_mut().start(Instant::now(), |names| {
             let pictures = self
                 .loading_draw()
                 .or_else(|| self.0.previous_loading_draw.borrow().clone());
-            let Some(name) = name else {
+            if names.background.is_none() && names.foreground.is_none() {
                 return Ok(pictures);
-            };
+            }
             let mut pictures = pictures.as_deref().cloned().unwrap_or_default();
-            pictures.foreground = if name.is_empty() {
-                None
-            } else {
-                load_texture(&self.0, name)?.map(Arc::new)
-            };
-            if pictures.foreground.is_none() {
-                pictures.border = None;
+            if let Some(name) = &names.background {
+                pictures.background = load_loading_picture(&self.0, name)?;
+            }
+            if let Some(name) = &names.foreground {
+                pictures.foreground = load_loading_picture(&self.0, name)?;
+                if pictures.foreground.is_none() {
+                    pictures.border = None;
+                }
             }
             Ok((pictures.background.is_some()
                 || pictures.foreground.is_some()
@@ -333,6 +338,13 @@ impl Entity for Actor {
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
         bail!("unsupported XINTERFACE message {}", message.long()?);
     }
+}
+
+fn load_loading_picture(shared: &Shared, name: &str) -> Result<Option<Arc<Texture>>> {
+    if name.is_empty() {
+        return Ok(None);
+    }
+    Ok(load_texture(shared, name)?.map(Arc::new))
 }
 
 fn load_texture(shared: &Shared, name: &str) -> Result<Option<Texture>> {

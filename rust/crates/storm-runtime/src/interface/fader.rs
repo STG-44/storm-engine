@@ -1,19 +1,23 @@
 //! The Storm Fader's timed dimming, reveal, and script notifications.
-use super::Shared;
+use super::{Shared, load_loading_picture, progress::PictureLayer};
 use anyhow::Result;
-use std::{mem, rc::Rc};
+use std::{mem, rc::Rc, sync::Arc};
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Stage};
+use storm_render::{fade::FadeDraw, loading::LoadingPictures};
 
 const FADER_EXECUTE: u8 = 6;
 const FADER_REALIZE: u8 = 7;
 const LAYER_PRIORITY: u32 = (-256_i32) as u32;
 const FADER_OUT: i32 = 33000;
 const FADER_IN: i32 = 33001;
+const FADER_PICTURE: i32 = 33003;
+const FADER_PICTURE0: i32 = 33004;
 
 pub(super) struct FaderActor {
     shared: Rc<Shared>,
     id: EntityId,
     transition: Option<Transition>,
+    pictures: Option<Arc<LoadingPictures>>,
     delete_after: u8,
 }
 
@@ -55,6 +59,7 @@ impl FaderActor {
             shared,
             id: EntityId::INVALID,
             transition: None,
+            pictures: None,
             delete_after: 0,
         }
     }
@@ -102,10 +107,12 @@ impl FaderActor {
         } else {
             transition.alpha
         };
-        let existing = self.shared.fade_opacity.get();
-        self.shared
-            .fade_opacity
-            .set(existing + (1.0 - existing) * opacity);
+        if opacity > 0.0 {
+            self.shared.fade_draws.borrow_mut().push(FadeDraw {
+                pictures: self.pictures.clone(),
+                opacity,
+            });
+        }
         if !transition.finished {
             if transition.speed <= 0.0 {
                 transition.alpha = 1.0;
@@ -114,6 +121,19 @@ impl FaderActor {
                     (transition.alpha + delta_ms as f32 * 0.001 * transition.speed).min(1.0);
             }
         }
+    }
+
+    fn set_picture(&mut self, layer: PictureLayer, name: String) -> Result<()> {
+        let texture = load_loading_picture(&self.shared, &name)?;
+        let mut pictures = self.pictures.as_deref().cloned().unwrap_or_default();
+        match layer {
+            PictureLayer::Background => pictures.background = texture,
+            PictureLayer::Foreground => pictures.foreground = texture,
+        }
+        self.pictures = (pictures.background.is_some() || pictures.foreground.is_some())
+            .then(|| Arc::new(pictures));
+        self.shared.progress.borrow_mut().set_picture(layer, name);
+        Ok(())
     }
 }
 
@@ -149,7 +169,14 @@ impl Entity for FaderActor {
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
         let command = message.long()?;
-        if matches!(command, FADER_IN | FADER_OUT) {
+        if command == FADER_PICTURE || command == FADER_PICTURE0 {
+            let layer = if command == FADER_PICTURE {
+                PictureLayer::Foreground
+            } else {
+                PictureLayer::Background
+            };
+            self.set_picture(layer, message.string()?.to_owned())?;
+        } else if matches!(command, FADER_IN | FADER_OUT) {
             let fade_in = command == FADER_IN;
             let duration = message.float()?;
             let autodelete = message.long()? != 0;

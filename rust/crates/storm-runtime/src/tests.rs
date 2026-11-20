@@ -2,6 +2,91 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn fader_picture_messages_update_the_fade_and_seed_the_next_loading_screen() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("Resource/Textures/Loading");
+    std::fs::create_dir_all(&textures)?;
+    for (name, red) in [("Backdrop", 60), ("Panel", 120), ("Alternate", 180)] {
+        let mut bytes = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        bytes.extend([0, 0, red, 255]);
+        std::fs::write(textures.join(format!("{name}.tga.tx")), bytes)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "scriptLocationLibrary"
+        native void ReloadProgressStart();
+        native void ReloadProgressEnd();
+        object fade;
+        #event_handler("start_progress","StartProgress");
+        #event_handler("end_progress","EndProgress");
+        #event_handler("replace_pictures","ReplacePictures");
+        #event_handler("clear_foreground","ClearForeground");
+        void Main() {
+            CreateEntity(&fade,"Fader");
+            SendMessage(&fade,"ls",33004,"loading\backdrop.tga");
+            SendMessage(&fade,"ls",33003,"loading\panel.tga");
+            SendMessage(&fade,"lfl",33000,1.0,0);
+        }
+        void StartProgress() { ReloadProgressStart(); }
+        void EndProgress() { ReloadProgressEnd(); }
+        void ReplacePictures() {
+            SendMessage(&fade,"ls",33004,"loading\missing.tga");
+            SendMessage(&fade,"ls",33003,"loading\alternate.tga");
+        }
+        void ClearForeground() { SendMessage(&fade,"ls",33003,""); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let colors = |pictures: &storm_render::loading::LoadingPictures| {
+        [
+            pictures.background.as_ref().map(|tex| tex.mips[0].rgba[0]),
+            pictures.foreground.as_ref().map(|tex| tex.mips[0].rgba[0]),
+        ]
+    };
+    let mut args = Message::new("", vec![])?;
+    engine.frame(500)?;
+    engine.frame(0)?;
+    {
+        let draws = engine.host.fade_draws().unwrap();
+        assert_eq!(draws.len(), 1);
+        assert_eq!(draws[0].opacity, 0.5);
+        assert_eq!(
+            colors(draws[0].pictures.as_ref().unwrap()),
+            [Some(60), Some(120)]
+        );
+    }
+    engine.emit_event("start_progress", &mut args)?;
+    let loading = engine.host.loading_progress().unwrap().pictures.unwrap();
+    assert_eq!(colors(&loading), [Some(60), Some(120)]);
+    engine.emit_event("replace_pictures", &mut args)?;
+    engine.frame(0)?;
+    let replace = engine.host.fade_draws().unwrap()[0]
+        .pictures
+        .clone()
+        .unwrap();
+    assert_eq!(colors(&replace), [None, Some(180)]);
+    let active = engine.host.loading_progress().unwrap().pictures.unwrap();
+    assert!(Rc::ptr_eq(&active, &loading));
+
+    engine.emit_event("end_progress", &mut args)?;
+    engine.emit_event("start_progress", &mut args)?;
+    assert!(engine.host.loading_progress().unwrap().pictures.is_none());
+    engine.emit_event("end_progress", &mut args)?;
+    engine.emit_event("clear_foreground", &mut args)?;
+    engine.frame(0)?;
+    assert!(engine.host.fade_draws().unwrap()[0].pictures.is_none());
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn fader_draws_timed_transitions_posts_live_entity_references_and_auto_deletes() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

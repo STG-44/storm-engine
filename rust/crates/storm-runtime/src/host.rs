@@ -1,12 +1,12 @@
-use crate::interface::LoadingProgress;
+use crate::interface::{Interfaces, LoadingProgress};
 use anyhow::{Context, Result, bail, ensure};
 use std::{
-    cell::{Cell, RefCell},
+    cell::{Cell, Ref, RefCell},
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
-use storm_render::{GlowParameters, texture_paths::TexturePaths};
+use storm_render::{GlowParameters, fade::FadeDraw, texture_paths::TexturePaths};
 use storm_script::{Host, SourceLoader, Value, World};
 
 type NativeCallback = dyn FnMut(&[Value], &World, &EntityManager) -> Result<Value>;
@@ -39,7 +39,7 @@ pub struct NativeHost {
     trace: TraceSink,
     pub(crate) random: Rc<RefCell<crate::random::Random>>,
     pub(crate) controls: crate::controls::Controls,
-    pub(crate) interfaces: Option<crate::interface::Interfaces>,
+    pub(crate) interfaces: Option<Interfaces>,
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) time_scale: Rc<Cell<f32>>,
@@ -121,10 +121,18 @@ impl NativeHost {
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }
+    pub fn fade_draws(&self) -> Option<Ref<'_, [FadeDraw]>> {
+        self.interfaces.as_ref().map(Interfaces::fade_draws)
+    }
+    /// Combined opacity of the full-screen fade layers.
     pub fn fade_opacity(&self) -> f32 {
-        self.interfaces
-            .as_ref()
-            .map_or(0.0, |interfaces| interfaces.fade_opacity())
+        self.fade_draws()
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .fold(0.0, |opacity, draw| {
+                opacity + (1.0 - opacity) * draw.opacity
+            })
     }
     pub fn loading_progress(&self) -> Option<LoadingProgress> {
         self.interfaces.as_ref()?.loading_progress()

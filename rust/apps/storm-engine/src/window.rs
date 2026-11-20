@@ -10,7 +10,7 @@ use std::{
 use storm_core::Message;
 use storm_render::{
     Gpu,
-    fade::FadeOverlay,
+    fade::{FadeCompositor, FadeDraw},
     loading::{LoadingPictures, LoadingScreen},
 };
 use storm_runtime::{
@@ -42,7 +42,7 @@ struct Surface {
     occluded: bool,
     scenes: ModelScenes,
     loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
-    fade: FadeOverlay,
+    fade: FadeCompositor,
 }
 impl Surface {
     async fn new(
@@ -96,7 +96,7 @@ impl Surface {
             wgpu::PresentMode::AutoNoVsync
         };
         let scenes = ModelScenes::new(config.format);
-        let fade = FadeOverlay::new(&gpu, config.format);
+        let fade = FadeCompositor::new(&gpu, config.format);
         let mut state = Self {
             surface,
             window,
@@ -132,7 +132,7 @@ impl Surface {
         live: &[storm_core::EntityId],
         seconds: f32,
         pictures: Option<Rc<LoadingPictures>>,
-        fade_opacity: f32,
+        fades: &[FadeDraw],
     ) -> Result<bool> {
         self.present(instance, |surface, encoder, view| {
             surface.scenes.prepare(&surface.gpu, draws, live)?;
@@ -149,8 +149,13 @@ impl Surface {
             } else {
                 surface.loading = None;
             }
-            surface.fade.encode(encoder, view, fade_opacity);
-            Ok(())
+            surface.fade.encode(
+                &surface.gpu,
+                encoder,
+                view,
+                [surface.config.width, surface.config.height],
+                fades,
+            )
         })
     }
     fn render_progress(
@@ -307,13 +312,14 @@ impl Application<'_> {
                 let presented = if let Some(progress) = self.engine.host.loading_progress() {
                     surface.render_progress(&self.instance, &progress)?
                 } else {
+                    let fades = self.engine.host.fade_draws();
                     surface.render_scene(
                         &self.instance,
                         &draws,
                         &live,
                         self.elapsed_ms as f32 * 0.001,
                         self.engine.host.loading_draw(),
-                        self.engine.host.fade_opacity(),
+                        fades.as_deref().unwrap_or_default(),
                     )?
                 };
                 surface.scenes.prune(&live);

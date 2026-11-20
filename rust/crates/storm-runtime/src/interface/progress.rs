@@ -20,8 +20,20 @@ type Presenter = dyn FnMut(&LoadingProgress) -> Result<()>;
 #[derive(Default)]
 pub(super) struct Progress {
     active: Option<Active>,
-    foreground_name: Option<String>,
+    names: PictureNames,
     presenter: Option<Box<Presenter>>,
+}
+
+#[derive(Default)]
+pub(super) struct PictureNames {
+    pub background: Option<String>,
+    pub foreground: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum PictureLayer {
+    Background,
+    Foreground,
 }
 
 struct Active {
@@ -31,18 +43,21 @@ struct Active {
 }
 
 impl Progress {
-    pub fn set_foreground(&mut self, name: String) {
-        self.foreground_name = Some(name);
+    pub fn set_picture(&mut self, layer: PictureLayer, name: String) {
+        match layer {
+            PictureLayer::Background => self.names.background = Some(name),
+            PictureLayer::Foreground => self.names.foreground = Some(name),
+        }
     }
 
     pub fn start(
         &mut self,
         now: Instant,
-        prepare_pictures: impl FnOnce(Option<&str>) -> Result<Option<Rc<LoadingPictures>>>,
+        prepare_pictures: impl FnOnce(&PictureNames) -> Result<Option<Rc<LoadingPictures>>>,
     ) -> Result<()> {
         if self.active.is_none() {
             self.active = Some(Active {
-                pictures: prepare_pictures(self.foreground_name.as_deref())?,
+                pictures: prepare_pictures(&self.names)?,
                 last_update: now,
                 step: 0,
             });
@@ -64,7 +79,7 @@ impl Progress {
 
     pub fn end(&mut self) {
         self.active = None;
-        self.foreground_name = None;
+        self.names = PictureNames::default();
     }
 
     pub fn view(&self) -> Option<LoadingProgress> {

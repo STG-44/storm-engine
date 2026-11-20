@@ -24,6 +24,12 @@ pub struct LoadingScreen {
     text_size: Option<[u32; 2]>,
 }
 
+enum Frame {
+    Pictures,
+    Progress(f32),
+    Fade(f32),
+}
+
 impl LoadingScreen {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, pictures: &LoadingPictures) -> Result<Self> {
         let device = &gpu.device;
@@ -175,7 +181,7 @@ impl LoadingScreen {
         target: &wgpu::TextureView,
         size: [u32; 2],
     ) {
-        self.encode_frame(gpu, encoder, target, size, None);
+        self.encode_frame(gpu, encoder, target, size, Frame::Pictures);
     }
 
     /// A progress frame starts on a clean background and can be presented
@@ -188,7 +194,18 @@ impl LoadingScreen {
         size: [u32; 2],
         phase: f32,
     ) {
-        self.encode_frame(gpu, encoder, target, size, Some(phase));
+        self.encode_frame(gpu, encoder, target, size, Frame::Progress(phase));
+    }
+
+    pub(crate) fn encode_fade(
+        &self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        opacity: f32,
+    ) {
+        self.encode_frame(gpu, encoder, target, size, Frame::Fade(opacity));
     }
 
     fn encode_frame(
@@ -197,7 +214,7 @@ impl LoadingScreen {
         encoder: &mut wgpu::CommandEncoder,
         target: &wgpu::TextureView,
         size: [u32; 2],
-        progress: Option<f32>,
+        frame: Frame,
     ) {
         if size.contains(&0) {
             return;
@@ -208,14 +225,15 @@ impl LoadingScreen {
             .text_size
             .map_or([0.0, 0.0, 1.0, 1.0], |text| caption_rect(size, text));
         let has_text = if self.text_size.is_some() { 1.0 } else { 0.0 };
-        let uniforms = [
-            rectangle,
-            [progress.unwrap_or(-1.0), aspect, has_text, 0.0],
-            text,
-        ];
+        let (progress, fade) = match frame {
+            Frame::Pictures => (-1.0, -1.0),
+            Frame::Progress(phase) => (phase, -1.0),
+            Frame::Fade(opacity) => (-1.0, opacity.clamp(0.0, 1.0)),
+        };
+        let uniforms = [rectangle, [progress, aspect, has_text, fade], text];
         gpu.queue
             .write_buffer(&self.uniforms, 0, bytemuck::cast_slice(&uniforms));
-        let load = if progress.is_some() {
+        let load = if matches!(frame, Frame::Progress(_)) {
             wgpu::LoadOp::Clear(wgpu::Color {
                 r: 0.008,
                 g: 0.015,
@@ -273,6 +291,7 @@ fn caption_rect([width, height]: [u32; 2], [text_width, text_height]: [u32; 2]) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fade::{FadeCompositor, FadeDraw};
 
     fn pixel([r, g, b, a]: [u8; 4]) -> Result<Texture> {
         let mut bytes = [0u32, 1, 1, 1, 21, 4]
@@ -313,6 +332,58 @@ mod tests {
         assert!((185..=190).contains(&center[2]));
         assert_eq!(sample([320, 240], 20, 120)?, [0, 255, 0, 255]);
         assert_eq!(sample([320, 240], 64, 120)?, center);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn textured_fades_blend_the_backdrop_and_foreground_in_draw_order() -> Result<()> {
+        let instance = crate::create_instance(wgpu::Backends::PRIMARY)?;
+        let gpu = pollster::block_on(Gpu::request(&instance, None))?;
+        let pictures = Arc::new(LoadingPictures {
+            background: Some(Arc::new(pixel([0, 255, 0, 255])?)),
+            foreground: Some(Arc::new(pixel([255, 0, 0, 255])?)),
+            ..LoadingPictures::default()
+        });
+        let mut fades = FadeCompositor::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mut render = |draws: &[FadeDraw]| {
+            crate::render_offscreen_with(&gpu, 320, 180, 0.0, |encoder, view| {
+                drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    ..Default::default()
+                }));
+                fades.encode(&gpu, encoder, view, [320, 180], draws)
+            })
+        };
+        let draws = [0.5, 0.25].map(|opacity| FadeDraw {
+            pictures: Some(pictures.clone()),
+            opacity,
+        });
+        let single = render(&draws[..1])?;
+        let stacked = render(&draws)?;
+        let sample = |frame: &crate::Frame, x, expected: [u8; 4]| {
+            let offset = ((90 * 320 + x) * 4) as usize;
+            let actual = &frame.rgba[offset..offset + 4];
+            assert!(
+                actual
+                    .iter()
+                    .zip(expected)
+                    .all(|(&a, e)| a.abs_diff(e) <= 2),
+                "pixel at {x}: expected {expected:?}, got {actual:?}",
+            );
+        };
+        sample(&single, 20, [0, 188, 188, 255]);
+        sample(&single, 160, [188, 137, 137, 255]);
+        sample(&stacked, 20, [0, 207, 165, 255]);
+        sample(&stacked, 160, [193, 155, 105, 255]);
         Ok(())
     }
 

@@ -123,7 +123,8 @@ fn main() -> Result<()> {
             let seconds = elapsed_ms as f32 * 0.001;
             let pictures = engine.host.loading_draw();
             let progress = engine.host.loading_progress();
-            let fade_opacity = engine.host.fade_opacity();
+            let fade_draws = engine.host.fade_draws();
+            let fades = fade_draws.as_deref().unwrap_or_default();
             let frame = if let Some(active) = &progress {
                 let screen = storm_render::loading::LoadingScreen::new(
                     &gpu,
@@ -140,7 +141,7 @@ fn main() -> Result<()> {
                         Ok(())
                     },
                 )?
-            } else if pictures.is_some() || fade_opacity > 0.0 {
+            } else if pictures.is_some() || !fades.is_empty() {
                 let format = wgpu::TextureFormat::Rgba8UnormSrgb;
                 let screen = pictures
                     .as_deref()
@@ -148,8 +149,8 @@ fn main() -> Result<()> {
                         storm_render::loading::LoadingScreen::new(&gpu, format, pictures)
                     })
                     .transpose()?;
-                let fade = (fade_opacity > 0.0)
-                    .then(|| storm_render::fade::FadeOverlay::new(&gpu, format));
+                let mut fade = (!fades.is_empty())
+                    .then(|| storm_render::fade::FadeCompositor::new(&gpu, format));
                 storm_render::render_offscreen_with(
                     &gpu,
                     width,
@@ -160,8 +161,8 @@ fn main() -> Result<()> {
                         if let Some(screen) = &screen {
                             screen.encode(&gpu, encoder, view, [width, height]);
                         }
-                        if let Some(fade) = &fade {
-                            fade.encode(encoder, view, fade_opacity);
+                        if let Some(fade) = &mut fade {
+                            fade.encode(&gpu, encoder, view, [width, height], fades)?;
                         }
                         Ok(())
                     },

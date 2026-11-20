@@ -31,11 +31,21 @@ fn fragment(in: VertexOut) -> @location(0) vec4<f32> {
     let uv = (in.uv - rect.xy) / (rect.zw - rect.xy);
     let art = premultiply(textureSample(picture, screen_sampler, uv));
     let edge = premultiply(textureSample(border, screen_sampler, uv));
+    let inside = all(uv >= vec2(0.0)) && all(uv <= vec2(1.0));
+    let front = edge + art * (1.0 - edge.a);
+    let fade = loading.progress.w;
+    if fade >= 0.0 {
+        let faded_back = vec4(back.rgb, 1.0) * fade;
+        if inside {
+            let faded_front = front * fade;
+            return faded_front + faded_back * (1.0 - faded_front.a);
+        }
+        return faded_back;
+    }
     let text_uv = (in.uv - loading.text_rect.xy) / (loading.text_rect.zw - loading.text_rect.xy);
     let ink = textureSample(text_coverage, screen_sampler, text_uv).r;
     var screen = back;
-    if all(uv >= vec2(0.0)) && all(uv <= vec2(1.0)) {
-        let front = edge + art * (1.0 - edge.a);
+    if inside {
         screen = front + back * (1.0 - front.a);
     }
     if loading.progress.z != 0.0 && all(text_uv >= vec2(0.0)) && all(text_uv <= vec2(1.0)) {
