@@ -1,4 +1,5 @@
 //! XINTERFACE startup state, including its original script callbacks.
+mod info;
 mod log;
 mod quest_text;
 mod settings;
@@ -15,7 +16,7 @@ use std::{
 };
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
 use storm_formats::texture::Texture;
-use storm_render::texture_paths::TexturePaths;
+use storm_render::{loading::LoadingPictures, texture_paths::TexturePaths};
 use storm_script::{Reference, Value};
 
 pub use log::{ActionHint, ActionLayout, LogAndActionsState, LogLayout, LogLine};
@@ -53,6 +54,7 @@ struct Shared {
     states: RefCell<BTreeMap<u64, InterfaceState>>,
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
     timers: RefCell<BTreeMap<u64, BattleTimerState>>,
+    loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
 }
@@ -79,6 +81,7 @@ impl Interfaces {
             states: RefCell::default(),
             logs: RefCell::default(),
             timers: RefCell::default(),
+            loading_draw: RefCell::default(),
             finished_videos: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
@@ -95,6 +98,10 @@ impl Interfaces {
         let shared = interfaces.0.clone();
         host.entities.register_class("CAviPlayer", move || {
             Ok(Box::new(video::VideoActor::new(shared.clone())))
+        })?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("InfoHandler", move || {
+            Ok(Box::new(info::InfoActor::new(shared.clone())))
         })?;
         host.interfaces = Some(interfaces);
         Ok(())
@@ -119,6 +126,13 @@ impl Interfaces {
 
     pub fn take_timer_event(&self, id: EntityId) -> Option<String> {
         self.0.timers.borrow_mut().get_mut(&id.raw())?.take_event()
+    }
+    pub fn clear_loading_draw(&self) {
+        self.0.loading_draw.replace(None);
+    }
+
+    pub fn loading_draw(&self) -> Option<Rc<LoadingPictures>> {
+        self.0.loading_draw.borrow().clone()
     }
     pub fn take_video_event(&self, id: EntityId) -> Option<&'static str> {
         self.0

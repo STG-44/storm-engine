@@ -263,6 +263,14 @@ completion while simulation time is paused. The script handles cleanup
 and schedules the next logo. A clip present on disk requires WMV playback,
 which remains pending.
 
+`InfoHandler` loads a script-selected backdrop and foreground using the
+engine's TX texture reader. Projects can set `picborderfilename` for an
+optional transparent frame. The backdrop fills the window and the renderer
+fits the centered foreground to its own aspect ratio. Realize layer
+membership and message 1 control when the pictures are submitted. Both the
+desktop window and `--headless` use the same compositor. Text and the
+loading progress indicator remain pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces
@@ -335,5 +343,6 @@ Startup completes the town and fast-reload tables and initializes
 `Main` returns successfully, and the first frame runs the weather update.
 The next timed frame starts the logo sequence and resets `Sound`. With
 the logo files absent, the script advances through AkellaLogo, Blackmark,
-and Title. Startup then reaches the loading screen and stops when it
-attempts to create `InfoHandler` at `interface/interface.c:1737`.
+and Title. Before the picture compositor was added, startup stopped as it
+attempted to create `InfoHandler` at `interface/interface.c:1737`.
+The compositor is verified with independently generated picture fixtures.

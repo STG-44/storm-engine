@@ -5,6 +5,7 @@ use std::{fs::File, io::BufWriter, path::Path, sync::mpsc, time::Duration};
 use wgpu::util::DeviceExt;
 
 pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
+pub mod loading;
 pub mod model;
 pub mod texture_paths;
 
@@ -308,7 +309,8 @@ pub fn render_models_offscreen(
     })
 }
 
-fn render_offscreen_with(
+/// Encode an offscreen frame and read back its RGBA8 sRGB pixels.
+pub fn render_offscreen_with(
     gpu: &Gpu,
     width: u32,
     height: u32,

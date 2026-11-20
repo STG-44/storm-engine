@@ -233,6 +233,9 @@ impl Engine {
     }
     fn frame_inner(&mut self, delta_ms: u32, real_delta_ms: u32) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
+        if let Some(interfaces) = &self.host.interfaces {
+            interfaces.clear_loading_draw();
+        }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
                 && let Some(Value::Object(render)) =
@@ -296,6 +299,9 @@ impl Engine {
         };
         for id in self.host.entities.all_ids() {
             self.host.entities.erase(id);
+        }
+        if let Some(interfaces) = &self.host.interfaces {
+            interfaces.clear_loading_draw();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {

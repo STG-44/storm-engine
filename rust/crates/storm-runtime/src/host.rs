@@ -117,6 +117,9 @@ impl NativeHost {
     pub fn glow_parameters(&self) -> GlowParameters {
         self.glow_parameters.get()
     }
+    pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
+        self.interfaces.as_ref()?.loading_draw()
+    }
     pub fn interface_state(
         &self,
         id: EntityId,

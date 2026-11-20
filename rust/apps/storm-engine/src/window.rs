@@ -2,11 +2,15 @@
 use crate::input;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
 use storm_core::Message;
-use storm_render::Gpu;
+use storm_render::{
+    Gpu,
+    loading::{LoadingPictures, LoadingScreen},
+};
 use storm_runtime::{
     ControlInput, Engine, Phase, WindowSettings,
     clock::Timer,
@@ -34,6 +38,7 @@ struct Surface {
     configured: bool,
     occluded: bool,
     scenes: ModelScenes,
+    loading: Option<(Rc<LoadingPictures>, LoadingScreen)>,
 }
 impl Surface {
     async fn new(
@@ -95,6 +100,7 @@ impl Surface {
             configured: false,
             occluded: false,
             scenes,
+            loading: None,
         };
         state.resize(size)?;
         Ok(state)
@@ -119,6 +125,7 @@ impl Surface {
         draws: &[Draw],
         live: &[storm_core::EntityId],
         seconds: f32,
+        pictures: Option<Rc<LoadingPictures>>,
     ) -> Result<bool> {
         self.scenes.prune(live);
         if !self.configured || self.occluded {
@@ -158,6 +165,26 @@ impl Surface {
             self.config.height,
             seconds,
         )?;
+        if let Some(pictures) = pictures {
+            if self
+                .loading
+                .as_ref()
+                .is_none_or(|(cached, _)| !Rc::ptr_eq(cached, &pictures))
+            {
+                let screen = LoadingScreen::new(&self.gpu, self.config.format, &pictures)?;
+                self.loading = Some((pictures, screen));
+            }
+            if let Some((_, screen)) = &self.loading {
+                screen.encode(
+                    &self.gpu,
+                    &mut encoder,
+                    &view,
+                    [self.config.width, self.config.height],
+                );
+            }
+        } else {
+            self.loading = None;
+        }
         self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.gpu.queue.present(frame);
@@ -232,6 +259,7 @@ impl Application<'_> {
                 &draws,
                 &live,
                 self.elapsed_ms as f32 * 0.001,
+                self.engine.host.loading_draw(),
             )?;
             if presented {
                 self.presented += 1;

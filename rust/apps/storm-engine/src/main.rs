@@ -40,7 +40,7 @@ struct Arguments {
     /// Explicit headless frame deltas in milliseconds; window mode uses TIMER.
     #[arg(long, value_delimiter = ',', default_value = "16")]
     frame_ms: Vec<u32>,
-    /// Render the final script-created static models to PNG. Full game rendering is pending.
+    /// Render the final static models and loading pictures to PNG.
     #[arg(long, conflicts_with = "window")]
     headless: Option<PathBuf>,
     /// Run the same configured engine and scene in a native desktop window.
@@ -118,18 +118,40 @@ fn main() -> Result<()> {
             let draws = models.take_draws()?;
             let live = models.live_ids()?;
             scenes.prepare(&gpu, &draws, &live)?;
-            scenes
-                .offscreen(
+            let width = arguments.width.unwrap_or(960);
+            let height = arguments.height.unwrap_or(540);
+            let seconds = elapsed_ms as f32 * 0.001;
+            let pictures = engine.host.loading_draw();
+            let frame = if let Some(pictures) = &pictures {
+                let screen = storm_render::loading::LoadingScreen::new(
                     &gpu,
-                    arguments.width.unwrap_or(960),
-                    arguments.height.unwrap_or(540),
-                    elapsed_ms as f32 * 0.001,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    pictures,
+                )?;
+                storm_render::render_offscreen_with(
+                    &gpu,
+                    width,
+                    height,
+                    seconds,
+                    |encoder, view| {
+                        scenes.encode(&gpu, encoder, view, width, height, seconds)?;
+                        screen.encode(&gpu, encoder, view, [width, height]);
+                        Ok(())
+                    },
                 )?
-                .save_png(&path)?;
+            } else {
+                scenes.offscreen(&gpu, width, height, seconds)?
+            };
+            frame.save_png(&path)?;
             scenes.prune(&live);
             eprintln!(
-                "Rendered {} script-created static models to {}",
+                "Rendered {} script-created static models{} to {}",
                 draws.len(),
+                if pictures.is_some() {
+                    " and loading pictures"
+                } else {
+                    ""
+                },
                 path.display()
             );
         }

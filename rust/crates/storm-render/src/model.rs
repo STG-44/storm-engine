@@ -412,7 +412,7 @@ fn depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
         .create_view(&Default::default())
 }
 
-fn upload_model_texture(
+pub(crate) fn upload_texture(
     gpu: &Gpu,
     source: &storm_formats::texture::Texture,
 ) -> Result<wgpu::TextureView> {
@@ -420,7 +420,7 @@ fn upload_model_texture(
     ensure!(
         h.width <= gpu.device.limits().max_texture_dimension_2d
             && h.height <= gpu.device.limits().max_texture_dimension_2d,
-        "model texture exceeds GPU dimensions"
+        "decoded texture exceeds GPU dimensions"
     );
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Decoded original texture"),
@@ -671,7 +671,7 @@ impl ModelScene {
             ..Default::default()
         });
         let fallback_mask = SailDamageMaterial::fixture();
-        let mask_view = upload_model_texture(
+        let mask_view = upload_texture(
             gpu,
             asset
                 .sail_damage
@@ -692,7 +692,7 @@ impl ModelScene {
                 .meshes
                 .iter()
                 .any(|m| m.texture == texture_id && matches!(m.rigging, Some(RigMesh::Flag(_))));
-            let view = upload_model_texture(gpu, source)?;
+            let view = upload_texture(gpu, source)?;
             textures.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Model material"),
                 layout: &texture_layout,

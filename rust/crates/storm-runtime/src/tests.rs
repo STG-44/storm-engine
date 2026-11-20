@@ -1,6 +1,78 @@
 use super::*;
 
 #[test]
+fn infohandler_loads_configured_pictures_and_respects_realize_membership() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("Resource/Textures");
+    std::fs::create_dir_all(textures.join("Loading"))?;
+    for (file, rgba) in [
+        ("Loading/Panel.tga.tx", [10, 20, 30, 255]),
+        ("Loading/Backdrop.tga.tx", [40, 50, 60, 255]),
+        ("Loading/Frame.tga.tx", [70, 80, 90, 64]),
+    ] {
+        let mut bytes = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        let [r, g, b, a] = rgba;
+        bytes.extend([b, g, r, a]);
+        std::fs::write(textures.join(file), bytes)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object loading;
+        #event_handler("hide_picture","Hide");
+        #event_handler("show_picture","Show");
+        #event_handler("remove_picture","Remove");
+        void Main() {
+            loading.picfilename="loading\panel.tga";
+            loading.picbackfilename="loading\backdrop.tga";
+            loading.picborderfilename="loading\frame.tga";
+            CreateEntity(&loading,"InfoHandler");
+            LayerSetRealize(13);
+            LayerAddObject(13,&loading,-1);
+        }
+        void Hide() { LayerFreeze(13,true); }
+        void Show() { SendMessage(&loading,"l",1); }
+        void Remove() { DeleteClass(&loading); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(0)?;
+    let pictures = engine.host.loading_draw().unwrap();
+    assert_eq!(
+        pictures.foreground.as_ref().unwrap().mips[0].rgba,
+        [10, 20, 30, 255]
+    );
+    assert_eq!(
+        pictures.background.as_ref().unwrap().mips[0].rgba,
+        [40, 50, 60, 255]
+    );
+    assert_eq!(
+        pictures.border.as_ref().unwrap().mips[0].rgba,
+        [70, 80, 90, 64]
+    );
+    engine.frame(16)?;
+    assert!(Rc::ptr_eq(&pictures, &engine.host.loading_draw().unwrap()));
+
+    let mut args = Message::new("", vec![])?;
+    engine.emit_event("hide_picture", &mut args)?;
+    engine.frame(16)?;
+    assert!(engine.host.loading_draw().is_none());
+    engine.emit_event("show_picture", &mut args)?;
+    assert!(Rc::ptr_eq(&pictures, &engine.host.loading_draw().unwrap()));
+    engine.emit_event("remove_picture", &mut args)?;
+    engine.frame(16)?;
+    assert!(engine.host.loading_draw().is_none());
+    assert!(engine.host.entities.first_id("InfoHandler").is_none());
+    Ok(())
+}
+
+#[test]
 fn missing_videos_finish_through_execute_or_the_script_queue() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
