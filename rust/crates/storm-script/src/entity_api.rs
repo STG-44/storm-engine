@@ -6,10 +6,10 @@ use storm_core::EntityId;
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "isentity" => (1, Type::Int),
-        "createentity" => (2, Type::Int),
+        "createentity" | "getentity" => (2, Type::Int),
         "createclass" => (1, Type::Object),
         "sendmessage" => (2, Type::Ptr),
-        "deleteclass" | "entityupdate" => (1, Type::Void),
+        "deleteclass" | "deleteentitiesbytype" | "entityupdate" => (1, Type::Void),
         "layersetexecute" | "layersetrealize" | "trace" => (1, Type::Void),
         "layeraddobject" => (3, Type::Void),
         "layerdelobject" | "layerfreeze" => (2, Type::Void),
@@ -104,6 +104,9 @@ pub(crate) fn call(
                     .host
                     .send_message(id, &mut prepared.message, store)
             })?;
+            if let Some(event) = execution.host.take_entity_event(id) {
+                program.dispatch(event, execution, depth + 1)?;
+            }
             for (event, delay) in execution.host.take_entity_posts(id) {
                 execution.events.post(event, delay, None)?;
             }
@@ -146,8 +149,25 @@ pub(crate) fn call(
         "isentity" => Ok(Value::Int(i32::from(
             execution.host.is_entity(entity(&arguments[0])?)?,
         ))),
+        "getentity" => {
+            let Value::Reference(destination) = &arguments[0] else {
+                bail!("GetEntity requires an output variable");
+            };
+            let class = arguments[1].resolved()?.convert(Type::String)?;
+            let id = execution.host.first_entity_of_type(class.text()?)?;
+            let entity = id.unwrap_or(EntityId::INVALID);
+            let binding = id.and_then(|id| execution.host.entity_attribute_root(id));
+            let reference = execution.world.entity_reference(entity, binding)?;
+            destination.store(Value::AReference(Some(reference)))?;
+            Ok(Value::Int(i32::from(id.is_some())))
+        }
         "deleteclass" => {
             execution.host.delete_entity(entity(&arguments[0])?)?;
+            Ok(Value::Void)
+        }
+        "deleteentitiesbytype" => {
+            let class = arguments[0].resolved()?;
+            execution.host.delete_entities_by_type(class.text()?)?;
             Ok(Value::Void)
         }
         "entityupdate" => {

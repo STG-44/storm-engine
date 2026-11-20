@@ -2,8 +2,10 @@ use crate::{Engine, GameDirectory, GameSource, NativeHost, ScriptEncoding};
 use anyhow::{Context, Result, ensure};
 use std::collections::BTreeMap;
 
-// The installed game's initial ship, island and weather tables run in one Main call.
-const GAME_STARTUP_INSTRUCTIONS: u64 = 1_000_000;
+const GAME_MAIN_INSTRUCTIONS: u64 = 1_000_000;
+// The original game builds its complete roster and item tables in Main_Start
+// after the logos, before control passes to ordinary frame callbacks.
+pub(crate) const GAME_MAIN_START_INSTRUCTIONS: u64 = 32_000_000;
 
 pub struct Startup {
     pub program_directory: String,
@@ -72,6 +74,28 @@ pub(crate) fn ini_integer(text: &str) -> Result<i32> {
         .context("engine.ini integer overflow")? as i32)
 }
 
+pub(crate) fn ini_section(line: &str) -> Option<&str> {
+    line.trim_ascii()
+        .strip_prefix('[')?
+        .split_once(']')
+        .map(|(name, _)| name)
+}
+
+pub(crate) fn ini_field<'a>(text: &'a str, section: &str, key: &str) -> Option<&'a str> {
+    let mut selected = false;
+    for line in text.lines().map(str::trim_ascii) {
+        if let Some(name) = ini_section(line) {
+            selected = name.eq_ignore_ascii_case(section);
+        } else if selected
+            && let Some((name, value)) = line.split_once('=')
+            && name.trim_ascii().eq_ignore_ascii_case(key)
+        {
+            return Some(value.trim_ascii());
+        }
+    }
+    None
+}
+
 impl Startup {
     /// Root-section startup directives only. Original IFS keeps inline ';'
     /// characters, first matching duplicate keys and leading/trailing trimming.
@@ -120,14 +144,17 @@ impl Startup {
             host.register_game_library(&library.name, game)?;
         }
         crate::locator::register(&mut host, game.clone())?;
+        crate::particles::register(&mut host, game.clone())?;
+        crate::teleport::register(&mut host, game.clone())?;
+        storm_script::Host::world(&host).use_game_limits();
         crate::interface::Interfaces::register(&mut host, game.clone())?;
         let language = crate::script_libraries::interface::LanguageService::new(game.clone());
         language.register(&mut host)?;
         host.interface_language = Some(language);
         let sound = crate::sound::Sound::register(&mut host, game.clone())?;
         host.configure_script_source(source, game.clone());
-        let mut engine = Engine::from_runtime(runtime, host)
-            .with_startup_instructions(GAME_STARTUP_INSTRUCTIONS);
+        let mut engine =
+            Engine::from_runtime(runtime, host).with_startup_instructions(GAME_MAIN_INSTRUCTIONS);
         if let Some(sound) = sound {
             engine.register_service(sound)?;
         }

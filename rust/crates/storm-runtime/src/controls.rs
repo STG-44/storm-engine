@@ -56,6 +56,8 @@ struct Hardware {
     wheel: i32,
     previous: [i32; WHEEL_DOWN + 1],
     current: [i32; WHEEL_DOWN + 1],
+    mouse_sensitivity: [f32; 2],
+    axes: [f32; 2],
 }
 
 impl Default for Hardware {
@@ -67,6 +69,8 @@ impl Default for Hardware {
             wheel: 0,
             previous: [0; WHEEL_DOWN + 1],
             current: [0; WHEEL_DOWN + 1],
+            mouse_sensitivity: [1.0; 2],
+            axes: [0.0; 2],
         }
     }
 }
@@ -107,6 +111,7 @@ impl Hardware {
         for (index, delta) in self.motion.iter_mut().enumerate() {
             let whole = *delta as i32;
             self.current[MOUSE_X + index] = whole;
+            self.axes[index] = whole as f32 * self.mouse_sensitivity[index];
             // Preserve fractional desktop motion until it can be represented in counts.
             *delta = if delta.is_finite() && delta.abs() <= f64::from(i32::MAX) {
                 *delta - f64::from(whole)
@@ -186,6 +191,21 @@ impl Controls {
     pub fn len(&self) -> usize {
         self.bindings.len()
     }
+    pub fn mouse_axis(&self, name: &str) -> Option<f32> {
+        let binding = &self.bindings[*self.names.get(&name.to_ascii_lowercase())?];
+        let axis = binding.system?.checked_sub(MOUSE_X)?;
+        let value = *self.hardware.axes.get(axis)?;
+        if self.locked || binding.locked {
+            return Some(0.0);
+        }
+        if binding.flags & INVERSE_CONTROL == 0 {
+            Some(value)
+        } else if binding.flags & USE_AXIS_AS_BUTTON != 0 {
+            Some(1.0 - value)
+        } else {
+            Some(-value)
+        }
+    }
     pub fn activated(&self, name: &str) -> bool {
         !self.locked
             && self
@@ -237,9 +257,37 @@ impl Controls {
             }
             "lockcontrol" => self.lock(args),
             "addcontroltreenode" => self.add_node(args),
+            "xi_controlmakeinvert" => self.set_invert(args),
+            "xi_setmousesensitivity" => self.set_mouse_sensitivity(args),
             _ => return None,
         };
         Some(result)
+    }
+
+    fn set_invert(&mut self, args: &[Value]) -> Result<Value> {
+        let [name, flag] = args else {
+            bail!("XI_ControlMakeInvert expects a control name and flag");
+        };
+        let id = self.create(name.resolved()?.text()?)?;
+        self.bindings[id].flags = match flag.resolved()? {
+            Value::Int(flag) if flag != 0 => 0,
+            _ => INVERSE_CONTROL,
+        };
+        Ok(Value::Void)
+    }
+
+    fn set_mouse_sensitivity(&mut self, args: &[Value]) -> Result<Value> {
+        let [x, y] = args else {
+            bail!("XI_SetMouseSensitivity expects two arguments");
+        };
+        let read = crate::script_libraries::float_or_one;
+        let sensitivity = [read(x)?, read(y)?];
+        ensure!(
+            sensitivity.into_iter().all(f32::is_finite),
+            "mouse sensitivity requires finite settings"
+        );
+        self.hardware.mouse_sensitivity = sensitivity;
+        Ok(Value::Void)
     }
 
     fn create_control(&mut self, args: &[Value]) -> Result<Value> {

@@ -4,6 +4,7 @@ use std::rc::Rc;
 use storm_core::EntityId;
 use storm_render::{
     Gpu,
+    color::{ColorCorrection, ColorPass},
     fade::{FadeCompositor, FadeDraw},
     loading::{LoadingPictures, LoadingScreen},
 };
@@ -18,6 +19,7 @@ pub(crate) struct SceneFrame<'a> {
     pub seconds: f32,
     pub pictures: Option<Rc<LoadingPictures>>,
     pub fades: &'a [FadeDraw],
+    pub correction: Option<ColorCorrection>,
 }
 
 pub(crate) struct SceneRenderer {
@@ -25,6 +27,7 @@ pub(crate) struct SceneRenderer {
     models: ModelScenes,
     loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
     fade: FadeCompositor,
+    color: ColorPass,
 }
 
 impl SceneRenderer {
@@ -34,6 +37,7 @@ impl SceneRenderer {
             models: ModelScenes::new(format),
             loading: None,
             fade: FadeCompositor::new(gpu, format),
+            color: ColorPass::new(format),
         }
     }
 
@@ -88,10 +92,13 @@ impl SceneRenderer {
         } else {
             self.loading = None;
         }
+        let uncorrected = target
+            .zip(frame.correction)
+            .map(|_| self.color.source(gpu, [width, height]));
         self.fade.encode_scene(
             gpu,
             encoder,
-            target,
+            uncorrected.as_ref().or(target),
             [width, height],
             frame.fades,
             |encoder, view| {
@@ -103,6 +110,11 @@ impl SceneRenderer {
                 Ok(())
             },
         )?;
+        if let (Some(source), Some(target), Some(correction)) =
+            (&uncorrected, target, frame.correction)
+        {
+            self.color.encode(gpu, encoder, source, target, correction);
+        }
         self.models.prune(frame.live);
         Ok(())
     }
@@ -114,10 +126,17 @@ impl SceneRenderer {
         target: &wgpu::TextureView,
         size: [u32; 2],
         progress: &LoadingProgress,
+        correction: Option<ColorCorrection>,
     ) -> Result<()> {
         self.prepare_loading(gpu, progress.pictures.clone())?;
         let (_, screen) = self.loading.as_ref().expect("loading screen prepared");
-        screen.encode_progress(gpu, encoder, target, size, progress.phase);
+        if let Some(correction) = correction {
+            let source = self.color.source(gpu, size);
+            screen.encode_progress(gpu, encoder, &source, size, progress.phase);
+            self.color.encode(gpu, encoder, &source, target, correction);
+        } else {
+            screen.encode_progress(gpu, encoder, target, size, progress.phase);
+        }
         Ok(())
     }
 }

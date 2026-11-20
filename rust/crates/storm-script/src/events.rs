@@ -396,7 +396,7 @@ fn check_message(message: &Message) -> Result<()> {
 }
 
 impl Program {
-    fn dispatch(
+    pub(crate) fn dispatch(
         &self,
         name: &str,
         execution: &mut Execution<'_, impl Host>,
@@ -422,11 +422,22 @@ impl Program {
             if let Some(slot) = saved_message {
                 execution.messages[slot].move_to_start();
             }
+            let saved_fuel = if depth == 0 {
+                execution
+                    .host
+                    .event_handler_instructions(&name, &function)
+                    .map(|instructions| std::mem::replace(&mut execution.fuel, instructions))
+            } else {
+                None
+            };
             let value = self
                 .invoke(&function, &[], execution, depth)
                 .with_context(|| format!("event {name}, handler {function}"));
             // COMPILER::ProcessEvent restores pMem at each handler boundary.
             execution.current_message = saved_message;
+            if let Some(fuel) = saved_fuel {
+                execution.fuel = fuel;
+            }
             let value = value?;
             execution.events.completed = execution.events.completed.saturating_add(1);
             if value != Value::Void {

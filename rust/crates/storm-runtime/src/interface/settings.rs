@@ -1,4 +1,7 @@
-use crate::{GameDirectory, ScriptEncoding};
+use crate::{
+    GameDirectory, ScriptEncoding,
+    config::{ini_field as field, ini_section as heading},
+};
 use anyhow::{Context, Result, ensure};
 use storm_formats::texture::Texture;
 
@@ -94,28 +97,6 @@ pub(super) fn load(
         .map(parse_cursor)
         .transpose()?;
     Ok((screen, cursor))
-}
-
-fn heading(line: &str) -> Option<&str> {
-    line.trim_ascii()
-        .strip_prefix('[')?
-        .split_once(']')
-        .map(|(name, _)| name)
-}
-
-fn field<'a>(text: &'a str, section: &str, key: &str) -> Option<&'a str> {
-    let mut selected = false;
-    for line in text.lines().map(str::trim_ascii) {
-        if let Some(name) = heading(line) {
-            selected = name.eq_ignore_ascii_case(section);
-        } else if selected
-            && let Some((name, value)) = line.split_once('=')
-            && name.trim_ascii().eq_ignore_ascii_case(key)
-        {
-            return Some(value.trim_ascii());
-        }
-    }
-    None
 }
 
 fn integer(text: &str) -> i32 {

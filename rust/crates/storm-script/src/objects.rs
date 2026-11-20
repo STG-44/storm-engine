@@ -17,8 +17,22 @@ pub struct World(Rc<Storage>);
 #[derive(Default)]
 struct Storage {
     attributes: RefCell<AttributeStore>,
+    limits: Cell<AttributeLimits>,
     owners: RefCell<BTreeMap<AttributeId, Weak<Owner>>>,
     released: RefCell<Vec<AttributeId>>,
+}
+#[derive(Clone, Copy)]
+struct AttributeLimits {
+    nodes: usize,
+    names: usize,
+}
+impl Default for AttributeLimits {
+    fn default() -> Self {
+        Self {
+            nodes: MAX_NODES,
+            names: MAX_NAMES,
+        }
+    }
 }
 struct Owner {
     world: World,
@@ -73,6 +87,15 @@ pointer_identity!(
 );
 
 impl World {
+    /// Configured games keep their ship, world-map, location and quest tables
+    /// in the same attribute store through startup and play.
+    pub fn use_game_limits(&self) {
+        self.0.limits.set(AttributeLimits {
+            nodes: 524_288,
+            names: 16_384,
+        });
+    }
+
     fn prepare(&self, nodes: usize, names: usize) -> Result<()> {
         let mut store = self
             .0
@@ -83,12 +106,13 @@ impl World {
             self.0.owners.borrow_mut().remove(&id);
             store.drop_root(id)?;
         }
+        let limits = self.0.limits.get();
         ensure!(
-            store.len() + nodes <= MAX_NODES,
+            store.len() + nodes <= limits.nodes,
             "script attribute node budget"
         );
         ensure!(
-            store.name_count() + names <= MAX_NAMES,
+            store.name_count() + names <= limits.names,
             "script attribute name budget"
         );
         Ok(())
@@ -176,9 +200,10 @@ impl World {
             .try_borrow_mut()
             .context("reentrant attribute access")?;
         let result = action(&mut store, attributes.map(|a| a.node));
-        ensure!(store.len() <= MAX_NODES, "script attribute node budget");
+        let limits = self.0.limits.get();
+        ensure!(store.len() <= limits.nodes, "script attribute node budget");
         ensure!(
-            store.name_count() <= MAX_NAMES,
+            store.name_count() <= limits.names,
             "script attribute name budget"
         );
         result

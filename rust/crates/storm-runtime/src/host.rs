@@ -6,7 +6,9 @@ use std::{
     rc::Rc,
 };
 use storm_core::{AttributeId, AttributeStore, EntityId, EntityManager, LayerType, Message};
-use storm_render::{GlowParameters, fade::FadeDraw, texture_paths::TexturePaths};
+use storm_render::{
+    GlowParameters, color::ColorCorrection, fade::FadeDraw, texture_paths::TexturePaths,
+};
 use storm_script::{Host, SourceLoader, Value, World};
 
 type NativeCallback = dyn FnMut(&[Value], &World, &EntityManager) -> Result<Value>;
@@ -45,6 +47,7 @@ pub struct NativeHost {
     pub(crate) time_scale: Rc<Cell<f32>>,
     pub(crate) ambient_light: Rc<Cell<Option<[u8; 3]>>>,
     glow_parameters: Rc<Cell<GlowParameters>>,
+    color_correction: Rc<Cell<Option<ColorCorrection>>>,
     pub(crate) delta_ms: u32,
 }
 impl NativeHost {
@@ -82,6 +85,7 @@ impl NativeHost {
             time_scale: Rc::new(Cell::new(1.0)),
             ambient_light: Rc::default(),
             glow_parameters: Rc::default(),
+            color_correction: Rc::default(),
             delta_ms: 0,
         })
     }
@@ -119,6 +123,17 @@ impl NativeHost {
     }
     pub fn glow_parameters(&self) -> GlowParameters {
         self.glow_parameters.get()
+    }
+    pub fn color_correction(&self) -> Option<ColorCorrection> {
+        self.color_correction.get()
+    }
+    /// Lets a synchronous loading presenter observe changes made inside the VM.
+    pub fn color_correction_reader(&self) -> impl Fn() -> Option<ColorCorrection> + 'static {
+        let state = self.color_correction.clone();
+        move || state.get()
+    }
+    pub fn mouse_axis(&self, name: &str) -> Option<f32> {
+        self.controls.mouse_axis(name)
     }
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
@@ -254,7 +269,10 @@ impl NativeHost {
                         .interface_language
                         .clone()
                         .unwrap_or_else(|| interface::LanguageService::new(game.clone()));
-                    host.bind_library(interface::functions(&language)?)
+                    host.bind_library(interface::functions(
+                        &language,
+                        host.color_correction.clone(),
+                    )?)
                 })
             }
             rigging::RIGGING_LIBRARY => self.register_library(rigging::RIGGING_LIBRARY, |host| {
@@ -345,8 +363,17 @@ impl Host for NativeHost {
         self.entities.erase(id);
         Ok(())
     }
+    fn delete_entities_by_type(&mut self, class: &str) -> Result<()> {
+        for id in self.entities.ids(class) {
+            self.entities.erase(id);
+        }
+        Ok(())
+    }
     fn entity_attribute_root(&self, id: EntityId) -> Option<AttributeId> {
         self.entities.attribute_root(id)
+    }
+    fn first_entity_of_type(&self, class: &str) -> Result<Option<EntityId>> {
+        Ok(self.entities.first_id(class))
     }
     fn create_entity(
         &mut self,
@@ -383,12 +410,19 @@ impl Host for NativeHost {
         self.entities
             .send_message_with_attributes(id, message, store)
     }
+    fn take_entity_event(&mut self, id: EntityId) -> Option<&'static str> {
+        self.interfaces.as_ref()?.take_event(id)
+    }
     fn take_entity_posts(&mut self, id: EntityId) -> Vec<(&'static str, i32)> {
         self.interfaces
             .as_ref()
             .and_then(|interfaces| interfaces.take_video_post(id))
             .into_iter()
             .collect()
+    }
+    fn event_handler_instructions(&self, event: &str, function: &str) -> Option<u64> {
+        (self.script_source.is_some() && event == "frame" && function == "main_start")
+            .then_some(crate::config::GAME_MAIN_START_INSTRUCTIONS)
     }
     fn attribute_changed(
         &mut self,

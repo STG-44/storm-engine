@@ -403,7 +403,31 @@ and Title. Before the picture compositor was added, startup stopped as it
 attempted to create `InfoHandler` at `interface/interface.c:1737`.
 The compositor is verified with independently generated picture fixtures.
 
-With the current transition services, the same startup fixture reaches
-`Main_Start` after the logo sequence. Frame 10 of the command above
-exhausts the script instruction budget in `CI_GetKeyName` during the
-second control initialization.
+With the installed interface and language data in the startup directory,
+the original `Main_Start` now completes the post-logo control setup and
+`InitGame`. It reports 1,001 locations, 498 items and 271 static NPCs,
+then applies the controls and display settings and loads the selected
+language. The configured runtime reserves 32 million instructions for the
+top-level `frame` handler `Main_Start` and keeps the ordinary frame and
+standalone limits. The configured attribute store also has room for the
+full startup tables.
+
+`GetEntity` and `DeleteEntitiesByType` use the native entity registry.
+The startup particle entity supports the empty-system lifecycle and missing
+profiles. World-space emission and the debug teleport UI remain pending.
+The options reader loads the original dotted paths into script attributes.
+An absent file preserves defaults and an empty file dispatches
+`evntOptionsBreak` immediately. The display ramp applies to the engine's
+window and rendered PNGs. Language changes reload common strings and retain
+the IDs and reference counts of localized catalogs available in the new
+language.
+
+On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
+enters `InitInterface`. The current run stops in `CreateScreenShoter` while
+creating `scrshoter`, before the background scene or menu is drawn. The
+original source files were unchanged in this run.
+
+The Rust geometry reader can decode separately installed `MainMenu.gm`
+(20 meshes) and `MainMenu_locators.gm` (nine labels). Rendering the original
+menu still requires the screenshot entity and the menu's background and
+interface services.

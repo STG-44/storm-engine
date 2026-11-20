@@ -2,6 +2,136 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn interface_loads_legacy_options_and_reports_an_empty_file_synchronously() -> Result<()> {
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI/INTERFACES");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::write(ini.join("interfaces.ini"), "[PC_SCREEN]\n")?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+            #libriary "script_interface_functions"
+            native void XI_SetColorCorrection(float contrast, float gamma, float brightness);
+            native void XI_ControlMakeInvert(string name, int flag);
+            native void XI_SetMouseSensitivity(float x, float y);
+            object xi, options;
+            int broken;
+            #event_handler("evntOptionsBreak","OnEmpty");
+            void OnEmpty() { broken++; }
+            void Main() {
+                CreateEntity(&xi,"xinterface");
+                options.volume.sound=0.5;
+                options.volume.music=0.5;
+                SendMessage(&xi,"lsa",45053,"missing",&options);
+                Trace("missing="+broken+":"+options.volume.sound);
+                SendMessage(&xi,"lsa",45053,"OPTIONS",&options);
+                Trace("loaded="+broken+":"+options.volume.sound+":"+options.volume.music);
+                Trace(options.StartGameParam.PlayerProfile+":"+options.note);
+                SendMessage(&xi,"lsa",45053,"empty",&options);
+                Trace("empty="+broken+":"+options.volume.sound);
+                XI_SetColorCorrection(0.5,2.0,32.0);
+                int mouseX = CreateControl("CameraX");
+                int mouseY = CreateControl("CameraY");
+                MapControl(mouseX,256);
+                MapControl(mouseY,257);
+                XI_ControlMakeInvert("camerax",0);
+                XI_ControlMakeInvert("cameray",1);
+                XI_SetMouseSensitivity(0.5,2.0);
+            }
+        "#,
+    )?;
+    std::fs::write(
+        temp.0.join("options"),
+        "  volume.sound=0.75\r\n\tStartGameParam.PlayerProfile=Капитан\r\nnote= a=b ",
+    )?;
+    std::fs::write(temp.0.join("empty"), [])?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.control_input(ControlInput::MouseMotion { x: 10.0, y: -6.0 });
+    engine.frame(0)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "script:missing=0:0.5000000",
+            "script:loaded=0:0.75:0.5000000",
+            "script:Капитан: a=b ",
+            "script:empty=1:0.75",
+        ]
+    );
+    assert_eq!(
+        engine.host.color_correction(),
+        Some(storm_render::color::ColorCorrection {
+            contrast: 0.5,
+            gamma: 2.0,
+            brightness: 32.0,
+        })
+    );
+    assert_eq!(engine.host.mouse_axis("CameraX"), Some(-5.0));
+    assert_eq!(engine.host.mouse_axis("CameraY"), Some(-12.0));
+    Ok(())
+}
+
+#[test]
+fn configured_post_logo_callback_can_rebuild_controls_and_clean_up_scene_entities() -> Result<()> {
+    const PROGRAM: &str = r#"
+        object first, second, debug;
+        int frames;
+        #event_handler("frame","Main_Start");
+        void Main() {}
+        void Main_Start() {
+            frames++;
+            if(frames != 2) return;
+            int total=0;
+            for(int i=0; i<30000; i++) { total=total+1; }
+            CreateEntity(&first,"particles");
+            CreateEntity(&second,"PARTICLES");
+            CreateEntity(&debug,"TMPTELEPORT");
+            first.name="first";
+            second.name="second";
+            aref found;
+            Trace("first="+GetEntity(found,"PARTICLES")+":"+found.name);
+            Trace("missing-profile="+sti(SendMessage(&first,"lsffffffl",10000,"missing",
+                0.0,0.0,0.0,0.0,0.0,0.0,0)));
+            SendMessage(&first,"ll",10010,1);
+            SendMessage(&second,"l",10006);
+            DeleteEntitiesByType("PaRtIcLeS");
+            Trace("lookup="+GetEntity(&found,"particles")+":"+IsEntity(found));
+            Trace("done="+total+":"+IsEntity(first)+":"+IsEntity(second)+":"+IsEntity(debug));
+        }
+    "#;
+    let mut bounded = Engine::from_runtime(Runtime::compile(PROGRAM)?, NativeHost::new()?);
+    bounded.frame(0)?;
+    let error = bounded.frame(16).unwrap_err();
+    assert!(format!("{error:#}").contains("script instruction budget exhausted"));
+
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("main.c"), PROGRAM)?;
+    std::fs::write(
+        temp.0.join("engine.ini"),
+        "run=main.c\n[controls]\nondebugkeys=0\n",
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let trace = Trace::default();
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.frame(0)?;
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "script:first=1:first",
+            "script:missing-profile=0",
+            "script:lookup=0:0",
+            "script:done=30000:0:0:1",
+        ]
+    );
+    assert!(engine.host.entities.ids("particles").is_empty());
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn fader_tips_use_the_game_border_and_the_retained_progress_frame_setting() -> Result<()> {
     for (setting, has_texture, enabled) in
         [("", true, true), ("0", true, false), ("4", false, true)]
@@ -1225,10 +1355,17 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
     let temp = Temporary::new()?;
     let texts = temp.0.join("RESOURCE/INI/TEXTS");
     std::fs::create_dir_all(texts.join("Russian"))?;
+    std::fs::create_dir_all(texts.join("English"))?;
     std::fs::write(
         texts.join("language.ini"),
-        "[COMMON]\ndefaultLanguage=Russian\n[DIRECTORY]\nRussian=Russian\n",
+        "[COMMON]\ndefaultLanguage=Russian\nstrings=common.ini\n[DIRECTORY]\nRussian=Russian\nEnglish=English\n",
     )?;
+    std::fs::write(texts.join("Russian/common.ini"), "string=Port,\"Порт\"\n")?;
+    std::fs::write(
+        texts.join("English/common.ini"),
+        "string=Port,\"Harbour\"\n",
+    )?;
+    std::fs::write(texts.join("English/Places.TXT"), "Port {Barbados}\n")?;
     let (legacy, _, replaced) = encoding_rs::WINDOWS_1251.encode(
         "\r\nPort  {  Барбадос  }\r\nPORT {дубликат}\r\nHelp\r\n{\r\nпервая\r\nвторая\r\n}\r\nEmpty {}\r\nPrevious label\r\nIgnored label {строка}\r\n",
     );
@@ -1244,6 +1381,9 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
         native int LanguageOpenFile(string file);
         native void LanguageCloseFile(int id);
         native string LanguageConvertString(int id, string key);
+        native string LanguageGetLanguage();
+        native void LanguageSetLanguage(string name);
+        native string XI_ConvertString(string id);
         object language;
         void Main() {
             CreateEntity(&language, "obj_strservice");
@@ -1268,6 +1408,13 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
             Trace("failed=" + LanguageOpenFile("empty.txt") + "," + LanguageOpenFile("missing.txt"));
             Trace("reopened=" + LanguageOpenFile("places.txt"));
             Trace(LanguageConvertString(other, "quest"));
+            LanguageSetLanguage("russian");
+            Trace(LanguageGetLanguage());
+            LanguageSetLanguage("English");
+            Trace(LanguageGetLanguage() + ":" + XI_ConvertString("Port") + ":" + LanguageConvertString(first, "Port"));
+            Trace("[" + LanguageConvertString(other, "quest") + "]");
+            LanguageSetLanguage("Unknown");
+            Trace(LanguageGetLanguage() + ":" + XI_ConvertString("Port") + ":" + LanguageConvertString(first, "Port"));
         }
         "#,
     )?;
@@ -1289,6 +1436,10 @@ fn configured_user_language_files_reuse_ids_and_close_the_last_reference() -> Re
             "script:failed=-1,-1",
             "script:reopened=0",
             "script:Привет",
+            "script:Russian",
+            "script:English:Harbour:Barbados",
+            "script:[]",
+            "script:Russian:Порт:Барбадос",
         ],
     );
     engine.shutdown()?;

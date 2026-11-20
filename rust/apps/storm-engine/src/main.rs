@@ -145,6 +145,7 @@ fn main() -> Result<()> {
                                 seconds: elapsed_ms as f32 * 0.001,
                                 pictures: engine.host.loading_draw(),
                                 fades,
+                                correction: engine.host.color_correction(),
                             },
                         )?;
                     }
@@ -166,6 +167,7 @@ fn main() -> Result<()> {
                 seconds: elapsed_ms as f32 * 0.001,
                 pictures: engine.host.loading_draw(),
                 fades: fades.as_deref().unwrap_or_default(),
+                correction: engine.host.color_correction(),
             };
             let frame = storm_render::render_offscreen_with(
                 &gpu,
@@ -174,7 +176,14 @@ fn main() -> Result<()> {
                 scene.seconds,
                 |encoder, view| {
                     if let Some(active) = &progress {
-                        renderer.encode_progress(&gpu, encoder, view, size, active)
+                        renderer.encode_progress(
+                            &gpu,
+                            encoder,
+                            view,
+                            size,
+                            active,
+                            scene.correction,
+                        )
                     } else {
                         renderer.encode(&gpu, encoder, Some(view), size, &scene)
                     }

@@ -4,6 +4,8 @@ use anyhow::{Result, ensure};
 pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "getengineversion" => (0, Type::Int),
+        "strlen" => (1, Type::Int),
+        "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
         "sin" | "sqrt" => (1, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
@@ -49,6 +51,31 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
         return Ok(Value::Int(0));
     }
     let value = value?;
+    if name == "strlen" {
+        return Ok(Value::Int(value.text()?.len() as i32));
+    }
+    if name == "findsubstr" {
+        let source = value.text()?;
+        let needle = arguments[1].resolved()?;
+        let needle = needle.text()?;
+        let Value::Int(start) = arguments[2].resolved()? else {
+            anyhow::bail!("FindSubStr requires an integer starting byte offset");
+        };
+        if start < 0 || start as usize > source.len() {
+            return Ok(Value::Int(-1));
+        }
+        if needle.is_empty() {
+            return Ok(Value::Int(start));
+        }
+        // The original reports byte positions and folds ASCII letters only.
+        // A valid UTF-8 search string cannot start on a continuation byte.
+        let start = source.ceil_char_boundary(start as usize);
+        let offset = source[start..]
+            .to_ascii_uppercase()
+            .find(&needle.to_ascii_uppercase())
+            .map_or(-1, |offset| (start + offset) as i32);
+        return Ok(Value::Int(offset));
+    }
     if matches!(name, "sin" | "sqrt") {
         return match (name, value) {
             ("sin", Value::Int(value)) => Ok(Value::Float((value as f32).sin())),

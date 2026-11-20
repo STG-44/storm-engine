@@ -2,15 +2,17 @@
 use crate::{GameDirectory, ScriptEncoding, host::NativeFunction};
 use anyhow::{Context, Result, bail, ensure};
 use std::{
-    cell::{OnceCell, RefCell},
+    cell::{Cell, RefCell},
     collections::BTreeMap,
     rc::Rc,
 };
 use storm_core::{Entity, EntityInit, Message, ScriptScalar};
+use storm_render::color::ColorCorrection;
 use storm_script::Value;
 
 pub(crate) const INTERFACE_LIBRARY: &str = "script_interface_functions";
 const TEXTS: &str = "RESOURCE/INI/TEXTS";
+const LANGUAGE_INI: &str = "RESOURCE/INI/TEXTS/language.ini";
 const MAX_USER_CATALOGS: i32 = 128;
 const TEXT_WHITESPACE: [char; 4] = [' ', '\t', '\r', '\n'];
 
@@ -19,6 +21,7 @@ struct Language {
     name: String,
     directory: Option<String>,
     strings: BTreeMap<String, String>,
+    loaded_common: bool,
     catalogs: RefCell<BTreeMap<i32, Catalog>>,
 }
 
@@ -33,23 +36,61 @@ pub(crate) struct LanguageService(Rc<LanguageResources>);
 
 struct LanguageResources {
     game: GameDirectory,
-    language: OnceCell<Rc<Language>>,
+    language: RefCell<Option<Rc<Language>>>,
 }
 
 impl LanguageService {
     pub fn new(game: GameDirectory) -> Self {
         Self(Rc::new(LanguageResources {
             game,
-            language: OnceCell::new(),
+            language: RefCell::default(),
         }))
     }
 
     fn get(&self) -> Result<Rc<Language>> {
-        if let Some(language) = self.0.language.get() {
+        if let Some(language) = self.0.language.borrow().as_ref() {
             return Ok(language.clone());
         }
-        let language = Rc::new(Language::load(&self.0.game)?);
-        Ok(self.0.language.get_or_init(|| language).clone())
+        let game = &self.0.game;
+        let language = match read_text(game, LANGUAGE_INI)? {
+            Some(ini) => Language::load(game, &ini, None)?,
+            None => Language::default(),
+        };
+        let language = Rc::new(language);
+        self.0.language.replace(Some(language.clone()));
+        Ok(language)
+    }
+
+    fn set(&self, name: &str) -> Result<()> {
+        let previous = self.get()?;
+        if previous.name.eq_ignore_ascii_case(name) {
+            return Ok(());
+        }
+        let game = &self.0.game;
+        let Some(ini) = read_text(game, LANGUAGE_INI)? else {
+            return Ok(());
+        };
+        let mut language = Language::load(game, &ini, Some(name))?;
+        for (&id, catalog) in previous.catalogs.borrow().iter() {
+            let strings = if language.loaded_common {
+                let Some(strings) = language.read_catalog(game, &catalog.file)? else {
+                    continue;
+                };
+                strings
+            } else {
+                catalog.strings.clone()
+            };
+            language.catalogs.get_mut().insert(
+                id,
+                Catalog {
+                    file: catalog.file.clone(),
+                    references: catalog.references,
+                    strings,
+                },
+            );
+        }
+        self.0.language.replace(Some(Rc::new(language)));
+        Ok(())
     }
 
     pub fn register(&self, host: &mut crate::NativeHost) -> Result<()> {
@@ -98,22 +139,26 @@ impl Entity for LanguageActor {
 }
 
 impl Language {
-    fn load(game: &GameDirectory) -> Result<Self> {
-        let Some(ini) = read_text(game, &format!("{TEXTS}/language.ini"))? else {
-            return Ok(Self::default());
-        };
-        let name = ini_value(&ini, "COMMON", "defaultLanguage")
-            .unwrap_or("English")
-            .to_owned();
-        if name.is_empty() {
+    fn load(game: &GameDirectory, ini: &str, requested: Option<&str>) -> Result<Self> {
+        let default = ini_value(ini, "COMMON", "defaultLanguage");
+        let common = ini_value(ini, "COMMON", "strings");
+        let mut name = requested.unwrap_or(default.unwrap_or("English"));
+        if requested.is_none() && name.is_empty() {
             return Ok(Self::default());
         }
-        let directory = ini_value(&ini, "DIRECTORY", &name).map(str::to_owned);
+        if let (Some(_), Some(default)) = (requested, default)
+            && (common.is_none() || ini_value(ini, "DIRECTORY", name).is_none())
+        {
+            name = default;
+        }
+        let directory = ini_value(ini, "DIRECTORY", name).map(str::to_owned);
         let mut strings = BTreeMap::new();
+        let mut loaded_common = false;
         if let Some(directory) = &directory
-            && let Some(common) = ini_value(&ini, "COMMON", "strings")
+            && let Some(common) = common
             && let Some(text) = read_text(game, &format!("{TEXTS}/{directory}/{common}"))?
         {
+            loaded_common = true;
             for line in ini_lines(&text) {
                 if line.starts_with('[') {
                     break;
@@ -135,9 +180,10 @@ impl Language {
             }
         }
         Ok(Self {
-            name,
+            name: name.to_owned(),
             directory,
             strings,
+            loaded_common,
             catalogs: RefCell::default(),
         })
     }
@@ -154,18 +200,9 @@ impl Language {
                 .context("language file reference limit")?;
             return Ok(id);
         }
-        let Some(directory) = &self.directory else {
+        let Some(strings) = self.read_catalog(game, file)? else {
             return Ok(-1);
         };
-        if file.is_empty() {
-            return Ok(-1);
-        }
-        let Some(text) = read_text(game, &format!("{TEXTS}/{directory}/{file}"))? else {
-            return Ok(-1);
-        };
-        if text.is_empty() {
-            return Ok(-1);
-        }
         let id = (0..MAX_USER_CATALOGS)
             .find(|id| !catalogs.contains_key(id))
             .context("open language file limit")?;
@@ -174,10 +211,23 @@ impl Language {
             Catalog {
                 file: file.to_owned(),
                 references: 1,
-                strings: catalog_strings(&text),
+                strings,
             },
         );
         Ok(id)
+    }
+
+    fn read_catalog(
+        &self,
+        game: &GameDirectory,
+        file: &str,
+    ) -> Result<Option<BTreeMap<String, String>>> {
+        let Some(directory) = self.directory.as_ref().filter(|_| !file.is_empty()) else {
+            return Ok(None);
+        };
+        Ok(read_text(game, &format!("{TEXTS}/{directory}/{file}"))?
+            .filter(|text| !text.is_empty())
+            .map(|text| catalog_strings(&text)))
     }
 
     fn close(&self, id: i32) {
@@ -290,19 +340,58 @@ fn ini_value<'a>(text: &'a str, section: &str, key: &str) -> Option<&'a str> {
     None
 }
 
-pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, NativeFunction); 5]> {
-    let language = service.get()?;
-    let current = language.clone();
-    let common = language.clone();
-    let opener = language.clone();
-    let closer = language.clone();
+pub(crate) fn functions(
+    service: &LanguageService,
+    correction: Rc<Cell<Option<ColorCorrection>>>,
+) -> Result<[(&'static str, NativeFunction); 7]> {
+    service.get()?;
+    let current = service.clone();
+    let setter = service.clone();
+    let common = service.clone();
+    let opener = service.clone();
+    let closer = service.clone();
+    let translation = service.clone();
     let game = service.0.game.clone();
     Ok([
+        (
+            "xi_setcolorcorrection",
+            NativeFunction::new(move |args| {
+                let [contrast, gamma, brightness] = args else {
+                    bail!("XI_SetColorCorrection expects three arguments");
+                };
+                let channel = |value: &Value| -> Result<f32> {
+                    let number = super::float_or_one(value)?;
+                    ensure!(
+                        number.is_finite(),
+                        "color correction requires finite settings"
+                    );
+                    Ok(number)
+                };
+                correction.set(Some(ColorCorrection {
+                    contrast: channel(contrast)?,
+                    gamma: channel(gamma)?,
+                    brightness: channel(brightness)?,
+                }));
+                Ok(Value::Void)
+            }),
+        ),
         (
             "languagegetlanguage",
             NativeFunction::new(move |args| {
                 ensure!(args.is_empty(), "LanguageGetLanguage expects no arguments");
-                Ok(Value::String(current.name.clone()))
+                Ok(Value::String(current.get()?.name.clone()))
+            }),
+        ),
+        (
+            "languagesetlanguage",
+            NativeFunction::new(move |args| {
+                let [name] = args else {
+                    bail!("LanguageSetLanguage expects one argument");
+                };
+                if let Value::String(name) = name.resolved()? {
+                    setter.set(&name)?;
+                }
+                Ok(Value::Void)
             }),
         ),
         (
@@ -316,6 +405,7 @@ pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, Nat
                 };
                 Ok(Value::String(
                     common
+                        .get()?
                         .strings
                         .get(&key.to_ascii_lowercase())
                         .cloned()
@@ -330,7 +420,7 @@ pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, Nat
                     bail!("LanguageOpenFile expects one argument")
                 };
                 Ok(Value::Int(match file.resolved()? {
-                    Value::String(file) => opener.open(&game, &file)?,
+                    Value::String(file) => opener.get()?.open(&game, &file)?,
                     _ => -1,
                 }))
             }),
@@ -343,7 +433,7 @@ pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, Nat
                 };
                 // The original DATA::Get leaves the ID at -1 for a non-int argument.
                 if let Value::Int(id) = id.resolved()? {
-                    closer.close(id);
+                    closer.get()?.close(id);
                 }
                 Ok(Value::Void)
             }),
@@ -355,7 +445,9 @@ pub(crate) fn functions(service: &LanguageService) -> Result<[(&'static str, Nat
                     bail!("LanguageConvertString expects two arguments")
                 };
                 let text = match (id.resolved()?, name.resolved()?) {
-                    (Value::Int(id), Value::String(name)) => language.translation(id, &name),
+                    (Value::Int(id), Value::String(name)) => {
+                        translation.get()?.translation(id, &name)
+                    }
                     _ => String::new(),
                 };
                 Ok(Value::String(text))

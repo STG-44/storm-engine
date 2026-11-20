@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn script_string_tests_use_byte_offsets_and_only_fold_ascii() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int Main() {
+            if ("Порт"=="" || "ПОРТ"=="порт") return 1;
+            if ("ПортA"!="Портa" || "aПорт">"Б") return 2;
+            if (strlen("яAB")!=4 || findsubstr("яAB", "ab", 1)!=2) return 3;
+            if (findsubstr("яAB", "Я", 0)!=-1 || findsubstr("яAB", "", 4)!=4) return 4;
+            if (findsubstr("яAB", "ab", -1)!=-1 || findsubstr("яAB", "ab", 3)!=-1) return 5;
+            return 0;
+        }"#,
+    )?;
+    assert_eq!(
+        program.call("Main", &[], &mut (), Limits::default())?,
+        Value::Int(0)
+    );
+    Ok(())
+}
+
+#[test]
 fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
     let program = Program::compile(
         "float Wave(int n){return sin(n);} int IntegerRoot(){return sqrt(12);} float Root(float n){return sqrt(n);}
@@ -627,19 +647,12 @@ fn switch_string_define_boolean_default_and_empty_paths_keep_native_comparisons(
         ("1.5", "1"),
         ("1", "1.5"),
     ] {
-        let equal = eval("int", &format!("{case}=={selector}"));
+        let equal = eval("int", &format!("{case}=={selector}"))?;
         let p = Program::compile(&format!(
             "int main(){{switch({selector}){{case {case}:return 1;break;default:return 0;break;}}}}"
         ))?;
-        let actual = p.call("main", &[], &mut (), Limits::default());
-        match (actual, equal) {
-            (Ok(actual), Ok(expected)) => assert_eq!(actual, expected),
-            (Err(actual), Err(expected)) => {
-                assert!(format!("{actual:#}").contains("unsupported operand String"));
-                assert!(format!("{expected:#}").contains("unsupported operand String"));
-            }
-            pair => panic!("switch comparison mismatch: {pair:?}"),
-        }
+        let actual = p.call("main", &[], &mut (), Limits::default())?;
+        assert_eq!(actual, equal);
     }
     Ok(())
 }
@@ -742,10 +755,13 @@ fn strings_are_raw_and_ascii_comparisons_ignore_case() -> Result<()> {
     );
     assert_eq!(eval("int", r#""Sails" == "sAILS""#)?, Value::Int(1));
     assert_eq!(eval("int", r#""12tail" == 12"#)?, Value::Int(1));
+    assert_eq!(eval("int", r#""1.5tail" == 1.5"#)?, Value::Int(1));
+    assert_eq!(eval("int", r#"4 == """#)?, Value::Int(0));
+    assert_eq!(eval("int", r#"1.5 != "2""#)?, Value::Int(0));
     assert_eq!(eval("int", r#"" 12" == 0"#)?, Value::Int(1));
     assert_eq!(eval("string", r#""a\nb""#)?, Value::String("a\\nb".into()));
     assert!(eval("string", r#"1.0 + "s""#).is_err());
-    assert!(eval("int", r#""я" == "Я""#).is_err());
+    assert_eq!(eval("int", r#""я" == "Я""#)?, Value::Int(0));
     Ok(())
 }
 

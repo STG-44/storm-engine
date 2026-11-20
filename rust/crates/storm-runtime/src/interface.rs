@@ -2,6 +2,7 @@
 mod fader;
 mod info;
 mod log;
+mod options;
 mod progress;
 mod quest_text;
 mod settings;
@@ -19,7 +20,9 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
+use storm_core::{
+    AttributeStore, Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field,
+};
 use storm_formats::texture::Texture;
 use storm_render::{fade::FadeDraw, loading::LoadingPictures, texture_paths::TexturePaths};
 use storm_script::{Reference, Value};
@@ -67,6 +70,7 @@ struct Shared {
     fade_draws: RefCell<Vec<FadeDraw>>,
     fader_tips_enabled: Cell<bool>,
     fader_notifications: RefCell<BTreeMap<u64, fader::Notifications>>,
+    options_break: Cell<Option<EntityId>>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
 }
@@ -100,11 +104,16 @@ impl Interfaces {
             fade_draws: RefCell::default(),
             fader_tips_enabled: Cell::default(),
             fader_notifications: RefCell::default(),
+            options_break: Cell::default(),
             finished_videos: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
-        host.entities
-            .register_class("xinterface", move || Ok(Box::new(Actor(shared.clone()))))?;
+        host.entities.register_class("xinterface", move || {
+            Ok(Box::new(Actor {
+                shared: shared.clone(),
+                id: EntityId::INVALID,
+            }))
+        })?;
         let shared = interfaces.0.clone();
         host.entities.register_class("ILogAndActions", move || {
             Ok(Box::new(log::LogActor::new(shared.clone())))
@@ -137,6 +146,15 @@ impl Interfaces {
 
     pub fn state(&self, id: EntityId) -> Option<Ref<'_, InterfaceState>> {
         Ref::filter_map(self.0.states.borrow(), |states| states.get(&id.raw())).ok()
+    }
+
+    pub(crate) fn take_event(&self, id: EntityId) -> Option<&'static str> {
+        if self.0.options_break.get() == Some(id) {
+            self.0.options_break.set(None);
+            Some("evntOptionsBreak")
+        } else {
+            None
+        }
     }
 
     pub fn log(&self, id: EntityId) -> Option<Ref<'_, LogAndActionsState>> {
@@ -314,11 +332,15 @@ impl Interfaces {
     }
 }
 
-struct Actor(Rc<Shared>);
+struct Actor {
+    shared: Rc<Shared>,
+    id: EntityId,
+}
 
 impl Entity for Actor {
     fn init(&mut self, context: &mut EntityInit<'_>) -> Result<bool> {
-        let shared = &self.0;
+        self.id = context.id;
+        let shared = &self.shared;
         let window = shared.viewport()?;
         let (screen, mut cursor) = settings::load(&shared.game, window)?;
         if let Some(cursor) = &mut cursor {
@@ -346,12 +368,33 @@ impl Entity for Actor {
     }
 
     fn destroy(&mut self, context: &mut EntityDestroy<'_>) -> Result<()> {
-        self.0.states.borrow_mut().remove(&context.id.raw());
+        self.shared.states.borrow_mut().remove(&context.id.raw());
+        if self.shared.options_break.get() == Some(context.id) {
+            self.shared.options_break.set(None);
+        }
         Ok(())
     }
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
         bail!("unsupported XINTERFACE message {}", message.long()?);
+    }
+
+    fn process_message_with_attributes(
+        &mut self,
+        message: &mut Message,
+        attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        match message.long()? {
+            options::MSG_INTERFACE_LOADOPTIONS => {
+                let path = message.string()?.to_owned();
+                let root = message.attribute()?;
+                if options::load(&self.shared.game, &path, attributes, root)? {
+                    self.shared.options_break.set(Some(self.id));
+                }
+                Ok(0)
+            }
+            code => bail!("unsupported XINTERFACE message {code}"),
+        }
     }
 }
 

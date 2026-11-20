@@ -1561,7 +1561,7 @@ impl Compiler<'_> {
         }
         let name = self.word()?;
         if self.take("(") {
-            let arguments = self.call_arguments()?;
+            let arguments = self.call_arguments(name == "getentity")?;
             self.emit(Instruction::Call(name, arguments, CallSite::Expression));
         } else {
             let slot = if let Some(slot) = self.lookup(&name) {
@@ -1596,17 +1596,25 @@ impl Compiler<'_> {
             self.error("dynamic call expressions require a declared string variable")
         );
         self.expect("(")?;
-        let arguments = self.call_arguments()?;
+        let arguments = self.call_arguments(false)?;
         self.emit(Instruction::DynamicCall(slot, arguments));
         Ok(())
     }
-    fn call_arguments(&mut self) -> Result<usize> {
+    fn call_arguments(&mut self, first_by_reference: bool) -> Result<usize> {
         if self.take(")") {
             return Ok(0);
         }
         let mut count = 0;
         loop {
+            let start = self.code.len();
             self.expression(1)?;
+            if first_by_reference
+                && count == 0
+                && let Some(instruction) = self.code[start..].last_mut()
+                && matches!(instruction.op, Instruction::Load(false))
+            {
+                instruction.op = Instruction::Address;
+            }
             count += 1;
             ensure!(count <= self.limits.locals, "script argument limit");
             if self.take(")") {

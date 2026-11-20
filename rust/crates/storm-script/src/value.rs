@@ -202,24 +202,27 @@ impl Value {
                 self = Self::Int(n as i32);
             }
             if let (Self::String(a), Self::String(b)) = (&self, &rhs) {
-                ensure!(
-                    a.is_ascii() && b.is_ascii(),
-                    "non-ASCII string comparison is not ported yet"
-                );
-                let a = a.to_ascii_uppercase();
-                let b = b.to_ascii_uppercase();
+                // ichar_traits folds individual bytes in the native C locale.
+                let order = a
+                    .bytes()
+                    .map(|byte| byte.to_ascii_uppercase())
+                    .cmp(b.bytes().map(|byte| byte.to_ascii_uppercase()));
                 return Ok(Self::Int(i32::from(match op {
-                    Op::Eq => a == b,
-                    Op::Ne => a != b,
-                    Op::Lt => a < b,
-                    Op::Le => a <= b,
-                    Op::Gt => a > b,
-                    Op::Ge => a >= b,
+                    Op::Eq => order.is_eq(),
+                    Op::Ne => !order.is_eq(),
+                    Op::Lt => order.is_lt(),
+                    Op::Le => !order.is_gt(),
+                    Op::Gt => order.is_gt(),
+                    Op::Ge => !order.is_lt(),
                     _ => unreachable!(),
                 })));
             }
-            if matches!(self, Self::String(_)) && matches!(rhs, Self::Int(_)) {
-                self = Self::Int(self.integer()?);
+            if matches!(self, Self::String(_)) && matches!(rhs, Self::Int(_) | Self::Float(_)) {
+                self = self.convert(rhs.kind())?;
+            }
+            // DATA::CompareAndSetResult clears numeric-left string comparisons.
+            if matches!(self, Self::Int(_) | Self::Float(_)) && matches!(rhs, Self::String(_)) {
+                return Ok(Self::Int(0));
             }
         }
         if let (Self::Int(a), Self::Int(b)) = (&self, &rhs) {

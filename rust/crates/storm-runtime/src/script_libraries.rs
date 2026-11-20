@@ -55,6 +55,14 @@ pub(crate) fn math_functions() -> [(&'static str, NativeFunction); 6] {
     ]
 }
 
+/// DATA::Get(float&) leaves an initialized output unchanged on type mismatch.
+pub(crate) fn float_or_one(value: &Value) -> Result<f32> {
+    Ok(match value.resolved()? {
+        Value::Float(number) => number,
+        _ => 1.0,
+    })
+}
+
 fn ticks(origin: Instant) -> u32 {
     origin.elapsed().as_nanos() as u32
 }

@@ -52,8 +52,14 @@ pub trait Host {
     fn entity_attribute_root(&self, _entity: EntityId) -> Option<AttributeId> {
         None
     }
+    fn first_entity_of_type(&self, _class: &str) -> Result<Option<EntityId>> {
+        bail!("class-based entity lookup is not bound by this host")
+    }
     fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
         bail!("entity deletion is not bound by this host")
+    }
+    fn delete_entities_by_type(&mut self, _class: &str) -> Result<()> {
+        bail!("class-based entity deletion is not bound by this host")
     }
     fn create_entity(
         &mut self,
@@ -88,9 +94,17 @@ pub trait Host {
     ) -> Result<u64> {
         bail!("entity messages are not bound by this host")
     }
+    /// A synchronous, payload-free event raised by the preceding entity message.
+    fn take_entity_event(&mut self, _entity: EntityId) -> Option<&'static str> {
+        None
+    }
     /// Payload-free events posted by the preceding native entity message.
     fn take_entity_posts(&mut self, _entity: EntityId) -> Vec<(&'static str, i32)> {
         Vec::new()
+    }
+    /// An isolated budget for a top-level event handler that initializes the game.
+    fn event_handler_instructions(&self, _event: &str, _function: &str) -> Option<u64> {
+        None
     }
     fn attribute_changed(
         &mut self,

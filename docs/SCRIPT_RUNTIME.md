@@ -125,8 +125,11 @@ Still pending: `ptr`, the remaining object/entity operations,
 the full game native API, dynamic segment loading/unloading,
 `for`, `switch`, `goto`, dynamic calls, debugger, saved or cached
 programs and the full game scripts. Float-to-string conversion and string/float
-concatenation, string-left float comparison and legacy non-ASCII comparison
-rules also remain unsupported. Private Rust instructions are not a reader for
+concatenation also remain unsupported. String comparison and `FindSubStr`
+fold ASCII bytes, and `strlen` and `FindSubStr` return byte lengths or offsets.
+Numeric comparisons convert a string on the left to the type on the right.
+The native comparator returns zero for a number on the left and a string
+on the right. Private Rust instructions are not a reader for
 the original compiled-program cache or a stable bytecode file format.
 
 The [object/attribute subset](SCRIPT_OBJECTS.md) is now executable. The next

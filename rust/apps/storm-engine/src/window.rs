@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 use storm_core::Message;
-use storm_render::Gpu;
+use storm_render::{Gpu, color::ColorCorrection};
 use storm_runtime::{
     ControlInput, Engine, Phase, WindowSettings, clock::Timer, interface::LoadingProgress,
     model::Models,
@@ -134,6 +134,7 @@ impl Surface {
         &mut self,
         instance: &wgpu::Instance,
         progress: &LoadingProgress,
+        correction: Option<ColorCorrection>,
     ) -> Result<bool> {
         self.present(instance, |surface, encoder, view| {
             surface.scene.encode_progress(
@@ -142,6 +143,7 @@ impl Surface {
                 view,
                 [surface.config.width, surface.config.height],
                 progress,
+                correction,
             )
         })
     }
@@ -257,10 +259,11 @@ impl Application<'_> {
                     seconds: self.elapsed_ms as f32 * 0.001,
                     pictures: self.engine.host.loading_draw(),
                     fades: fades.as_deref().unwrap_or_default(),
+                    correction: self.engine.host.color_correction(),
                 };
                 if let Some(progress) = self.engine.host.loading_progress() {
                     surface.capture_scene(&frame)?;
-                    surface.render_progress(&self.instance, &progress)?
+                    surface.render_progress(&self.instance, &progress, frame.correction)?
                 } else {
                     let presented = surface.render_scene(&self.instance, &frame)?;
                     if !presented {
@@ -301,9 +304,14 @@ impl ApplicationHandler for Application<'_> {
                     let surface = Rc::new(RefCell::new(surface));
                     let progress_surface = Rc::downgrade(&surface);
                     let instance = self.instance.clone();
+                    let correction = self.engine.host.color_correction_reader();
                     self.engine.host.set_progress_presenter(move |progress| {
                         if let Some(surface) = progress_surface.upgrade() {
-                            surface.borrow_mut().render_progress(&instance, progress)?;
+                            surface.borrow_mut().render_progress(
+                                &instance,
+                                progress,
+                                correction(),
+                            )?;
                         }
                         Ok(())
                     });
