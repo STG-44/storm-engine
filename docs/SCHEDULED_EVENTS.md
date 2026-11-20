@@ -3,8 +3,9 @@
 `Event`, `PostEvent` and `ClearPostEvents` extend the
 [immediate event runtime](SCRIPT_EVENTS.md). They support the original `l/f/s`
 message subset and operate on the same persistent handler table, host and
-attribute world. Static declarations, original program loading, `i/a/e/p` fields
-and the full game API remain pending.
+attribute world. Native events can also deliver `i` fields through
+`GetEventData`. Each entity field returns an aref with the entity ID and
+its current attribute binding.
 
 ## Reproducible fixture
 
@@ -49,10 +50,12 @@ to 128 explicit deltas for deterministic, GPU-free checks.
   retain their uint32 period bits; elapsed time wraps at 32 bits. The retained
   builtin constructs a message only with at least four arguments; a lone third
   argument is ignored.
-- The first scheduler pass advances elapsed time and marks an entry processed
-  without firing it, even if it is already due or has zero delay. Later passes
-  check the period after adding the frame delta. A post appended during delivery
-  can receive its preparation pass in that same frame.
+- For a script post, the first scheduler pass advances elapsed time and marks
+  an entry processed without firing it, even if it is already due or has zero
+  delay. Later passes check the period after adding the frame delta. A post
+  appended during delivery can receive its preparation pass in that same frame.
+- Native posts enter the same queue already marked processed. A due native
+  post can dispatch on the next scheduler pass.
 - `DelEventHandler` also calls `ProcessTime(0)` on every queued entry, including
   unrelated names. Matching entries that are not due are removed; due and
   zero-period entries survive. This can prepare unrelated events early.

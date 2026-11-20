@@ -3,6 +3,7 @@ use crate::{Host, Type, Value};
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeMap,
     rc::{Rc, Weak},
 };
 use storm_core::{AttributeId, AttributeStore, EntityId};
@@ -16,6 +17,7 @@ pub struct World(Rc<Storage>);
 #[derive(Default)]
 struct Storage {
     attributes: RefCell<AttributeStore>,
+    owners: RefCell<BTreeMap<AttributeId, Weak<Owner>>>,
     released: RefCell<Vec<AttributeId>>,
 }
 struct Owner {
@@ -67,6 +69,7 @@ pointer_identity!(
     AttributeReference,
     |a: &AttributeReference, b: &AttributeReference| a.node == b.node
         && Weak::ptr_eq(&a.owner, &b.owner)
+        && (a.node != AttributeId::INVALID || a.entity == b.entity)
 );
 
 impl World {
@@ -77,6 +80,7 @@ impl World {
             .try_borrow_mut()
             .context("reentrant attribute access")?;
         for id in self.0.released.borrow_mut().drain(..) {
+            self.0.owners.borrow_mut().remove(&id);
             store.drop_root(id)?;
         }
         ensure!(
@@ -92,12 +96,47 @@ impl World {
     pub fn object(&self, entity: EntityId) -> Result<Object> {
         self.prepare(1, 1)?;
         let root = self.0.attributes.borrow_mut().create_root()?;
-        Ok(Object(Rc::new(Owner {
+        Ok(self.owned_object(root, entity, false))
+    }
+    fn owned_object(&self, root: AttributeId, entity: EntityId, initialized: bool) -> Object {
+        let owner = Rc::new(Owner {
             world: self.clone(),
             root,
             entity: Cell::new(entity),
-            initialized: Cell::new(false),
-        })))
+            initialized: Cell::new(initialized),
+        });
+        self.0
+            .owners
+            .borrow_mut()
+            .insert(root, Rc::downgrade(&owner));
+        Object(owner)
+    }
+    pub(crate) fn entity_reference(
+        &self,
+        entity: EntityId,
+        binding: Option<AttributeId>,
+    ) -> Result<AttributeReference> {
+        if let Some(node) = binding {
+            let owner = self.read(|store| {
+                let mut root = node;
+                while let Some(parent) = store.get(root)?.parent() {
+                    root = parent;
+                }
+                self.0.owners.borrow().get(&root).cloned()
+            })?;
+            if let Some(owner) = owner {
+                return Ok(AttributeReference {
+                    owner,
+                    node,
+                    entity,
+                });
+            }
+        }
+        Ok(AttributeReference {
+            owner: Weak::new(),
+            node: AttributeId::INVALID,
+            entity,
+        })
     }
     /// Read attributes from the same store that native entities borrow.
     pub fn read<T>(&self, action: impl FnOnce(&AttributeStore) -> T) -> Result<T> {
@@ -166,12 +205,7 @@ impl Object {
         let count = world.read(|s| s.subtree_len(self.0.root))??;
         world.prepare(count, 0)?;
         let root = world.0.attributes.borrow_mut().copy(self.0.root)?;
-        Ok(Self(Rc::new(Owner {
-            world: world.clone(),
-            root,
-            entity: Cell::new(self.entity()),
-            initialized: Cell::new(true),
-        })))
+        Ok(world.owned_object(root, self.entity(), true))
     }
     pub(crate) fn replace(&self, source: &Self) -> Result<()> {
         ensure!(
@@ -192,7 +226,9 @@ impl Object {
 
 impl AttributeReference {
     pub(crate) fn entity(&self) -> Result<EntityId> {
-        self.owner()?;
+        if self.node != AttributeId::INVALID {
+            self.owner()?;
+        }
         Ok(self.entity)
     }
     fn owner(&self) -> Result<Rc<Owner>> {
@@ -303,6 +339,9 @@ impl AttributeReference {
             .replace_with_copy(self.node, source.node)
     }
     pub(crate) fn builtin(&self, name: &str, argument: Option<&Value>) -> Result<Value> {
+        if name == "checkattribute" && self.node == AttributeId::INVALID {
+            return Ok(Value::Int(0));
+        }
         let owner = self.owner()?;
         if matches!(name, "checkattribute" | "deleteattribute") {
             owner.world.prepare(

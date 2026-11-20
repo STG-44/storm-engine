@@ -123,6 +123,7 @@ fn main() -> Result<()> {
             let seconds = elapsed_ms as f32 * 0.001;
             let pictures = engine.host.loading_draw();
             let progress = engine.host.loading_progress();
+            let fade_opacity = engine.host.fade_opacity();
             let frame = if let Some(active) = &progress {
                 let screen = storm_render::loading::LoadingScreen::new(
                     &gpu,
@@ -139,12 +140,16 @@ fn main() -> Result<()> {
                         Ok(())
                     },
                 )?
-            } else if let Some(pictures) = &pictures {
-                let screen = storm_render::loading::LoadingScreen::new(
-                    &gpu,
-                    wgpu::TextureFormat::Rgba8UnormSrgb,
-                    pictures,
-                )?;
+            } else if pictures.is_some() || fade_opacity > 0.0 {
+                let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+                let screen = pictures
+                    .as_deref()
+                    .map(|pictures| {
+                        storm_render::loading::LoadingScreen::new(&gpu, format, pictures)
+                    })
+                    .transpose()?;
+                let fade = (fade_opacity > 0.0)
+                    .then(|| storm_render::fade::FadeOverlay::new(&gpu, format));
                 storm_render::render_offscreen_with(
                     &gpu,
                     width,
@@ -152,7 +157,12 @@ fn main() -> Result<()> {
                     seconds,
                     |encoder, view| {
                         scenes.encode(&gpu, encoder, view, width, height, seconds)?;
-                        screen.encode(&gpu, encoder, view, [width, height]);
+                        if let Some(screen) = &screen {
+                            screen.encode(&gpu, encoder, view, [width, height]);
+                        }
+                        if let Some(fade) = &fade {
+                            fade.encode(encoder, view, fade_opacity);
+                        }
                         Ok(())
                     },
                 )?

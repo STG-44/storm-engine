@@ -161,6 +161,26 @@ impl Engine {
             self.host
                 .entities
                 .process_entity_stage(id, Stage::Execute, delta_ms)?;
+            if let Some(notifications) = self
+                .host
+                .interfaces
+                .as_ref()
+                .and_then(|interfaces| interfaces.take_fader_notifications(id))
+            {
+                if notifications.erase {
+                    self.host.entities.erase(id);
+                }
+                for event in notifications.events() {
+                    let message = Message::new(
+                        "li",
+                        vec![
+                            MessageValue::Long(i32::from(notifications.fade_in)),
+                            MessageValue::Entity(id),
+                        ],
+                    )?;
+                    self.runtime.post_native_event(event, 0, message)?;
+                }
+            }
             if self.host.entities.is_valid(id)
                 && let Some(event) = self
                     .host
@@ -301,7 +321,7 @@ impl Engine {
             self.host.entities.erase(id);
         }
         if let Some(interfaces) = &self.host.interfaces {
-            interfaces.clear_loading_draw();
+            interfaces.clear_draws();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {

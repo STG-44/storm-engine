@@ -48,6 +48,10 @@ pub trait Host {
     fn is_entity(&self, _entity: EntityId) -> Result<bool> {
         bail!("entity lookup is not bound by this host")
     }
+    /// Current attribute binding for an entity received in an event.
+    fn entity_attribute_root(&self, _entity: EntityId) -> Option<AttributeId> {
+        None
+    }
     fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
         bail!("entity deletion is not bound by this host")
     }

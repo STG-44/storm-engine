@@ -1,4 +1,5 @@
 //! XINTERFACE startup state, including its original script callbacks.
+mod fader;
 mod info;
 mod log;
 mod progress;
@@ -61,6 +62,8 @@ struct Shared {
     loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     previous_loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     progress: RefCell<progress::Progress>,
+    fade_opacity: Cell<f32>,
+    fader_notifications: RefCell<BTreeMap<u64, fader::Notifications>>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
 }
@@ -91,6 +94,8 @@ impl Interfaces {
             loading_draw: RefCell::default(),
             previous_loading_draw: RefCell::default(),
             progress: RefCell::default(),
+            fade_opacity: Cell::default(),
+            fader_notifications: RefCell::default(),
             finished_videos: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
@@ -111,6 +116,10 @@ impl Interfaces {
         let shared = interfaces.0.clone();
         host.entities.register_class("InfoHandler", move || {
             Ok(Box::new(info::InfoActor::new(shared.clone())))
+        })?;
+        let shared = interfaces.0.clone();
+        host.entities.register_class("Fader", move || {
+            Ok(Box::new(fader::FaderActor::new(shared.clone())))
         })?;
         host.interfaces = Some(interfaces);
         Ok(())
@@ -136,13 +145,15 @@ impl Interfaces {
     pub fn take_timer_event(&self, id: EntityId) -> Option<String> {
         self.0.timers.borrow_mut().get_mut(&id.raw())?.take_event()
     }
-    pub fn clear_loading_draw(&self) {
+    pub fn clear_draws(&self) {
         self.0.loading_draw.replace(None);
         self.0.previous_loading_draw.replace(None);
+        self.0.fade_opacity.set(0.0);
         self.end_loading_progress();
     }
 
     pub fn begin_frame(&self) {
+        self.0.fade_opacity.set(0.0);
         self.0
             .previous_loading_draw
             .replace(self.0.loading_draw.take());
@@ -150,6 +161,14 @@ impl Interfaces {
 
     pub fn loading_draw(&self) -> Option<Rc<LoadingPictures>> {
         self.0.loading_draw.borrow().clone()
+    }
+
+    pub fn fade_opacity(&self) -> f32 {
+        self.0.fade_opacity.get()
+    }
+
+    pub fn take_fader_notifications(&self, id: EntityId) -> Option<fader::Notifications> {
+        self.0.fader_notifications.borrow_mut().remove(&id.raw())
     }
 
     pub fn set_loading_progress_foreground(&self, name: String) {

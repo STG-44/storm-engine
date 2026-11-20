@@ -330,6 +330,11 @@ impl Runtime {
     pub fn posted_events(&self) -> u64 {
         self.handlers.queue.total
     }
+    /// Core posts are eligible at the next scheduler pass. Script posts enter
+    /// the same queue but need a preparatory pass before they can fire.
+    pub fn post_native_event(&mut self, name: &str, delay_ms: u32, message: Message) -> Result<()> {
+        self.handlers.queue.post_native(name, delay_ms, message)
+    }
     pub fn pending_events(&self) -> usize {
         self.handlers.queue.pending()
     }
@@ -505,14 +510,19 @@ impl Program {
                     {
                         'l' => Value::Int(message.long()?),
                         'f' => Value::Float(message.float()?),
+                        'i' => {
+                            let entity = message.entity()?;
+                            let binding = execution.host.entity_attribute_root(entity);
+                            Value::AReference(Some(
+                                execution.world.entity_reference(entity, binding)?,
+                            ))
+                        }
                         's' => {
                             let value = Value::String(message.string()?.into());
                             value.validate()?;
                             value
                         }
-                        code => anyhow::bail!(
-                            "unsupported GetEventData type {code:?}; entity, attribute and script-variable payloads are pending"
-                        ),
+                        code => anyhow::bail!("unsupported GetEventData type {code:?}"),
                     },
                 )
             }

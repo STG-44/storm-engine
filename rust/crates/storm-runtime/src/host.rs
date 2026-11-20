@@ -121,6 +121,11 @@ impl NativeHost {
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }
+    pub fn fade_opacity(&self) -> f32 {
+        self.interfaces
+            .as_ref()
+            .map_or(0.0, |interfaces| interfaces.fade_opacity())
+    }
     pub fn loading_progress(&self) -> Option<LoadingProgress> {
         self.interfaces.as_ref()?.loading_progress()
     }
@@ -325,6 +330,9 @@ impl Host for NativeHost {
     fn delete_entity(&mut self, id: EntityId) -> Result<()> {
         self.entities.erase(id);
         Ok(())
+    }
+    fn entity_attribute_root(&self, id: EntityId) -> Option<AttributeId> {
+        self.entities.attribute_root(id)
     }
     fn create_entity(
         &mut self,

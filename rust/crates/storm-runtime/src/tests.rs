@@ -2,6 +2,97 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn fader_draws_timed_transitions_posts_live_entity_references_and_auto_deletes() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object fade;
+        #event_handler("FaderEvent_StartFade","OutStart");
+        #event_handler("FaderEvent_EndFade","OutEnd");
+        #event_handler("FaderEvent_StartFadeIn","InStart");
+        #event_handler("FaderEvent_EndFadeIn","InEnd");
+        #event_handler("reveal","Reveal");
+        #event_handler("instant","Instant");
+        void Main() {
+            fade.kind="scene";
+            CreateEntity(&fade,"Fader");
+            SendMessage(&fade,"lfl",33000,1.0,0);
+        }
+        void Reveal() { SendMessage(&fade,"lfl",33001,1.0,1); }
+        void Instant() {
+            object unbound=CreateClass("Fader");
+            SendMessage(&unbound,"lfl",33000,0.0,1);
+        }
+        void OutStart() {
+            int direction=GetEventData(); aref actor=GetEventData();
+            string kind="unbound";
+            if (CheckAttribute(actor,"kind")) {
+                kind=actor.kind;
+                actor.notified=1;
+            }
+            Trace("out start:"+direction+":"+IsEntity(actor)+":"+kind);
+        }
+        void OutEnd() {
+            int direction=GetEventData(); aref actor=GetEventData();
+            Trace("out end:"+direction+":"+IsEntity(actor)+":"+CheckAttribute(fade,"notified"));
+        }
+        void InStart() {
+            int direction=GetEventData(); aref actor=GetEventData();
+            Trace("in start:"+direction+":"+actor.kind);
+        }
+        void InEnd() {
+            int direction=GetEventData(); aref actor=GetEventData();
+            Trace("in end:"+direction+":"+IsEntity(actor));
+        }
+        "#,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    for (delta, opacity, event) in [
+        (500, 0.0, None),
+        (500, 0.5, None),
+        (0, 1.0, Some("script:out start:0:1:scene")),
+        (0, 1.0, None),
+        (0, 1.0, Some("script:out end:0:1:1")),
+    ] {
+        engine.frame(delta)?;
+        assert_eq!(engine.host.fade_opacity(), opacity);
+        assert_eq!(trace.take().as_slice(), event.as_slice());
+    }
+    let id = engine.host.entities.first_id("Fader").unwrap();
+    engine.emit_event("reveal", &mut Message::new("", Vec::new())?)?;
+    for (delta, opacity, event) in [
+        (500, 1.0, None),
+        (500, 0.5, None),
+        (0, 0.0, Some("script:in start:1:scene")),
+        (0, 0.0, None),
+        (0, 0.0, Some("script:in end:1:1")),
+    ] {
+        engine.frame(delta)?;
+        assert_eq!(engine.host.fade_opacity(), opacity);
+        assert_eq!(trace.take().as_slice(), event.as_slice());
+        assert!(engine.host.entities.is_valid(id));
+    }
+    engine.frame(0)?;
+    assert!(!engine.host.entities.is_valid(id));
+    assert!(trace.take().is_empty());
+
+    engine.emit_event("instant", &mut Message::new("", Vec::new())?)?;
+    engine.frame(0)?;
+    assert_eq!(engine.host.fade_opacity(), 0.0);
+    engine.frame(0)?;
+    assert_eq!(engine.host.fade_opacity(), 1.0);
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:out start:0:1:unbound"]);
+    engine.shutdown()?;
+    assert_eq!(engine.host.fade_opacity(), 0.0);
+    Ok(())
+}
+
+#[test]
 fn reload_progress_commands_present_inside_the_script_and_retain_the_last_picture() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("Resource/Textures");

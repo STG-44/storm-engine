@@ -10,6 +10,7 @@ use std::{
 use storm_core::Message;
 use storm_render::{
     Gpu,
+    fade::FadeOverlay,
     loading::{LoadingPictures, LoadingScreen},
 };
 use storm_runtime::{
@@ -41,6 +42,7 @@ struct Surface {
     occluded: bool,
     scenes: ModelScenes,
     loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
+    fade: FadeOverlay,
 }
 impl Surface {
     async fn new(
@@ -94,6 +96,7 @@ impl Surface {
             wgpu::PresentMode::AutoNoVsync
         };
         let scenes = ModelScenes::new(config.format);
+        let fade = FadeOverlay::new(&gpu, config.format);
         let mut state = Self {
             surface,
             window,
@@ -103,6 +106,7 @@ impl Surface {
             occluded: false,
             scenes,
             loading: None,
+            fade,
         };
         state.resize(size)?;
         Ok(state)
@@ -128,6 +132,7 @@ impl Surface {
         live: &[storm_core::EntityId],
         seconds: f32,
         pictures: Option<Rc<LoadingPictures>>,
+        fade_opacity: f32,
     ) -> Result<bool> {
         self.present(instance, |surface, encoder, view| {
             surface.scenes.prepare(&surface.gpu, draws, live)?;
@@ -144,6 +149,7 @@ impl Surface {
             } else {
                 surface.loading = None;
             }
+            surface.fade.encode(encoder, view, fade_opacity);
             Ok(())
         })
     }
@@ -307,6 +313,7 @@ impl Application<'_> {
                         &live,
                         self.elapsed_ms as f32 * 0.001,
                         self.engine.host.loading_draw(),
+                        self.engine.host.fade_opacity(),
                     )?
                 };
                 surface.scenes.prune(&live);

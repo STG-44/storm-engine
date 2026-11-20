@@ -290,6 +290,15 @@ while a backdrop and caption from `InfoHandler` remain visible. Changes to
 the selection leave the active loading screen intact, and
 `ReloadProgressEnd` clears the selection.
 
+`Fader` supports timed black scene transitions through messages
+`FADER_OUT` (33000) and `FADER_IN` (33001). Both use `lfl` for the
+message ID, duration in seconds, and auto-delete flag. Fades follow the
+simulation clock on the original Execute and Realize layers. The four
+`FaderEvent_*` notifications use `li` for direction and entity ID and
+dispatch through the native event queue. The overlay is shared by the
+desktop and headless paths. Capture of a frozen start frame and
+script-selected fade textures remain pending.
+
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.
 All four archive digests, 144 scenario reports and four startup traces

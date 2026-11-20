@@ -5,6 +5,7 @@ use std::{fs::File, io::BufWriter, path::Path, sync::mpsc, time::Duration};
 use wgpu::util::DeviceExt;
 
 pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
+pub mod fade;
 pub mod loading;
 pub mod model;
 pub mod texture_paths;

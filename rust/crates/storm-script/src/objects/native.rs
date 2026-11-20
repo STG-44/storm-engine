@@ -204,12 +204,8 @@ impl ScriptVariableAccess for Access {
             }
             Value::AReference(None) => bail!("uninitialized aref"),
             _ => {
-                *value = Value::Object(Object(Rc::new(Owner {
-                    world: self.world.clone(),
-                    root: store.create_root()?,
-                    entity: Cell::new(entity),
-                    initialized: Cell::new(false),
-                })));
+                *value =
+                    Value::Object(self.world.owned_object(store.create_root()?, entity, false));
             }
         }
         Ok(())

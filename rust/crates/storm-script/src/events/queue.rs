@@ -30,6 +30,20 @@ pub(super) struct Queue {
 }
 impl Queue {
     pub fn post(&mut self, name: &str, delay: i32, message: Option<Message>) -> Result<()> {
+        self.enqueue(name, delay as u32, message, false)
+    }
+
+    pub(super) fn post_native(&mut self, name: &str, delay: u32, message: Message) -> Result<()> {
+        self.enqueue(name, delay, Some(message), true)
+    }
+
+    fn enqueue(
+        &mut self,
+        name: &str,
+        period: u32,
+        message: Option<Message>,
+        processed: bool,
+    ) -> Result<()> {
         event_name(name)?;
         if let Some(message) = &message {
             check_message(message)?;
@@ -53,8 +67,8 @@ impl Queue {
         self.entries.push(Queued {
             name: name.into(),
             elapsed: 0,
-            period: delay as u32,
-            processed: false,
+            period,
+            processed,
             invalid: false,
             message,
             bytes,

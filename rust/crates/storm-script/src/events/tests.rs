@@ -263,7 +263,6 @@ fn invalid_payload_types_and_unbounded_messages_are_rejected() -> Result<()> {
         ("u", Field::Dword(1)),
         ("d", Field::Double(1.0)),
         ("c", Field::Vector([0.; 3])),
-        ("i", Field::Entity(storm_core::EntityId::INVALID)),
     ] {
         let error = runtime
             .emit(
