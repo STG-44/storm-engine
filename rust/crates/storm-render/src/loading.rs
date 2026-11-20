@@ -4,6 +4,7 @@ use anyhow::Result;
 use storm_formats::texture::Texture;
 use wgpu::util::DeviceExt;
 
+#[derive(Default)]
 pub struct LoadingPictures {
     pub background: Option<Texture>,
     pub foreground: Option<Texture>,
@@ -13,7 +14,7 @@ pub struct LoadingPictures {
 pub struct LoadingScreen {
     pipeline: wgpu::RenderPipeline,
     pictures: wgpu::BindGroup,
-    rectangle: wgpu::Buffer,
+    uniforms: wgpu::Buffer,
     picture_size: [u32; 2],
 }
 
@@ -49,9 +50,9 @@ impl LoadingScreen {
         let background = texture(&pictures.background)?;
         let foreground = texture(&pictures.foreground)?;
         let border = texture(&pictures.border)?;
-        let rectangle = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Loading picture rectangle"),
-            size: 16,
+        let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Loading screen uniforms"),
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -111,14 +112,14 @@ impl LoadingScreen {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: rectangle.as_entire_binding(),
+                    resource: uniforms.as_entire_binding(),
                 },
             ],
         });
         Ok(Self {
             pipeline,
             pictures,
-            rectangle,
+            uniforms,
             picture_size,
         })
     }
@@ -131,14 +132,47 @@ impl LoadingScreen {
         target: &wgpu::TextureView,
         size: [u32; 2],
     ) {
+        self.encode_frame(gpu, encoder, target, size, None);
+    }
+
+    /// A progress frame starts on a clean background and can be presented
+    /// while the script VM is still loading the next scene.
+    pub fn encode_progress(
+        &self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        phase: f32,
+    ) {
+        self.encode_frame(gpu, encoder, target, size, Some(phase));
+    }
+
+    fn encode_frame(
+        &self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        progress: Option<f32>,
+    ) {
         if size.contains(&0) {
             return;
         }
-        gpu.queue.write_buffer(
-            &self.rectangle,
-            0,
-            bytemuck::cast_slice(&picture_rect(size, self.picture_size)),
-        );
+        let rectangle = picture_rect(size, self.picture_size);
+        let uniforms = [rectangle, [progress.unwrap_or(-1.0), 0.0, 0.0, 0.0]];
+        gpu.queue
+            .write_buffer(&self.uniforms, 0, bytemuck::cast_slice(&uniforms));
+        let load = if progress.is_some() {
+            wgpu::LoadOp::Clear(wgpu::Color {
+                r: 0.008,
+                g: 0.015,
+                b: 0.032,
+                a: 1.0,
+            })
+        } else {
+            wgpu::LoadOp::Load
+        };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Loading pictures"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -146,7 +180,7 @@ impl LoadingScreen {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
+                    load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -209,6 +243,31 @@ mod tests {
         assert!((185..=190).contains(&center[2]));
         assert_eq!(sample([320, 240], 20, 120)?, [0, 255, 0, 255]);
         assert_eq!(sample([320, 240], 64, 120)?, center);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn loading_indicator_moves_and_renders_without_picture_assets() -> Result<()> {
+        let instance = crate::create_instance(wgpu::Backends::PRIMARY)?;
+        let gpu = pollster::block_on(Gpu::request(&instance, None))?;
+        let screen = LoadingScreen::new(
+            &gpu,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &LoadingPictures::default(),
+        )?;
+        let render = |phase| {
+            crate::render_offscreen_with(&gpu, 320, 240, 0.0, |encoder, view| {
+                screen.encode_progress(&gpu, encoder, view, [320, 240], phase);
+                Ok(())
+            })
+        };
+        let first = render(0.0)?;
+        let later = render(0.5)?;
+        let green = |frame: &crate::Frame, x: usize, y: usize| frame.rgba[(y * 320 + x) * 4 + 1];
+        assert_eq!(green(&first, 0, 0), green(&later, 0, 0));
+        assert!(green(&first, 100, 222) > green(&later, 100, 222));
+        assert!(green(&later, 218, 222) > green(&first, 218, 222));
         Ok(())
     }
 }

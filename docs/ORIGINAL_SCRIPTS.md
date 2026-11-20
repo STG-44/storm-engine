@@ -268,8 +268,15 @@ engine's TX texture reader. Projects can set `picborderfilename` for an
 optional transparent frame. The backdrop fills the window and the renderer
 fits the centered foreground to its own aspect ratio. Realize layer
 membership and message 1 control when the pictures are submitted. Both the
-desktop window and `--headless` use the same compositor. Text and the
-loading progress indicator remain pending.
+desktop window and `--headless` use the same compositor. Text remains
+pending.
+
+`ReloadProgressStart`, `ReloadProgressUpdate`, and `ReloadProgressEnd`
+are available through `scriptLocationLibrary`. They show, advance, and
+clear an activity indicator over the last loading picture. The window
+can present an update during synchronous script execution. Texture assets
+are optional. Updates are limited to one every 50 milliseconds of
+monotonic time, independently of the simulation speed.
 
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.

@@ -234,7 +234,7 @@ impl Engine {
     fn frame_inner(&mut self, delta_ms: u32, real_delta_ms: u32) -> Result<FrameResult> {
         self.host.delta_ms = delta_ms;
         if let Some(interfaces) = &self.host.interfaces {
-            interfaces.clear_loading_draw();
+            interfaces.begin_frame();
         }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()

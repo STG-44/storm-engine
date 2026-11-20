@@ -40,7 +40,7 @@ struct Arguments {
     /// Explicit headless frame deltas in milliseconds; window mode uses TIMER.
     #[arg(long, value_delimiter = ',', default_value = "16")]
     frame_ms: Vec<u32>,
-    /// Render the final static models and loading pictures to PNG.
+    /// Render the final scene or loading screen to PNG.
     #[arg(long, conflicts_with = "window")]
     headless: Option<PathBuf>,
     /// Run the same configured engine and scene in a native desktop window.
@@ -122,7 +122,24 @@ fn main() -> Result<()> {
             let height = arguments.height.unwrap_or(540);
             let seconds = elapsed_ms as f32 * 0.001;
             let pictures = engine.host.loading_draw();
-            let frame = if let Some(pictures) = &pictures {
+            let progress = engine.host.loading_progress();
+            let frame = if let Some(active) = &progress {
+                let screen = storm_render::loading::LoadingScreen::new(
+                    &gpu,
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                    active.pictures.as_deref().unwrap_or(&Default::default()),
+                )?;
+                storm_render::render_offscreen_with(
+                    &gpu,
+                    width,
+                    height,
+                    seconds,
+                    |encoder, view| {
+                        screen.encode_progress(&gpu, encoder, view, [width, height], active.phase);
+                        Ok(())
+                    },
+                )?
+            } else if let Some(pictures) = &pictures {
                 let screen = storm_render::loading::LoadingScreen::new(
                     &gpu,
                     wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -147,7 +164,9 @@ fn main() -> Result<()> {
             eprintln!(
                 "Rendered {} script-created static models{} to {}",
                 draws.len(),
-                if pictures.is_some() {
+                if progress.is_some() {
+                    " and a loading indicator"
+                } else if pictures.is_some() {
                     " and loading pictures"
                 } else {
                     ""

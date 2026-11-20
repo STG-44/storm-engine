@@ -2,6 +2,7 @@
 use crate::input;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
+    cell::RefCell,
     rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
@@ -14,6 +15,7 @@ use storm_render::{
 use storm_runtime::{
     ControlInput, Engine, Phase, WindowSettings,
     clock::Timer,
+    interface::LoadingProgress,
     model::{Draw, ModelScenes, Models},
 };
 use winit::{
@@ -38,7 +40,7 @@ struct Surface {
     configured: bool,
     occluded: bool,
     scenes: ModelScenes,
-    loading: Option<(Rc<LoadingPictures>, LoadingScreen)>,
+    loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
 }
 impl Surface {
     async fn new(
@@ -119,7 +121,7 @@ impl Surface {
         }
         Ok(())
     }
-    fn render(
+    fn render_scene(
         &mut self,
         instance: &wgpu::Instance,
         draws: &[Draw],
@@ -127,7 +129,75 @@ impl Surface {
         seconds: f32,
         pictures: Option<Rc<LoadingPictures>>,
     ) -> Result<bool> {
-        self.scenes.prune(live);
+        self.present(instance, |surface, encoder, view| {
+            surface.scenes.prepare(&surface.gpu, draws, live)?;
+            surface.scenes.encode(
+                &surface.gpu,
+                encoder,
+                view,
+                surface.config.width,
+                surface.config.height,
+                seconds,
+            )?;
+            if pictures.is_some() {
+                surface.encode_loading(encoder, view, pictures, None)?;
+            } else {
+                surface.loading = None;
+            }
+            Ok(())
+        })
+    }
+    fn render_progress(
+        &mut self,
+        instance: &wgpu::Instance,
+        progress: &LoadingProgress,
+    ) -> Result<bool> {
+        self.present(instance, |surface, encoder, view| {
+            surface.encode_loading(
+                encoder,
+                view,
+                progress.pictures.clone(),
+                Some(progress.phase),
+            )
+        })
+    }
+    fn encode_loading(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        pictures: Option<Rc<LoadingPictures>>,
+        phase: Option<f32>,
+    ) -> Result<()> {
+        let needs_upload =
+            self.loading
+                .as_ref()
+                .is_none_or(|(cached, _)| match (cached, &pictures) {
+                    (Some(old), Some(new)) => !Rc::ptr_eq(old, new),
+                    (None, None) => false,
+                    _ => true,
+                });
+        if needs_upload {
+            let screen = LoadingScreen::new(
+                &self.gpu,
+                self.config.format,
+                pictures.as_deref().unwrap_or(&LoadingPictures::default()),
+            )?;
+            self.loading = Some((pictures, screen));
+        }
+        let (_, screen) = self.loading.as_ref().expect("loading screen prepared");
+        let size = [self.config.width, self.config.height];
+        if let Some(phase) = phase {
+            screen.encode_progress(&self.gpu, encoder, view, size, phase);
+        } else {
+            screen.encode(&self.gpu, encoder, view, size);
+        }
+        Ok(())
+    }
+    fn present(
+        &mut self,
+        instance: &wgpu::Instance,
+        encode: impl FnOnce(&mut Self, &mut wgpu::CommandEncoder, &wgpu::TextureView) -> Result<()>,
+    ) -> Result<bool> {
         if !self.configured || self.occluded {
             return Ok(false);
         }
@@ -154,41 +224,12 @@ impl Surface {
                 bail!("engine surface failed graphics validation")
             }
         };
-        self.scenes.prepare(&self.gpu, draws, live)?;
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         let view = frame.texture.create_view(&Default::default());
-        self.scenes.encode(
-            &self.gpu,
-            &mut encoder,
-            &view,
-            self.config.width,
-            self.config.height,
-            seconds,
-        )?;
-        if let Some(pictures) = pictures {
-            if self
-                .loading
-                .as_ref()
-                .is_none_or(|(cached, _)| !Rc::ptr_eq(cached, &pictures))
-            {
-                let screen = LoadingScreen::new(&self.gpu, self.config.format, &pictures)?;
-                self.loading = Some((pictures, screen));
-            }
-            if let Some((_, screen)) = &self.loading {
-                screen.encode(
-                    &self.gpu,
-                    &mut encoder,
-                    &view,
-                    [self.config.width, self.config.height],
-                );
-            }
-        } else {
-            self.loading = None;
-        }
+        encode(self, &mut encoder, &view)?;
         self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.gpu.queue.present(frame);
-        self.scenes.prune(live);
         if reconfigure {
             self.resize(self.window.inner_size())?;
         }
@@ -200,7 +241,7 @@ struct Application<'a> {
     models: Models,
     instance: wgpu::Instance,
     options: Options,
-    surface: Option<Surface>,
+    surface: Option<Rc<RefCell<Surface>>>,
     timer: Timer,
     last_frame: Instant,
     next_frame: Instant,
@@ -253,14 +294,24 @@ impl Application<'_> {
         }
         let draws = self.models.take_draws()?;
         let live = self.models.live_ids()?;
-        if let Some(surface) = &mut self.surface {
-            let presented = surface.render(
-                &self.instance,
-                &draws,
-                &live,
-                self.elapsed_ms as f32 * 0.001,
-                self.engine.host.loading_draw(),
-            )?;
+        if let Some(surface) = &self.surface {
+            let presented = {
+                let mut surface = surface.borrow_mut();
+                surface.scenes.prune(&live);
+                let presented = if let Some(progress) = self.engine.host.loading_progress() {
+                    surface.render_progress(&self.instance, &progress)?
+                } else {
+                    surface.render_scene(
+                        &self.instance,
+                        &draws,
+                        &live,
+                        self.elapsed_ms as f32 * 0.001,
+                        self.engine.host.loading_draw(),
+                    )?
+                };
+                surface.scenes.prune(&live);
+                presented
+            };
             if presented {
                 self.presented += 1;
                 if self
@@ -290,6 +341,15 @@ impl ApplicationHandler for Application<'_> {
                         .host
                         .set_interface_window(size.width, size.height);
                     surface.window.request_redraw();
+                    let surface = Rc::new(RefCell::new(surface));
+                    let progress_surface = Rc::downgrade(&surface);
+                    let instance = self.instance.clone();
+                    self.engine.host.set_progress_presenter(move |progress| {
+                        if let Some(surface) = progress_surface.upgrade() {
+                            surface.borrow_mut().render_progress(&instance, progress)?;
+                        }
+                        Ok(())
+                    });
                     self.surface = Some(surface);
                 }
                 Err(error) => self.fail(event_loop, error),
@@ -311,10 +371,10 @@ impl ApplicationHandler for Application<'_> {
         }
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        let Some(surface) = self.surface.as_mut() else {
+        let Some(surface) = self.surface.clone() else {
             return;
         };
-        if surface.window.id() != id {
+        if surface.borrow().window.id() != id {
             return;
         }
         let result = match event {
@@ -323,11 +383,12 @@ impl ApplicationHandler for Application<'_> {
                 self.engine
                     .host
                     .set_interface_window(size.width, size.height);
-                surface.resize(size)
+                surface.borrow_mut().resize(size)
             }
             WindowEvent::Focused(focused) => {
                 self.focused = focused;
                 if focused {
+                    let mut surface = surface.borrow_mut();
                     surface.occluded = false;
                     surface.window.request_redraw();
                 } else {
@@ -351,6 +412,7 @@ impl ApplicationHandler for Application<'_> {
                 self.engine.mouse_wheel(input::wheel(delta))
             }
             WindowEvent::Occluded(occluded) => {
+                let mut surface = surface.borrow_mut();
                 surface.occluded = occluded;
                 if !occluded {
                     surface.window.request_redraw();
@@ -383,10 +445,10 @@ impl ApplicationHandler for Application<'_> {
             event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
             return;
         }
-        let hidden = self
-            .surface
-            .as_ref()
-            .is_some_and(|s| !s.configured || s.occluded);
+        let hidden = self.surface.as_ref().is_some_and(|s| {
+            let surface = s.borrow();
+            !surface.configured || surface.occluded
+        });
         if hidden {
             if let Err(error) = self.step(event_loop) {
                 self.fail(event_loop, error);
@@ -397,7 +459,12 @@ impl ApplicationHandler for Application<'_> {
                 Instant::now() + Duration::from_millis(16),
             ));
         } else {
-            self.surface.as_ref().unwrap().window.request_redraw();
+            self.surface
+                .as_ref()
+                .unwrap()
+                .borrow()
+                .window
+                .request_redraw();
             event_loop.set_control_flow(ControlFlow::Wait);
         }
     }

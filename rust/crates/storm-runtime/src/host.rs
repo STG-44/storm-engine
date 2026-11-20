@@ -1,3 +1,4 @@
+use crate::interface::LoadingProgress;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     cell::{Cell, RefCell},
@@ -120,6 +121,17 @@ impl NativeHost {
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }
+    pub fn loading_progress(&self) -> Option<LoadingProgress> {
+        self.interfaces.as_ref()?.loading_progress()
+    }
+    pub fn set_progress_presenter(
+        &mut self,
+        presenter: impl FnMut(&LoadingProgress) -> Result<()> + 'static,
+    ) {
+        if let Some(interfaces) = &self.interfaces {
+            interfaces.set_progress_presenter(presenter);
+        }
+    }
     pub fn interface_state(
         &self,
         id: EntityId,
@@ -207,10 +219,15 @@ impl NativeHost {
             steam::STEAM_LIBRARY => self.register_library(steam::STEAM_LIBRARY, |host| {
                 host.bind_library(steam::offline_functions())
             }),
-            location::LOCATION_LIBRARY => self
-                .register_library(location::LOCATION_LIBRARY, |host| {
-                    host.bind_library(location::functions())
-                }),
+            location::LOCATION_LIBRARY => {
+                self.register_library(location::LOCATION_LIBRARY, |host| {
+                    let interfaces = host
+                        .interfaces
+                        .clone()
+                        .context("native interface unavailable")?;
+                    host.bind_library(location::functions(interfaces))
+                })
+            }
             interface::INTERFACE_LIBRARY => {
                 let game = game.clone();
                 self.register_library(interface::INTERFACE_LIBRARY, move |host| {

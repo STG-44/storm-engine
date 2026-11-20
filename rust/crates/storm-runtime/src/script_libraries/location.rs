@@ -1,5 +1,5 @@
 //! Native location and character lookups from location_script_lib.cpp.
-use crate::host::NativeFunction;
+use crate::{host::NativeFunction, interface::Interfaces};
 use anyhow::{Result, bail, ensure};
 use storm_script::{Array, Value};
 
@@ -75,9 +75,11 @@ fn find<const N: usize>(cache: &mut [CacheEntry; N], args: &[Value]) -> Result<V
     Ok(Value::Int(-1))
 }
 
-pub(crate) fn functions() -> [(&'static str, NativeFunction); 4] {
+pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunction); 7] {
     let mut characters: [CacheEntry; 16] = std::array::from_fn(|_| CacheEntry::default());
     let mut locations: [CacheEntry; 8] = std::array::from_fn(|_| CacheEntry::default());
+    let progress_start = interfaces.clone();
+    let progress_update = interfaces.clone();
     [
         (
             "nativefindcharacter",
@@ -111,6 +113,30 @@ pub(crate) fn functions() -> [(&'static str, NativeFunction); 4] {
             NativeFunction::new(|args| {
                 ensure!(args.is_empty(), "GetNextLineString expects no arguments");
                 Ok(Value::String("\r\n".into()))
+            }),
+        ),
+        (
+            "reloadprogressstart",
+            NativeFunction::new(move |args| {
+                ensure!(args.is_empty(), "ReloadProgressStart expects no arguments");
+                progress_start.start_loading_progress()?;
+                Ok(Value::Void)
+            }),
+        ),
+        (
+            "reloadprogressupdate",
+            NativeFunction::new(move |args| {
+                ensure!(args.is_empty(), "ReloadProgressUpdate expects no arguments");
+                progress_update.update_loading_progress()?;
+                Ok(Value::Void)
+            }),
+        ),
+        (
+            "reloadprogressend",
+            NativeFunction::new(move |args| {
+                ensure!(args.is_empty(), "ReloadProgressEnd expects no arguments");
+                interfaces.end_loading_progress();
+                Ok(Value::Void)
             }),
         ),
     ]

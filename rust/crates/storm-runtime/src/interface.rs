@@ -1,6 +1,7 @@
 //! XINTERFACE startup state, including its original script callbacks.
 mod info;
 mod log;
+mod progress;
 mod quest_text;
 mod settings;
 mod timer;
@@ -13,6 +14,7 @@ use std::{
     cell::{Cell, Ref, RefCell},
     collections::BTreeMap,
     rc::Rc,
+    time::Instant,
 };
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field};
 use storm_formats::texture::Texture;
@@ -20,6 +22,7 @@ use storm_render::{loading::LoadingPictures, texture_paths::TexturePaths};
 use storm_script::{Reference, Value};
 
 pub use log::{ActionHint, ActionLayout, LogAndActionsState, LogLayout, LogLine};
+pub use progress::LoadingProgress;
 pub use settings::{InterfaceCursor, InterfaceScreen};
 pub use timer::{BattleTimerState, TimerImage};
 const INIT_EVENTS: &[&str] = &["GetQuestTextFileName", "evGetMouseWeel"];
@@ -55,6 +58,8 @@ struct Shared {
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
     timers: RefCell<BTreeMap<u64, BattleTimerState>>,
     loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
+    previous_loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
+    progress: RefCell<progress::Progress>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
 }
@@ -69,6 +74,7 @@ impl Shared {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Interfaces(Rc<Shared>);
 
 impl Interfaces {
@@ -82,6 +88,8 @@ impl Interfaces {
             logs: RefCell::default(),
             timers: RefCell::default(),
             loading_draw: RefCell::default(),
+            previous_loading_draw: RefCell::default(),
+            progress: RefCell::default(),
             finished_videos: RefCell::default(),
         }));
         let shared = interfaces.0.clone();
@@ -129,10 +137,44 @@ impl Interfaces {
     }
     pub fn clear_loading_draw(&self) {
         self.0.loading_draw.replace(None);
+        self.0.previous_loading_draw.replace(None);
+        self.end_loading_progress();
+    }
+
+    pub fn begin_frame(&self) {
+        self.0
+            .previous_loading_draw
+            .replace(self.0.loading_draw.take());
     }
 
     pub fn loading_draw(&self) -> Option<Rc<LoadingPictures>> {
         self.0.loading_draw.borrow().clone()
+    }
+
+    pub fn start_loading_progress(&self) -> Result<()> {
+        let pictures = self
+            .loading_draw()
+            .or_else(|| self.0.previous_loading_draw.borrow().clone());
+        self.0.progress.borrow_mut().start(pictures, Instant::now())
+    }
+
+    pub fn update_loading_progress(&self) -> Result<()> {
+        self.0.progress.borrow_mut().update(Instant::now())
+    }
+
+    pub fn end_loading_progress(&self) {
+        self.0.progress.borrow_mut().end();
+    }
+
+    pub fn loading_progress(&self) -> Option<LoadingProgress> {
+        self.0.progress.borrow().view()
+    }
+
+    pub fn set_progress_presenter(
+        &self,
+        presenter: impl FnMut(&LoadingProgress) -> Result<()> + 'static,
+    ) {
+        self.0.progress.borrow_mut().set_presenter(presenter);
     }
     pub fn take_video_event(&self, id: EntityId) -> Option<&'static str> {
         self.0

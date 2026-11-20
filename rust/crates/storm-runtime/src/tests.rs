@@ -1,6 +1,79 @@
 use super::*;
 
 #[test]
+fn reload_progress_commands_present_inside_the_script_and_retain_the_last_picture() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("Resource/Textures");
+    std::fs::create_dir_all(&textures)?;
+    let mut bytes = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    bytes.extend([30, 20, 10, 255]);
+    std::fs::write(textures.join("Backdrop.tga.tx"), bytes)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "scriptLocationLibrary"
+        native void ReloadProgressStart();
+        native void ReloadProgressUpdate();
+        native void ReloadProgressEnd();
+        object loading;
+        int frames;
+        #event_handler("frame","Tick");
+        void Main() {
+            loading.picbackfilename="backdrop.tga";
+            CreateEntity(&loading,"InfoHandler");
+            LayerSetRealize(13);
+            LayerAddObject(13,&loading,0);
+        }
+        void Tick() {
+            frames++;
+            if (frames==2) {
+                LayerFreeze(13,true);
+                ReloadProgressStart();
+                ReloadProgressStart();
+                Trace("loading");
+            }
+            if (frames==3) ReloadProgressUpdate();
+            if (frames==4) ReloadProgressEnd();
+            if (frames==5) {
+                ReloadProgressStart();
+                ReloadProgressEnd();
+                Trace("loaded");
+            }
+        }
+        "#,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    let sink = trace.clone();
+    engine.host.set_progress_presenter(move |progress| {
+        record(&sink, format!("present:{}", progress.pictures.is_some()));
+        Ok(())
+    });
+    engine.frame(0)?;
+    let picture = engine.host.loading_draw().unwrap();
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["present:true", "script:loading"]);
+    assert!(engine.host.loading_draw().is_none());
+    let progress = engine.host.loading_progress().unwrap();
+    assert!(Rc::ptr_eq(progress.pictures.as_ref().unwrap(), &picture));
+    engine.frame(16)?;
+    assert!(engine.host.loading_progress().is_some());
+    trace.take();
+    engine.frame(16)?;
+    assert!(engine.host.loading_progress().is_none());
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["present:false", "script:loaded"]);
+    assert!(engine.host.loading_progress().is_none());
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn infohandler_loads_configured_pictures_and_respects_realize_membership() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("Resource/Textures");
