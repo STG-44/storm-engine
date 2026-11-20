@@ -1,0 +1,2160 @@
+{
+  "scope": "Run unedited CreateMessage/SendMessage and DATA ptr accessors under UBSan.\n\nDATA scalar getters/conversion, stack, MESSAGE storage and entity lookup are\ninstrumented adapters. This is a binding oracle, not a complete interpreter or\nnative class simulation. Error paths use throwing SetError to stop immediately.\n",
+  "retained_sha256": {
+    "void DATA::SetPtr(uintptr_t value)": "852fe1b00a9ccf2427831e427797ca0ec799243a67be7b22d423b93085ec536b",
+    "bool DATA::GetPtr(uintptr_t &value)": "3938ff545a14d63b2e053b64af22a8ff5deedd899ea5e2dd72a2384a5169200c",
+    "CreateMessage": "a10b459382ffa9032f00e2098b61b46e9a12f7c37c9e4a7d2a0abd090a0e63e4",
+    "SendMessage": "0ab727939b45e6d527e7f1c18fae4fd9cd028b9ab8676e7250303678cf2bcd07"
+  },
+  "cases": [
+    {
+      "valid": false,
+      "result": 0,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": 19,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:19"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 16777217,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:1266679808"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "s",
+      "fields": [
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "s:cloth"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "p",
+      "fields": [
+        {
+          "code": "p",
+          "value": 4294967296,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "i",
+      "fields": [
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "a",
+      "fields": [
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "a:91"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "lfsiap",
+      "fields": [
+        {
+          "code": "l",
+          "value": 19,
+          "ref": true
+        },
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        },
+        {
+          "code": "p",
+          "value": 18364758544493064720,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:19",
+          "f:3414163456",
+          "s:cloth",
+          "i:9920249030594524246",
+          "a:91",
+          "p:18364758544493064720"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "fflpai",
+      "fields": [
+        {
+          "code": "f",
+          "value": -1,
+          "ref": false
+        },
+        {
+          "code": "f",
+          "value": 0,
+          "ref": true
+        },
+        {
+          "code": "l",
+          "value": -1,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": 0,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:0"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 0,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:0"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "s",
+      "fields": [
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "p",
+      "fields": [
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "p:18446744073709551615"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "i",
+      "fields": [
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "a",
+      "fields": [
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "a:91"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "lfsiap",
+      "fields": [
+        {
+          "code": "l",
+          "value": 19,
+          "ref": true
+        },
+        {
+          "code": "f",
+          "value": -1,
+          "ref": true
+        },
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "fflpai",
+      "fields": [
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "f",
+          "value": -1,
+          "ref": true
+        },
+        {
+          "code": "l",
+          "value": -1,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:3414163456",
+          "f:3212836864",
+          "l:-1",
+          "p:18446744073709551615",
+          "a:91",
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": 2147483647,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:2147483647"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "s",
+      "fields": [
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "s:cloth"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "p",
+      "fields": [
+        {
+          "code": "p",
+          "value": 0,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "p:0"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "i",
+      "fields": [
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "a",
+      "fields": [
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "lfsiap",
+      "fields": [
+        {
+          "code": "l",
+          "value": 19,
+          "ref": true
+        },
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 4294967296,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:19",
+          "f:3414163456",
+          "s:cloth",
+          "i:9920249030594524246",
+          "a:91",
+          "p:4294967296"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "fflpai",
+      "fields": [
+        {
+          "code": "f",
+          "value": 0,
+          "ref": false
+        },
+        {
+          "code": "f",
+          "value": -1,
+          "ref": true
+        },
+        {
+          "code": "l",
+          "value": 19,
+          "ref": false
+        },
+        {
+          "code": "p",
+          "value": 0,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:0",
+          "f:3212836864",
+          "l:19",
+          "p:0",
+          "a:91",
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": []
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": 19,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": -1,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:3212836864"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "s",
+      "fields": [
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "s:cloth"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "p",
+      "fields": [
+        {
+          "code": "p",
+          "value": 18364758544493064720,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "p:18364758544493064720"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "i",
+      "fields": [
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "a",
+      "fields": [
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        }
+      ],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "a:91"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "lfsiap",
+      "fields": [
+        {
+          "code": "l",
+          "value": 0,
+          "ref": false
+        },
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:0",
+          "f:3414163456",
+          "s:cloth",
+          "i:9920249030594524246",
+          "a:91",
+          "p:18446744073709551615"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "fflpai",
+      "fields": [
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 19,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:3414163456",
+          "f:3414163456",
+          "l:19",
+          "p:18446744073709551615",
+          "a:91",
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": 0,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:0"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 16777217,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:1266679808"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "s",
+      "fields": [
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        }
+      ],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "s:cloth"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "p",
+      "fields": [
+        {
+          "code": "p",
+          "value": 0,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "i",
+      "fields": [
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "i:9920249030594524246"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "a",
+      "fields": [
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        }
+      ],
+      "extra": true,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "a:91"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "lfsiap",
+      "fields": [
+        {
+          "code": "l",
+          "value": -2147483648,
+          "ref": true
+        },
+        {
+          "code": "f",
+          "value": 16777217,
+          "ref": true
+        },
+        {
+          "code": "s",
+          "value": "cloth",
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18446744073709551615,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:-2147483648",
+          "f:1266679808",
+          "s:cloth",
+          "i:9920249030594524246",
+          "a:91",
+          "p:18446744073709551615"
+        ]
+      }
+    },
+    {
+      "valid": false,
+      "result": 0,
+      "format": "fflpai",
+      "fields": [
+        {
+          "code": "f",
+          "value": 7,
+          "ref": true
+        },
+        {
+          "code": "f",
+          "value": -16777217,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 0,
+          "ref": true
+        },
+        {
+          "code": "p",
+          "value": 18364758544493064720,
+          "ref": false
+        },
+        {
+          "code": "a",
+          "value": 91,
+          "ref": false
+        },
+        {
+          "code": "i",
+          "value": 9920249030594524246,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 0,
+        "calls": 0,
+        "rewound": false,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "",
+      "fields": [],
+      "extra": true,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": []
+      }
+    },
+    {
+      "valid": true,
+      "result": 18364758544493064720,
+      "format": "l",
+      "fields": [
+        {
+          "code": "l",
+          "value": -1,
+          "ref": true
+        }
+      ],
+      "extra": false,
+      "format_ref": true,
+      "expected": {
+        "result": 18364758544493064720,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:-1"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 16777217,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:1266679808"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 18446744073709551615,
+      "format": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+      "fields": [
+        {
+          "code": "l",
+          "value": -64,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -63,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -62,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -61,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -60,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -59,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -58,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -57,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -56,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -55,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -54,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -53,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -52,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -51,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -50,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -49,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -48,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -47,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -46,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -45,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -44,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -43,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -42,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -41,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -40,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -39,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -38,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -37,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -36,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -35,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -34,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -33,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -32,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -31,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -30,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -29,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -28,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -27,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -26,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -25,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -24,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -23,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -22,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -21,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -20,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -19,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -18,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -17,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -16,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -15,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -14,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -13,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -12,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -11,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -10,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -9,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -8,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -7,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -6,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -5,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -4,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -3,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -2,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": -1,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 0,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 1,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 2,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 3,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 4,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 5,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 6,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 7,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 8,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 9,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 10,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 11,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 12,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 13,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 14,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 15,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 16,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 17,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 18,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 19,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 20,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 21,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 22,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 23,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 24,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 25,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 26,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 27,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 28,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 29,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 30,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 31,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 32,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 33,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 34,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 35,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 36,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 37,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 38,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 39,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 40,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 41,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 42,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 43,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 44,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 45,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 46,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 47,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 48,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 49,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 50,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 51,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 52,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 53,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 54,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 55,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 56,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 57,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 58,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 59,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 60,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 61,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 62,
+          "ref": false
+        },
+        {
+          "code": "l",
+          "value": 63,
+          "ref": false
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 18446744073709551615,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "l:-64",
+          "l:-63",
+          "l:-62",
+          "l:-61",
+          "l:-60",
+          "l:-59",
+          "l:-58",
+          "l:-57",
+          "l:-56",
+          "l:-55",
+          "l:-54",
+          "l:-53",
+          "l:-52",
+          "l:-51",
+          "l:-50",
+          "l:-49",
+          "l:-48",
+          "l:-47",
+          "l:-46",
+          "l:-45",
+          "l:-44",
+          "l:-43",
+          "l:-42",
+          "l:-41",
+          "l:-40",
+          "l:-39",
+          "l:-38",
+          "l:-37",
+          "l:-36",
+          "l:-35",
+          "l:-34",
+          "l:-33",
+          "l:-32",
+          "l:-31",
+          "l:-30",
+          "l:-29",
+          "l:-28",
+          "l:-27",
+          "l:-26",
+          "l:-25",
+          "l:-24",
+          "l:-23",
+          "l:-22",
+          "l:-21",
+          "l:-20",
+          "l:-19",
+          "l:-18",
+          "l:-17",
+          "l:-16",
+          "l:-15",
+          "l:-14",
+          "l:-13",
+          "l:-12",
+          "l:-11",
+          "l:-10",
+          "l:-9",
+          "l:-8",
+          "l:-7",
+          "l:-6",
+          "l:-5",
+          "l:-4",
+          "l:-3",
+          "l:-2",
+          "l:-1",
+          "l:0",
+          "l:1",
+          "l:2",
+          "l:3",
+          "l:4",
+          "l:5",
+          "l:6",
+          "l:7",
+          "l:8",
+          "l:9",
+          "l:10",
+          "l:11",
+          "l:12",
+          "l:13",
+          "l:14",
+          "l:15",
+          "l:16",
+          "l:17",
+          "l:18",
+          "l:19",
+          "l:20",
+          "l:21",
+          "l:22",
+          "l:23",
+          "l:24",
+          "l:25",
+          "l:26",
+          "l:27",
+          "l:28",
+          "l:29",
+          "l:30",
+          "l:31",
+          "l:32",
+          "l:33",
+          "l:34",
+          "l:35",
+          "l:36",
+          "l:37",
+          "l:38",
+          "l:39",
+          "l:40",
+          "l:41",
+          "l:42",
+          "l:43",
+          "l:44",
+          "l:45",
+          "l:46",
+          "l:47",
+          "l:48",
+          "l:49",
+          "l:50",
+          "l:51",
+          "l:52",
+          "l:53",
+          "l:54",
+          "l:55",
+          "l:56",
+          "l:57",
+          "l:58",
+          "l:59",
+          "l:60",
+          "l:61",
+          "l:62",
+          "l:63"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": -0.0,
+          "ref": true,
+          "float": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:2147483648"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 7.25,
+          "ref": true,
+          "float": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:1088946176"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": -19.5,
+          "ref": true,
+          "float": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:3248226304"
+        ]
+      }
+    },
+    {
+      "valid": true,
+      "result": 4294967296,
+      "format": "f",
+      "fields": [
+        {
+          "code": "f",
+          "value": 16777216.0,
+          "ref": true,
+          "float": true
+        }
+      ],
+      "extra": false,
+      "format_ref": false,
+      "expected": {
+        "result": 4294967296,
+        "calls": 1,
+        "rewound": true,
+        "fields": [
+          "f:1266679808"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "scope": "Native factory and pause bodies; allocation ordinals, resource source and output are adapters.\n\nThis checks instance identity/retention and pause isolation, not global particle\nphysics, random state, automatic deletion or the complete manager.\n",
+  "retained_sha256": {
+    "ParticleSystem *ParticleManager::CreateParticleSystemFromDataSource(": "f8bb2f388aaeeaa2e0c531f4e74c6fe20bb849f40db98261da8a7863c002a567",
+    "void PARTICLE_SYSTEM::Pause(": "be18e40a17d8382e14134d217df1aeb96b2e3a0b3c3332e345cbdc6e7c9432c7",
+    "void ParticleSystem::PauseEmission(": "cbacc2a394cac911335dd6371dd918f0af9e1cb43fb9dd85c3a91376bdb0826a"
+  },
+  "actions": [
+    [
+      "create",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "pause",
+      1
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "create",
+      0
+    ],
+    [
+      "pause",
+      2
+    ],
+    [
+      "pause",
+      3
+    ],
+    [
+      "pause",
+      4
+    ]
+  ],
+  "snapshots": [
+    [
+      {
+        "instance": 1,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": false
+      },
+      {
+        "instance": 2,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": false
+      },
+      {
+        "instance": 3,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": false
+      },
+      {
+        "instance": 3,
+        "paused": false
+      },
+      {
+        "instance": 4,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": true
+      },
+      {
+        "instance": 3,
+        "paused": false
+      },
+      {
+        "instance": 4,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": true
+      },
+      {
+        "instance": 3,
+        "paused": true
+      },
+      {
+        "instance": 4,
+        "paused": false
+      }
+    ],
+    [
+      {
+        "instance": 1,
+        "paused": true
+      },
+      {
+        "instance": 2,
+        "paused": true
+      },
+      {
+        "instance": 3,
+        "paused": true
+      },
+      {
+        "instance": 4,
+        "paused": true
+      }
+    ]
+  ]
+}

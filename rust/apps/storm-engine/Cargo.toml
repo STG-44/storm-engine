@@ -1,0 +1,20 @@
+[package]
+name = "storm-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+storm-runtime = { path = "../../crates/storm-runtime" }
+storm-render = { path = "../../crates/storm-render" }
+wgpu.workspace = true
+pollster.workspace = true
+winit.workspace = true
+storm-core = { path = "../../crates/storm-core" }
+
+[lints]
+workspace = true
