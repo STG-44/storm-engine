@@ -1,6 +1,6 @@
 use crate::{
     GameDirectory,
-    config::{configuration_text, root_fields},
+    config::{configuration_text, ini_integer, root_fields},
 };
 use anyhow::{Context, Result, ensure};
 
@@ -16,23 +16,6 @@ pub struct WindowSettings {
     pub max_fps: u32,
     pub vsync: bool,
 }
-fn integer(text: &str) -> Result<i32> {
-    // IFS::GetInt uses atoll followed by an int32 cast. Preserve its decimal
-    // prefix/sign behavior and bit narrowing; reject undefined atoll overflow.
-    let text = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
-    let sign = usize::from(text.starts_with(['+', '-']));
-    let end = sign
-        + text.as_bytes()[sign..]
-            .iter()
-            .take_while(|b| b.is_ascii_digit())
-            .count();
-    if end == sign {
-        return Ok(0);
-    }
-    Ok(text[..end]
-        .parse::<i64>()
-        .context("engine.ini integer overflow")? as i32)
-}
 impl WindowSettings {
     pub fn parse(text: &str) -> Result<Self> {
         let fields = root_fields(text)?;
@@ -40,7 +23,7 @@ impl WindowSettings {
             fields
                 .get(name)
                 .and_then(|s| s.as_deref())
-                .map(integer)
+                .map(ini_integer)
                 .transpose()
                 .with_context(|| format!("engine.ini {name}"))
                 .map(|n| n.unwrap_or(default))

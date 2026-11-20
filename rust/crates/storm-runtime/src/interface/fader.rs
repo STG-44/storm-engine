@@ -1,5 +1,6 @@
 //! The Storm Fader's timed dimming, reveal, and script notifications.
-use super::{Shared, load_loading_picture, progress::PictureLayer};
+use super::{DEFAULT_LOADING_BORDER, Shared, load_loading_picture, progress::PictureLayer};
+use crate::config::{configuration_text, ini_integer, root_fields};
 use anyhow::Result;
 use std::{mem, rc::Rc, sync::Arc};
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Stage};
@@ -134,19 +135,47 @@ impl FaderActor {
     fn set_picture(&mut self, layer: PictureLayer, name: String) -> Result<()> {
         let texture = load_loading_picture(&self.shared, &name)?;
         let mut pictures = self.pictures.as_deref().cloned().unwrap_or_default();
+        let mut progress = self.shared.progress.borrow_mut();
         match layer {
-            PictureLayer::Background => pictures.background = texture,
-            PictureLayer::Foreground => pictures.foreground = texture,
+            PictureLayer::Background => {
+                pictures.background = texture;
+                if self.shared.fader_tips_enabled.get() {
+                    pictures.border = progress.border();
+                }
+            }
+            PictureLayer::Foreground => {
+                pictures.foreground = texture;
+                if self.shared.fader_tips_enabled.get() {
+                    let border = load_loading_picture(&self.shared, DEFAULT_LOADING_BORDER)?;
+                    progress.set_border(border.clone());
+                    pictures.border = border;
+                }
+            }
+        }
+        if pictures.foreground.is_none() {
+            pictures.border = None;
         }
         self.pictures = (pictures.background.is_some() || pictures.foreground.is_some())
             .then(|| Arc::new(pictures));
-        self.shared.progress.borrow_mut().set_picture(layer, name);
+        progress.set_picture(layer, name);
         Ok(())
     }
 }
 
 impl Entity for FaderActor {
     fn init(&mut self, context: &mut EntityInit<'_>) -> Result<bool> {
+        if !self.shared.fader_tips_enabled.get()
+            && self.shared.game.resolve_optional("engine.ini")?.is_some()
+        {
+            let settings = root_fields(&configuration_text(&self.shared.game)?)?;
+            let frames = settings
+                .get("progressframe")
+                .and_then(Option::as_deref)
+                .map(ini_integer)
+                .transpose()?
+                .unwrap_or(1);
+            self.shared.fader_tips_enabled.set(frames > 0);
+        }
         self.id = context.id;
         for (index, kind) in [
             (FADER_EXECUTE, LayerType::Execute),

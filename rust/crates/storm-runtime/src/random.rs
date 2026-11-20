@@ -22,7 +22,7 @@ impl Random {
         )
     }
 
-    fn next(&mut self) -> u32 {
+    pub(crate) fn next(&mut self) -> u32 {
         self.state = self.state.wrapping_mul(214013).wrapping_add(2531011);
         (self.state >> 16) & RAND_MAX
     }

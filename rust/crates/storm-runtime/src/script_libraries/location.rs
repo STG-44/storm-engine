@@ -1,6 +1,7 @@
 //! Native location and character lookups from location_script_lib.cpp.
-use crate::{host::NativeFunction, interface::Interfaces};
+use crate::{host::NativeFunction, interface::Interfaces, random::Random};
 use anyhow::{Result, bail, ensure};
+use std::{cell::RefCell, rc::Rc};
 use storm_script::{Array, Value};
 
 pub(crate) const LOCATION_LIBRARY: &str = "scriptlocationlibrary";
@@ -75,12 +76,16 @@ fn find<const N: usize>(cache: &mut [CacheEntry; N], args: &[Value]) -> Result<V
     Ok(Value::Int(-1))
 }
 
-pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunction); 8] {
+pub(crate) fn functions(
+    interfaces: Interfaces,
+    random: Rc<RefCell<Random>>,
+) -> [(&'static str, NativeFunction); 9] {
     let mut characters: [CacheEntry; 16] = std::array::from_fn(|_| CacheEntry::default());
     let mut locations: [CacheEntry; 8] = std::array::from_fn(|_| CacheEntry::default());
     let progress_start = interfaces.clone();
     let progress_update = interfaces.clone();
     let progress_picture = interfaces.clone();
+    let progress_tips = interfaces.clone();
     [
         (
             "nativefindcharacter",
@@ -126,6 +131,21 @@ pub(crate) fn functions(interfaces: Interfaces) -> [(&'static str, NativeFunctio
                     bail!("SetReloadProgressBackImage expects a texture name");
                 };
                 progress_picture.set_loading_progress_foreground(name);
+                Ok(Value::Void)
+            }),
+        ),
+        (
+            "setreloadnexttipsimage",
+            NativeFunction::new(move |args| {
+                ensure!(
+                    args.is_empty(),
+                    "SetReloadNextTipsImage expects no arguments"
+                );
+                if progress_tips.fader_tips_enabled() {
+                    // The retained code clamps the count to one and never
+                    // reads the selected index, but CRT rand still advances.
+                    random.borrow_mut().next();
+                }
                 Ok(Value::Void)
             }),
         ),

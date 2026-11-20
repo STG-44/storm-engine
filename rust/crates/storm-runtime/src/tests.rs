@@ -2,6 +2,181 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn fader_tips_use_the_game_border_and_the_retained_progress_frame_setting() -> Result<()> {
+    for (setting, has_texture, enabled) in
+        [("", true, true), ("0", true, false), ("4", false, true)]
+    {
+        let temp = Temporary::new()?;
+        let textures = temp.0.join("Resource/Textures");
+        std::fs::create_dir_all(textures.join("Interfaces"))?;
+        for (name, rgba) in [
+            ("Panel.tga.tx", [180, 0, 0, 255]),
+            ("Backdrop.tga.tx", [0, 60, 0, 255]),
+            ("Interfaces/Int_Border.tga.tx", [0, 0, 220, 128]),
+        ] {
+            if !has_texture && name.starts_with("Interfaces/") {
+                continue;
+            }
+            let mut bytes = [0u32, 1, 1, 1, 21, 4]
+                .into_iter()
+                .flat_map(u32::to_le_bytes)
+                .collect::<Vec<_>>();
+            let [r, g, b, a] = rgba;
+            bytes.extend([b, g, r, a]);
+            std::fs::write(textures.join(name), bytes)?;
+        }
+        let mut ini = String::from("run=main.c\n");
+        if !setting.is_empty() {
+            ini.push_str(&format!("ProgressFrame={setting}\n"));
+        }
+        std::fs::write(temp.0.join("engine.ini"), ini)?;
+        std::fs::write(
+            temp.0.join("main.c"),
+            r#"
+            #libriary "scriptLocationLibrary"
+            native void SetReloadNextTipsImage();
+            native void ReloadProgressStart();
+            native void ReloadProgressEnd();
+            object fade;
+            #event_handler("start_progress","StartProgress");
+            #event_handler("end_progress","EndProgress");
+            #event_handler("backdrop","Backdrop");
+            void Main() {
+                SetReloadNextTipsImage();
+                Trace("before="+Rand(32767));
+                CreateEntity(&fade,"Fader");
+                SetReloadNextTipsImage();
+                Trace("after="+Rand(32767));
+                SendMessage(&fade,"ls",33003,"panel.tga");
+                Backdrop();
+                SendMessage(&fade,"lfl",33000,1.0,0);
+            }
+            void StartProgress() { ReloadProgressStart(); }
+            void EndProgress() { ReloadProgressEnd(); }
+            void Backdrop() { SendMessage(&fade,"ls",33004,"backdrop.tga"); }
+            "#,
+        )?;
+        let game = GameDirectory::open(&temp.0)?;
+        let trace = Trace::default();
+        let mut host = NativeHost::with_random_seed(1)?;
+        let sink = trace.clone();
+        host.set_trace_sink(move |line| {
+            record(&sink, line);
+            Ok(())
+        });
+        let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host)?;
+        engine.frame(500)?;
+        engine.frame(0)?;
+        assert_eq!(
+            trace.take(),
+            [
+                "before=41",
+                if enabled { "after=6334" } else { "after=18467" },
+            ]
+        );
+        let fade = engine.host.fade_draws().unwrap()[0]
+            .pictures
+            .clone()
+            .unwrap();
+        assert_eq!(fade.border.is_some(), enabled && has_texture);
+        if let Some(border) = &fade.border {
+            assert_eq!(border.mips[0].rgba, [0, 0, 220, 128]);
+        }
+
+        let mut args = Message::new("", vec![])?;
+        engine.emit_event("start_progress", &mut args)?;
+        let session = engine.host.loading_progress().unwrap().pictures.unwrap();
+        assert!(match (&fade.border, &session.border) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        });
+        engine.emit_event("end_progress", &mut args)?;
+        engine.emit_event("backdrop", &mut args)?;
+        engine.frame(0)?;
+        let faded = engine.host.fade_draws().unwrap()[0]
+            .pictures
+            .clone()
+            .unwrap();
+        assert!(faded.border.is_none());
+        assert!(faded.foreground.is_some());
+        engine.shutdown()?;
+    }
+    Ok(())
+}
+
+#[test]
+fn infohandler_uses_the_default_border_unless_the_script_chooses_an_empty_name() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("Resource/Textures");
+    std::fs::create_dir_all(textures.join("Interfaces"))?;
+    let mut bytes = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    bytes.extend([0, 200, 20, 128]);
+    std::fs::write(textures.join("Panel.tga.tx"), &bytes)?;
+    std::fs::write(textures.join("Interfaces/Int_Border.tga.tx"), &bytes)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\nProgressFrame=0\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "scriptLocationLibrary"
+        native void ReloadProgressStart();
+        native void ReloadProgressEnd();
+        #event_handler("start_progress","StartProgress");
+        #event_handler("end_progress","EndProgress");
+        #event_handler("no_border","NoBorder");
+        object first, second;
+        void Main() {
+            first.picfilename="panel.tga";
+            CreateEntity(&first,"InfoHandler");
+            SendMessage(&first,"l",1);
+        }
+        void NoBorder() {
+            second.picfilename="panel.tga";
+            second.picborderfilename="";
+            CreateEntity(&second,"InfoHandler");
+            SendMessage(&second,"l",1);
+        }
+        void StartProgress() { ReloadProgressStart(); }
+        void EndProgress() { ReloadProgressEnd(); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let mut args = Message::new("", vec![])?;
+    engine.frame(0)?;
+    let info = engine.host.loading_draw().unwrap();
+    assert_eq!(
+        info.border.as_ref().unwrap().mips[0].rgba,
+        [20, 200, 0, 128]
+    );
+    engine.emit_event("start_progress", &mut args)?;
+    let progress = engine.host.loading_progress().unwrap().pictures.unwrap();
+    assert!(Arc::ptr_eq(
+        info.border.as_ref().unwrap(),
+        progress.border.as_ref().unwrap()
+    ));
+    engine.emit_event("end_progress", &mut args)?;
+    engine.emit_event("no_border", &mut args)?;
+    assert!(engine.host.loading_draw().unwrap().border.is_none());
+    engine.emit_event("start_progress", &mut args)?;
+    assert!(
+        engine
+            .host
+            .loading_progress()
+            .unwrap()
+            .pictures
+            .unwrap()
+            .border
+            .is_none()
+    );
+    Ok(())
+}
+
+#[test]
 fn fader_startframe_uses_one_snapshot_per_transition_and_ignores_late_requests() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

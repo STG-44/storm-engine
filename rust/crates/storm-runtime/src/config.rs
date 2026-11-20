@@ -54,6 +54,24 @@ pub(crate) fn configuration_text(game: &GameDirectory) -> Result<String> {
     ensure!(!errors, "invalid engine.ini code page");
     Ok(text.into_owned())
 }
+
+pub(crate) fn ini_integer(text: &str) -> Result<i32> {
+    // IFS::GetInt uses atoll followed by an int32 cast.
+    let text = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let sign = usize::from(text.starts_with(['+', '-']));
+    let end = sign
+        + text.as_bytes()[sign..]
+            .iter()
+            .take_while(|b| b.is_ascii_digit())
+            .count();
+    if end == sign {
+        return Ok(0);
+    }
+    Ok(text[..end]
+        .parse::<i64>()
+        .context("engine.ini integer overflow")? as i32)
+}
+
 impl Startup {
     /// Root-section startup directives only. Original IFS keeps inline ';'
     /// characters, first matching duplicate keys and leading/trailing trimming.

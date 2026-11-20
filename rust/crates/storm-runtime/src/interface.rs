@@ -10,7 +10,7 @@ mod video;
 
 use crate::{GameDirectory, NativeHost, WindowSettings};
 use anyhow::{Context, Result, bail};
-use progress::PictureLayer;
+use progress::{BorderSelection, PictureLayer};
 use quest_text::QuestText;
 use std::{
     cell::{Cell, Ref, RefCell},
@@ -29,6 +29,7 @@ pub use progress::LoadingProgress;
 pub use settings::{InterfaceCursor, InterfaceScreen};
 pub use timer::{BattleTimerState, TimerImage};
 const INIT_EVENTS: &[&str] = &["GetQuestTextFileName", "evGetMouseWeel"];
+const DEFAULT_LOADING_BORDER: &str = "interfaces\\int_border.tga";
 
 pub struct InterfaceState {
     pub screen: InterfaceScreen,
@@ -64,6 +65,7 @@ struct Shared {
     previous_loading_draw: RefCell<Option<Rc<LoadingPictures>>>,
     progress: RefCell<progress::Progress>,
     fade_draws: RefCell<Vec<FadeDraw>>,
+    fader_tips_enabled: Cell<bool>,
     fader_notifications: RefCell<BTreeMap<u64, fader::Notifications>>,
     // Each pending completion also indicates whether to enqueue its delayed event.
     finished_videos: RefCell<BTreeMap<u64, bool>>,
@@ -96,6 +98,7 @@ impl Interfaces {
             previous_loading_draw: RefCell::default(),
             progress: RefCell::default(),
             fade_draws: RefCell::default(),
+            fader_tips_enabled: Cell::default(),
             fader_notifications: RefCell::default(),
             finished_videos: RefCell::default(),
         }));
@@ -179,29 +182,41 @@ impl Interfaces {
             .set_picture(PictureLayer::Foreground, name);
     }
 
+    pub fn fader_tips_enabled(&self) -> bool {
+        self.0.fader_tips_enabled.get()
+    }
+
     pub fn start_loading_progress(&self) -> Result<()> {
-        self.0.progress.borrow_mut().start(Instant::now(), |names| {
-            let pictures = self
-                .loading_draw()
-                .or_else(|| self.0.previous_loading_draw.borrow().clone());
-            if names.background.is_none() && names.foreground.is_none() {
-                return Ok(pictures);
-            }
-            let mut pictures = pictures.as_deref().cloned().unwrap_or_default();
-            if let Some(name) = &names.background {
-                pictures.background = load_loading_picture(&self.0, name)?;
-            }
-            if let Some(name) = &names.foreground {
-                pictures.foreground = load_loading_picture(&self.0, name)?;
+        self.0
+            .progress
+            .borrow_mut()
+            .start(Instant::now(), |selection| {
+                let pictures = self
+                    .loading_draw()
+                    .or_else(|| self.0.previous_loading_draw.borrow().clone());
+                if selection.background.is_none()
+                    && selection.foreground.is_none()
+                    && matches!(selection.border, BorderSelection::Inherit)
+                {
+                    return Ok(pictures);
+                }
+                let mut pictures = pictures.as_deref().cloned().unwrap_or_default();
+                if let Some(name) = &selection.background {
+                    pictures.background = load_loading_picture(&self.0, name)?;
+                }
+                if let Some(name) = &selection.foreground {
+                    pictures.foreground = load_loading_picture(&self.0, name)?;
+                }
                 if pictures.foreground.is_none() {
                     pictures.border = None;
+                } else if let BorderSelection::Selected(border) = &selection.border {
+                    pictures.border = border.clone();
                 }
-            }
-            Ok((pictures.background.is_some()
-                || pictures.foreground.is_some()
-                || pictures.text.is_some())
-            .then(|| Rc::new(pictures)))
-        })
+                Ok((pictures.background.is_some()
+                    || pictures.foreground.is_some()
+                    || pictures.text.is_some())
+                .then(|| Rc::new(pictures)))
+            })
     }
 
     pub fn update_loading_progress(&self) -> Result<()> {

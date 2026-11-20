@@ -264,8 +264,10 @@ and schedules the next logo. A clip present on disk requires WMV playback,
 which remains pending.
 
 `InfoHandler` loads a script-selected backdrop and foreground using the
-engine's TX texture reader. Projects can set `picborderfilename` for an
-optional transparent frame. The backdrop fills the window and the renderer
+engine's TX texture reader. With a foreground, it uses the optional
+`RESOURCE/Textures/Interfaces/int_border.tga.tx` overlay by default.
+`picborderfilename` selects a different frame or suppresses it when empty.
+The backdrop fills the window and the renderer
 fits the centered foreground to its own aspect ratio. Realize layer
 membership and message 1 control when the pictures are submitted. Both the
 desktop window and `--headless` use the same compositor.
@@ -306,7 +308,16 @@ transition's first Realize pass. Send it after starting a fade and before
 that pass. The renderer captures before applying the fader's own overlay
 and reuses the snapshot through the completion frame. PNG output evaluates
 earlier capture frames on the GPU before reading back the final image.
-The legacy tips overlay remains pending.
+
+A positive root `ProgressFrame` value in `engine.ini` enables the
+`Fader` tips overlay and defaults to one. With it enabled, `FADER_PICTURE`
+loads `interfaces\\int_border.tga` and selects it for the next
+`ReloadProgressStart`. `FADER_PICTURE0` shares the pending overlay
+selection. The compositor blends the overlay's alpha over the foreground.
+Missing overlay assets leave the foreground visible. The original
+`SetReloadNextTipsImage` call advances the shared random stream after an
+enabled `Fader` initializes. The retained engine uses a single overlay
+texture for rendering regardless of that call.
 
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.

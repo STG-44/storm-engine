@@ -1,4 +1,4 @@
-use super::{Shared, load_texture};
+use super::{DEFAULT_LOADING_BORDER, Shared, load_loading_picture, load_texture};
 use anyhow::Result;
 use std::{rc::Rc, sync::Arc};
 use storm_core::{Entity, EntityInit, Message, Stage};
@@ -61,14 +61,20 @@ impl Entity for InfoActor {
         };
         if background.is_some() || foreground.is_some() || text.is_some() {
             let border = if foreground.is_some() {
-                texture("picborderfilename")?
+                let name = context
+                    .store
+                    .value(root, Some("picborderfilename"))
+                    .unwrap_or(DEFAULT_LOADING_BORDER);
+                let border = load_loading_picture(&self.shared, name)?;
+                self.shared.progress.borrow_mut().set_border(border.clone());
+                border
             } else {
                 None
             };
             self.pictures = Some(Rc::new(LoadingPictures {
                 background: background.map(Arc::new),
                 foreground: foreground.map(Arc::new),
-                border: border.map(Arc::new),
+                border,
                 text: text.map(Arc::new),
             }));
         }

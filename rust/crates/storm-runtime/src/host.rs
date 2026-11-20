@@ -238,7 +238,7 @@ impl NativeHost {
                         .interfaces
                         .clone()
                         .context("native interface unavailable")?;
-                    host.bind_library(location::functions(interfaces))
+                    host.bind_library(location::functions(interfaces, host.random.clone()))
                 })
             }
             interface::INTERFACE_LIBRARY => {

@@ -1,8 +1,10 @@
 use anyhow::Result;
 use std::{
     rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
+use storm_formats::texture::Texture;
 use storm_render::loading::LoadingPictures;
 
 const UPDATE_INTERVAL: Duration = Duration::from_millis(50);
@@ -20,14 +22,22 @@ type Presenter = dyn FnMut(&LoadingProgress) -> Result<()>;
 #[derive(Default)]
 pub(super) struct Progress {
     active: Option<Active>,
-    names: PictureNames,
+    selection: PictureSelection,
     presenter: Option<Box<Presenter>>,
 }
 
 #[derive(Default)]
-pub(super) struct PictureNames {
+pub(super) struct PictureSelection {
     pub background: Option<String>,
     pub foreground: Option<String>,
+    pub border: BorderSelection,
+}
+
+#[derive(Default)]
+pub(super) enum BorderSelection {
+    #[default]
+    Inherit,
+    Selected(Option<Arc<Texture>>),
 }
 
 #[derive(Clone, Copy)]
@@ -45,19 +55,30 @@ struct Active {
 impl Progress {
     pub fn set_picture(&mut self, layer: PictureLayer, name: String) {
         match layer {
-            PictureLayer::Background => self.names.background = Some(name),
-            PictureLayer::Foreground => self.names.foreground = Some(name),
+            PictureLayer::Background => self.selection.background = Some(name),
+            PictureLayer::Foreground => self.selection.foreground = Some(name),
+        }
+    }
+
+    pub fn set_border(&mut self, border: Option<Arc<Texture>>) {
+        self.selection.border = BorderSelection::Selected(border);
+    }
+
+    pub fn border(&self) -> Option<Arc<Texture>> {
+        match &self.selection.border {
+            BorderSelection::Inherit => None,
+            BorderSelection::Selected(border) => border.clone(),
         }
     }
 
     pub fn start(
         &mut self,
         now: Instant,
-        prepare_pictures: impl FnOnce(&PictureNames) -> Result<Option<Rc<LoadingPictures>>>,
+        prepare_pictures: impl FnOnce(&PictureSelection) -> Result<Option<Rc<LoadingPictures>>>,
     ) -> Result<()> {
         if self.active.is_none() {
             self.active = Some(Active {
-                pictures: prepare_pictures(&self.names)?,
+                pictures: prepare_pictures(&self.selection)?,
                 last_update: now,
                 step: 0,
             });
@@ -79,7 +100,7 @@ impl Progress {
 
     pub fn end(&mut self) {
         self.active = None;
-        self.names = PictureNames::default();
+        self.selection = PictureSelection::default();
     }
 
     pub fn view(&self) -> Option<LoadingProgress> {
