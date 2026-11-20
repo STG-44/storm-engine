@@ -3,13 +3,17 @@ use super::{Shared, load_loading_picture, progress::PictureLayer};
 use anyhow::Result;
 use std::{mem, rc::Rc, sync::Arc};
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Stage};
-use storm_render::{fade::FadeDraw, loading::LoadingPictures};
+use storm_render::{
+    fade::{FadeDraw, FrozenFrame},
+    loading::LoadingPictures,
+};
 
 const FADER_EXECUTE: u8 = 6;
 const FADER_REALIZE: u8 = 7;
 const LAYER_PRIORITY: u32 = (-256_i32) as u32;
 const FADER_OUT: i32 = 33000;
 const FADER_IN: i32 = 33001;
+const FADER_STARTFRAME: i32 = 33002;
 const FADER_PICTURE: i32 = 33003;
 const FADER_PICTURE0: i32 = 33004;
 
@@ -30,6 +34,7 @@ struct Transition {
     finished: bool,
     post_start: bool,
     post_end: bool,
+    frozen_frame: Option<Arc<FrozenFrame>>,
 }
 
 pub(crate) struct Notifications {
@@ -98,19 +103,22 @@ impl FaderActor {
         if mem::take(&mut transition.first_draw) {
             transition.post_start = true;
         }
+        let frozen_frame = transition.frozen_frame.clone();
         if transition.alpha == 1.0 && !transition.finished {
             transition.finished = true;
             transition.post_end = true;
+            transition.frozen_frame = None;
         }
         let opacity = if transition.fade_in {
             1.0 - transition.alpha
         } else {
             transition.alpha
         };
-        if opacity > 0.0 {
+        if opacity > 0.0 || frozen_frame.is_some() {
             self.shared.fade_draws.borrow_mut().push(FadeDraw {
                 pictures: self.pictures.clone(),
                 opacity,
+                frozen_frame,
             });
         }
         if !transition.finished {
@@ -169,7 +177,15 @@ impl Entity for FaderActor {
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
         let command = message.long()?;
-        if command == FADER_PICTURE || command == FADER_PICTURE0 {
+        if command == FADER_STARTFRAME {
+            if let Some(transition) = &mut self.transition
+                && transition.first_draw
+            {
+                transition
+                    .frozen_frame
+                    .get_or_insert_with(|| Arc::new(FrozenFrame));
+            }
+        } else if command == FADER_PICTURE || command == FADER_PICTURE0 {
             let layer = if command == FADER_PICTURE {
                 PictureLayer::Foreground
             } else {
@@ -196,6 +212,7 @@ impl Entity for FaderActor {
                 finished: false,
                 post_start: false,
                 post_end: false,
+                frozen_frame: None,
             });
         }
         Ok(0)

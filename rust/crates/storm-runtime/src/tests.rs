@@ -2,6 +2,63 @@ use super::*;
 use std::sync::Arc;
 
 #[test]
+fn fader_startframe_uses_one_snapshot_per_transition_and_ignores_late_requests() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object fade;
+        #event_handler("restart","Restart");
+        #event_handler("snapshot","Snapshot");
+        void Main() {
+            CreateEntity(&fade,"Fader");
+            Restart();
+            Snapshot();
+        }
+        void Restart() { SendMessage(&fade,"lfl",33000,1.0,0); }
+        void Snapshot() { SendMessage(&fade,"l",33002); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    let token = |engine: &Engine| {
+        engine
+            .host
+            .fade_draws()
+            .unwrap()
+            .first()
+            .and_then(|fade| fade.frozen_frame.clone())
+    };
+    engine.frame(500)?;
+    let first = token(&engine).unwrap();
+    assert_eq!(engine.host.fade_opacity(), 0.0);
+    for (delta, opacity) in [(500, 0.5), (0, 1.0)] {
+        engine.frame(delta)?;
+        assert!(Arc::ptr_eq(&token(&engine).unwrap(), &first));
+        assert_eq!(engine.host.fade_opacity(), opacity);
+    }
+    engine.frame(0)?;
+    assert!(token(&engine).is_none());
+
+    let mut args = Message::new("", vec![])?;
+    engine.emit_event("restart", &mut args)?;
+    engine.frame(500)?;
+    engine.emit_event("snapshot", &mut args)?;
+    engine.frame(0)?;
+    assert!(token(&engine).is_none());
+    assert_eq!(engine.host.fade_opacity(), 0.5);
+
+    engine.emit_event("restart", &mut args)?;
+    engine.emit_event("snapshot", &mut args)?;
+    engine.frame(0)?;
+    assert!(!Arc::ptr_eq(&token(&engine).unwrap(), &first));
+    engine.shutdown()?;
+    Ok(())
+}
+
+#[test]
 fn fader_picture_messages_update_the_fade_and_seed_the_next_loading_screen() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("Resource/Textures/Loading");

@@ -1,10 +1,20 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
-use storm_runtime::model::{ModelScenes, Models};
+use storm_render::Gpu;
+use storm_runtime::model::Models;
 use storm_runtime::{GameDirectory, NativeHost, ScriptEncoding, Startup};
 mod input;
+mod scene;
 mod window;
+use scene::{SceneFrame, SceneRenderer};
+
+fn headless_renderer(backends: wgpu::Backends) -> Result<(Gpu, SceneRenderer)> {
+    let instance = storm_render::create_instance(backends)?;
+    let gpu = pollster::block_on(Gpu::request(&instance, None))?;
+    let scene = SceneRenderer::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb);
+    Ok((gpu, scene))
+}
 
 #[derive(Clone, Copy, ValueEnum)]
 enum Encoding {
@@ -99,7 +109,12 @@ fn main() -> Result<()> {
                 },
             );
         }
+        let size = [
+            arguments.width.unwrap_or(960),
+            arguments.height.unwrap_or(540),
+        ];
         let mut elapsed_ms = 0u64;
+        let mut headless: Option<(Gpu, SceneRenderer)> = None;
         for (index, delta_ms) in arguments.frame_ms.into_iter().enumerate() {
             let frame = engine
                 .frame(delta_ms)
@@ -110,74 +125,68 @@ fn main() -> Result<()> {
             elapsed_ms = elapsed_ms
                 .checked_add(u64::from(delta_ms))
                 .context("engine display clock overflow")?;
+            if arguments.headless.is_some() && !frame.skipped {
+                let fades = engine.host.fade_draws();
+                let fades = fades.as_deref().unwrap_or_default();
+                if fades.iter().any(|draw| draw.frozen_frame.is_some()) {
+                    if headless.is_none() {
+                        headless = Some(headless_renderer(arguments.backend.flags())?);
+                    }
+                    let (gpu, renderer) = headless.as_mut().expect("headless renderer initialized");
+                    if renderer.needs_capture(fades) {
+                        let draws = models.draws()?;
+                        let live = models.live_ids()?;
+                        renderer.capture(
+                            gpu,
+                            size,
+                            &SceneFrame {
+                                draws: &draws,
+                                live: &live,
+                                seconds: elapsed_ms as f32 * 0.001,
+                                pictures: engine.host.loading_draw(),
+                                fades,
+                            },
+                        )?;
+                    }
+                }
+            }
         }
         if let Some(path) = arguments.headless {
-            let instance = storm_render::create_instance(arguments.backend.flags())?;
-            let gpu = pollster::block_on(storm_render::Gpu::request(&instance, None))?;
-            let mut scenes = ModelScenes::default();
+            let (gpu, mut renderer) = match headless {
+                Some(renderer) => renderer,
+                None => headless_renderer(arguments.backend.flags())?,
+            };
             let draws = models.take_draws()?;
             let live = models.live_ids()?;
-            scenes.prepare(&gpu, &draws, &live)?;
-            let width = arguments.width.unwrap_or(960);
-            let height = arguments.height.unwrap_or(540);
-            let seconds = elapsed_ms as f32 * 0.001;
-            let pictures = engine.host.loading_draw();
             let progress = engine.host.loading_progress();
-            let fade_draws = engine.host.fade_draws();
-            let fades = fade_draws.as_deref().unwrap_or_default();
-            let frame = if let Some(active) = &progress {
-                let screen = storm_render::loading::LoadingScreen::new(
-                    &gpu,
-                    wgpu::TextureFormat::Rgba8UnormSrgb,
-                    active.pictures.as_deref().unwrap_or(&Default::default()),
-                )?;
-                storm_render::render_offscreen_with(
-                    &gpu,
-                    width,
-                    height,
-                    seconds,
-                    |encoder, view| {
-                        screen.encode_progress(&gpu, encoder, view, [width, height], active.phase);
-                        Ok(())
-                    },
-                )?
-            } else if pictures.is_some() || !fades.is_empty() {
-                let format = wgpu::TextureFormat::Rgba8UnormSrgb;
-                let screen = pictures
-                    .as_deref()
-                    .map(|pictures| {
-                        storm_render::loading::LoadingScreen::new(&gpu, format, pictures)
-                    })
-                    .transpose()?;
-                let mut fade = (!fades.is_empty())
-                    .then(|| storm_render::fade::FadeCompositor::new(&gpu, format));
-                storm_render::render_offscreen_with(
-                    &gpu,
-                    width,
-                    height,
-                    seconds,
-                    |encoder, view| {
-                        scenes.encode(&gpu, encoder, view, width, height, seconds)?;
-                        if let Some(screen) = &screen {
-                            screen.encode(&gpu, encoder, view, [width, height]);
-                        }
-                        if let Some(fade) = &mut fade {
-                            fade.encode(&gpu, encoder, view, [width, height], fades)?;
-                        }
-                        Ok(())
-                    },
-                )?
-            } else {
-                scenes.offscreen(&gpu, width, height, seconds)?
+            let fades = engine.host.fade_draws();
+            let scene = SceneFrame {
+                draws: &draws,
+                live: &live,
+                seconds: elapsed_ms as f32 * 0.001,
+                pictures: engine.host.loading_draw(),
+                fades: fades.as_deref().unwrap_or_default(),
             };
+            let frame = storm_render::render_offscreen_with(
+                &gpu,
+                size[0],
+                size[1],
+                scene.seconds,
+                |encoder, view| {
+                    if let Some(active) = &progress {
+                        renderer.encode_progress(&gpu, encoder, view, size, active)
+                    } else {
+                        renderer.encode(&gpu, encoder, Some(view), size, &scene)
+                    }
+                },
+            )?;
             frame.save_png(&path)?;
-            scenes.prune(&live);
             eprintln!(
                 "Rendered {} script-created static models{} to {}",
                 draws.len(),
                 if progress.is_some() {
                     " and a loading indicator"
-                } else if pictures.is_some() {
+                } else if scene.pictures.is_some() {
                     " and loading pictures"
                 } else {
                     ""

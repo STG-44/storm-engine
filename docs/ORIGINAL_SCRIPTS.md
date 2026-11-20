@@ -301,7 +301,12 @@ select an aspect-fitted foreground and a full-screen backdrop, respectively.
 Both selections also feed the next `ReloadProgressStart`. An empty name or
 a missing texture clears its layer. A fade without a backdrop fills that
 layer with black. The desktop and headless paths share the compositor.
-Frozen start-frame capture and the legacy tips overlay remain pending.
+`FADER_STARTFRAME` (33002, format `l`) requests a snapshot on the
+transition's first Realize pass. Send it after starting a fade and before
+that pass. The renderer captures before applying the fader's own overlay
+and reuses the snapshot through the completion frame. PNG output evaluates
+earlier capture frames on the GPU before reading back the final image.
+The legacy tips overlay remains pending.
 
 The segment-loading revision passed 478 CPU tests on each of four CI hosts.
 Linux also passed 26 software Vulkan tests and the native-window check.

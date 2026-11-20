@@ -348,24 +348,34 @@ mod tests {
         let mut fades = FadeCompositor::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb);
         let mut render = |draws: &[FadeDraw]| {
             crate::render_offscreen_with(&gpu, 320, 180, 0.0, |encoder, view| {
-                drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view,
-                        resolve_target: None,
-                        depth_slice: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    ..Default::default()
-                }));
-                fades.encode(&gpu, encoder, view, [320, 180], draws)
+                fades.encode_scene(
+                    &gpu,
+                    encoder,
+                    Some(view),
+                    [320, 180],
+                    draws,
+                    |encoder, view| {
+                        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view,
+                                resolve_target: None,
+                                depth_slice: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            ..Default::default()
+                        }));
+                        Ok(())
+                    },
+                )
             })
         };
         let draws = [0.5, 0.25].map(|opacity| FadeDraw {
             pictures: Some(pictures.clone()),
             opacity,
+            frozen_frame: None,
         });
         let single = render(&draws[..1])?;
         let stacked = render(&draws)?;

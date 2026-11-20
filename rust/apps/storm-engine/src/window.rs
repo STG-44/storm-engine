@@ -1,5 +1,6 @@
 //! Desktop window adapter over the same configured engine and model services.
 use crate::input;
+use crate::scene::{SceneFrame, SceneRenderer};
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     cell::RefCell,
@@ -8,16 +9,10 @@ use std::{
     time::{Duration, Instant},
 };
 use storm_core::Message;
-use storm_render::{
-    Gpu,
-    fade::{FadeCompositor, FadeDraw},
-    loading::{LoadingPictures, LoadingScreen},
-};
+use storm_render::Gpu;
 use storm_runtime::{
-    ControlInput, Engine, Phase, WindowSettings,
-    clock::Timer,
-    interface::LoadingProgress,
-    model::{Draw, ModelScenes, Models},
+    ControlInput, Engine, Phase, WindowSettings, clock::Timer, interface::LoadingProgress,
+    model::Models,
 };
 use winit::{
     application::ApplicationHandler,
@@ -40,9 +35,7 @@ struct Surface {
     config: wgpu::SurfaceConfiguration,
     configured: bool,
     occluded: bool,
-    scenes: ModelScenes,
-    loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
-    fade: FadeCompositor,
+    scene: SceneRenderer,
 }
 impl Surface {
     async fn new(
@@ -95,8 +88,7 @@ impl Surface {
         } else {
             wgpu::PresentMode::AutoNoVsync
         };
-        let scenes = ModelScenes::new(config.format);
-        let fade = FadeCompositor::new(&gpu, config.format);
+        let scene = SceneRenderer::new(&gpu, config.format);
         let mut state = Self {
             surface,
             window,
@@ -104,9 +96,7 @@ impl Surface {
             config,
             configured: false,
             occluded: false,
-            scenes,
-            loading: None,
-            fade,
+            scene,
         };
         state.resize(size)?;
         Ok(state)
@@ -125,38 +115,20 @@ impl Surface {
         }
         Ok(())
     }
-    fn render_scene(
-        &mut self,
-        instance: &wgpu::Instance,
-        draws: &[Draw],
-        live: &[storm_core::EntityId],
-        seconds: f32,
-        pictures: Option<Rc<LoadingPictures>>,
-        fades: &[FadeDraw],
-    ) -> Result<bool> {
+    fn render_scene(&mut self, instance: &wgpu::Instance, frame: &SceneFrame<'_>) -> Result<bool> {
         self.present(instance, |surface, encoder, view| {
-            surface.scenes.prepare(&surface.gpu, draws, live)?;
-            surface.scenes.encode(
+            surface.scene.encode(
                 &surface.gpu,
                 encoder,
-                view,
-                surface.config.width,
-                surface.config.height,
-                seconds,
-            )?;
-            if pictures.is_some() {
-                surface.encode_loading(encoder, view, pictures, None)?;
-            } else {
-                surface.loading = None;
-            }
-            surface.fade.encode(
-                &surface.gpu,
-                encoder,
-                view,
+                Some(view),
                 [surface.config.width, surface.config.height],
-                fades,
+                frame,
             )
         })
+    }
+    fn capture_scene(&mut self, frame: &SceneFrame<'_>) -> Result<()> {
+        self.scene
+            .capture(&self.gpu, [self.config.width, self.config.height], frame)
     }
     fn render_progress(
         &mut self,
@@ -164,45 +136,14 @@ impl Surface {
         progress: &LoadingProgress,
     ) -> Result<bool> {
         self.present(instance, |surface, encoder, view| {
-            surface.encode_loading(
+            surface.scene.encode_progress(
+                &surface.gpu,
                 encoder,
                 view,
-                progress.pictures.clone(),
-                Some(progress.phase),
+                [surface.config.width, surface.config.height],
+                progress,
             )
         })
-    }
-    fn encode_loading(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        view: &wgpu::TextureView,
-        pictures: Option<Rc<LoadingPictures>>,
-        phase: Option<f32>,
-    ) -> Result<()> {
-        let needs_upload =
-            self.loading
-                .as_ref()
-                .is_none_or(|(cached, _)| match (cached, &pictures) {
-                    (Some(old), Some(new)) => !Rc::ptr_eq(old, new),
-                    (None, None) => false,
-                    _ => true,
-                });
-        if needs_upload {
-            let screen = LoadingScreen::new(
-                &self.gpu,
-                self.config.format,
-                pictures.as_deref().unwrap_or(&LoadingPictures::default()),
-            )?;
-            self.loading = Some((pictures, screen));
-        }
-        let (_, screen) = self.loading.as_ref().expect("loading screen prepared");
-        let size = [self.config.width, self.config.height];
-        if let Some(phase) = phase {
-            screen.encode_progress(&self.gpu, encoder, view, size, phase);
-        } else {
-            screen.encode(&self.gpu, encoder, view, size);
-        }
-        Ok(())
     }
     fn present(
         &mut self,
@@ -308,22 +249,25 @@ impl Application<'_> {
         if let Some(surface) = &self.surface {
             let presented = {
                 let mut surface = surface.borrow_mut();
-                surface.scenes.prune(&live);
-                let presented = if let Some(progress) = self.engine.host.loading_progress() {
+                surface.scene.prune(&live);
+                let fades = self.engine.host.fade_draws();
+                let frame = SceneFrame {
+                    draws: &draws,
+                    live: &live,
+                    seconds: self.elapsed_ms as f32 * 0.001,
+                    pictures: self.engine.host.loading_draw(),
+                    fades: fades.as_deref().unwrap_or_default(),
+                };
+                if let Some(progress) = self.engine.host.loading_progress() {
+                    surface.capture_scene(&frame)?;
                     surface.render_progress(&self.instance, &progress)?
                 } else {
-                    let fades = self.engine.host.fade_draws();
-                    surface.render_scene(
-                        &self.instance,
-                        &draws,
-                        &live,
-                        self.elapsed_ms as f32 * 0.001,
-                        self.engine.host.loading_draw(),
-                        fades.as_deref().unwrap_or_default(),
-                    )?
-                };
-                surface.scenes.prune(&live);
-                presented
+                    let presented = surface.render_scene(&self.instance, &frame)?;
+                    if !presented {
+                        surface.capture_scene(&frame)?;
+                    }
+                    presented
+                }
             };
             if presented {
                 self.presented += 1;
