@@ -103,6 +103,7 @@ fn infohandler_loads_configured_pictures_and_respects_realize_membership() -> Re
             loading.picfilename="loading\panel.tga";
             loading.picbackfilename="loading\backdrop.tga";
             loading.picborderfilename="loading\frame.tga";
+            loading.infoStr="An optional caption";
             CreateEntity(&loading,"InfoHandler");
             LayerSetRealize(13);
             LayerAddObject(13,&loading,-1);
@@ -129,6 +130,7 @@ fn infohandler_loads_configured_pictures_and_respects_realize_membership() -> Re
         pictures.border.as_ref().unwrap().mips[0].rgba,
         [70, 80, 90, 64]
     );
+    assert!(pictures.text.is_none());
     engine.frame(16)?;
     assert!(Rc::ptr_eq(&pictures, &engine.host.loading_draw().unwrap()));
 

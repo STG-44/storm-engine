@@ -1,14 +1,18 @@
 //! Loading picture composition for window and offscreen targets.
 use crate::{Gpu, model::upload_texture};
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use storm_formats::texture::Texture;
 use wgpu::util::DeviceExt;
+
+mod text;
+pub use text::LoadingText;
 
 #[derive(Default)]
 pub struct LoadingPictures {
     pub background: Option<Texture>,
     pub foreground: Option<Texture>,
     pub border: Option<Texture>,
+    pub text: Option<LoadingText>,
 }
 
 pub struct LoadingScreen {
@@ -16,6 +20,7 @@ pub struct LoadingScreen {
     pictures: wgpu::BindGroup,
     uniforms: wgpu::Buffer,
     picture_size: [u32; 2],
+    text_size: Option<[u32; 2]>,
 }
 
 impl LoadingScreen {
@@ -50,9 +55,43 @@ impl LoadingScreen {
         let background = texture(&pictures.background)?;
         let foreground = texture(&pictures.foreground)?;
         let border = texture(&pictures.border)?;
+        let text_size = pictures
+            .text
+            .as_ref()
+            .map(|text| [text.width as u32, text.height as u32]);
+        let mask = if let Some(text) = &pictures.text {
+            let limit = device.limits().max_texture_dimension_2d;
+            ensure!(
+                text.width as u32 <= limit && text.height as u32 <= limit,
+                "loading message exceeds GPU texture dimensions"
+            );
+            device
+                .create_texture_with_data(
+                    &gpu.queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some("Loading message coverage"),
+                        size: wgpu::Extent3d {
+                            width: text.width as u32,
+                            height: text.height as u32,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::R8Unorm,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    &text.coverage,
+                )
+                .create_view(&Default::default())
+        } else {
+            empty
+        };
         let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Loading screen uniforms"),
-            size: 32,
+            size: 48,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -114,6 +153,10 @@ impl LoadingScreen {
                     binding: 4,
                     resource: uniforms.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&mask),
+                },
             ],
         });
         Ok(Self {
@@ -121,6 +164,7 @@ impl LoadingScreen {
             pictures,
             uniforms,
             picture_size,
+            text_size,
         })
     }
 
@@ -160,7 +204,16 @@ impl LoadingScreen {
             return;
         }
         let rectangle = picture_rect(size, self.picture_size);
-        let uniforms = [rectangle, [progress.unwrap_or(-1.0), 0.0, 0.0, 0.0]];
+        let aspect = size[0] as f32 / size[1] as f32;
+        let text = self
+            .text_size
+            .map_or([0.0, 0.0, 1.0, 1.0], |text| caption_rect(size, text));
+        let has_text = if self.text_size.is_some() { 1.0 } else { 0.0 };
+        let uniforms = [
+            rectangle,
+            [progress.unwrap_or(-1.0), aspect, has_text, 0.0],
+            text,
+        ];
         gpu.queue
             .write_buffer(&self.uniforms, 0, bytemuck::cast_slice(&uniforms));
         let load = if progress.is_some() {
@@ -201,6 +254,23 @@ fn picture_rect([width, height]: [u32; 2], [image_width, image_height]: [u32; 2]
     [left, top, 1.0 - left, 1.0 - top]
 }
 
+fn caption_rect([width, height]: [u32; 2], [text_width, text_height]: [u32; 2]) -> [f32; 4] {
+    let [width, height, text_width, text_height] =
+        [width, height, text_width, text_height].map(|value| value as f32);
+    let scale = (height / 600.0)
+        .max(0.65)
+        .min(0.9 * width / text_width)
+        .min(0.25 * height / text_height);
+    let half_width = 0.5 * text_width * scale / width;
+    let half_height = 0.5 * text_height * scale / height;
+    [
+        0.5 - half_width,
+        0.78 - half_height,
+        0.5 + half_width,
+        0.78 + half_height,
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +293,7 @@ mod tests {
             background: Some(pixel([0, 255, 0, 255])?),
             foreground: Some(pixel([255, 0, 0, 255])?),
             border: Some(pixel([0, 0, 255, 128])?),
+            text: None,
         };
         let screen = LoadingScreen::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &pictures)?;
         let sample = |size: [u32; 2], x: u32, y: u32| -> Result<[u8; 4]> {
@@ -264,10 +335,38 @@ mod tests {
         };
         let first = render(0.0)?;
         let later = render(0.5)?;
-        let green = |frame: &crate::Frame, x: usize, y: usize| frame.rgba[(y * 320 + x) * 4 + 1];
-        assert_eq!(green(&first, 0, 0), green(&later, 0, 0));
-        assert!(green(&first, 100, 222) > green(&later, 100, 222));
-        assert!(green(&later, 218, 222) > green(&first, 218, 222));
+        let offset = 210 * 320 * 4;
+        assert_eq!(first.rgba[..offset], later.rgba[..offset]);
+        assert_ne!(first.rgba[offset..], later.rgba[offset..]);
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn loading_caption_draws_glyph_coverage_without_picture_assets() -> Result<()> {
+        let instance = crate::create_instance(wgpu::Backends::PRIMARY)?;
+        let gpu = pollster::block_on(Gpu::request(&instance, None))?;
+        let mut coverage = vec![0; 16 * 16];
+        for row in coverage.chunks_exact_mut(16).take(12).skip(4) {
+            row[4..12].fill(255);
+        }
+        let pictures = LoadingPictures {
+            text: Some(LoadingText {
+                width: 16,
+                height: 16,
+                coverage,
+            }),
+            ..LoadingPictures::default()
+        };
+        let screen = LoadingScreen::new(&gpu, wgpu::TextureFormat::Rgba8UnormSrgb, &pictures)?;
+        let frame = crate::render_offscreen_with(&gpu, 320, 240, 0.0, |encoder, view| {
+            screen.encode(&gpu, encoder, view, [320, 240]);
+            Ok(())
+        })?;
+        let pixel = |x: usize, y: usize| &frame.rgba[(y * 320 + x) * 4..][..4];
+        assert!(pixel(160, 187)[0] > 220);
+        assert!(pixel(155, 187)[0] < 100);
+        assert_eq!(pixel(140, 187), [0, 0, 0, 0]);
         Ok(())
     }
 }

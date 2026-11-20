@@ -10,8 +10,10 @@ struct VertexOut {
 struct LoadingUniforms {
     picture_rect: vec4<f32>,
     progress: vec4<f32>,
+    text_rect: vec4<f32>,
 }
 @group(0) @binding(4) var<uniform> loading: LoadingUniforms;
+@group(0) @binding(5) var text_coverage: texture_2d<f32>;
 
 @vertex
 fn vertex(@builtin(vertex_index) index: u32) -> VertexOut {
@@ -29,19 +31,30 @@ fn fragment(in: VertexOut) -> @location(0) vec4<f32> {
     let uv = (in.uv - rect.xy) / (rect.zw - rect.xy);
     let art = premultiply(textureSample(picture, screen_sampler, uv));
     let edge = premultiply(textureSample(border, screen_sampler, uv));
+    let text_uv = (in.uv - loading.text_rect.xy) / (loading.text_rect.zw - loading.text_rect.xy);
+    let ink = textureSample(text_coverage, screen_sampler, text_uv).r;
     var screen = back;
     if all(uv >= vec2(0.0)) && all(uv <= vec2(1.0)) {
         let front = edge + art * (1.0 - edge.a);
         screen = front + back * (1.0 - front.a);
     }
+    if loading.progress.z != 0.0 && all(text_uv >= vec2(0.0)) && all(text_uv <= vec2(1.0)) {
+        let panel = premultiply(vec4(0.012, 0.028, 0.046, 0.92));
+        let letters = premultiply(vec4(0.87, 0.95, 0.98, ink));
+        let caption = letters + panel * (1.0 - letters.a);
+        screen = caption + screen * (1.0 - caption.a);
+    }
     if loading.progress.x >= 0.0 {
-        let track = (in.uv - vec2(0.25, 0.916)) / vec2(0.5, 0.014);
-        if all(track >= vec2(0.0)) && all(track <= vec2(1.0)) {
-            let center = mix(0.13, 0.87, 1.0 - abs(2.0 * loading.progress.x - 1.0));
-            let segment = 1.0 - smoothstep(0.095, 0.13, abs(track.x - center));
-            let dark = vec3(0.035, 0.074, 0.112);
-            let accent = vec3(0.10, 0.68, 0.63);
-            return vec4(mix(dark, accent, segment), 1.0);
+        let point = (in.uv - vec2(0.5, 0.935)) * vec2(loading.progress.y, 1.0);
+        let radius = length(point);
+        if radius > 0.01 && radius < 0.03 {
+            let opacity = 1.0 - smoothstep(0.002, 0.0038, abs(radius - 0.02));
+            let angle = atan2(point.y, point.x) / 6.2831853;
+            let trail = pow(fract(angle - loading.progress.x), 4.0);
+            let track = vec3(0.058, 0.11, 0.15);
+            let highlight = vec3(0.12, 0.77, 0.69);
+            let spinner = premultiply(vec4(mix(track, highlight, trail), opacity));
+            screen = spinner + screen * (1.0 - spinner.a);
         }
     }
     return screen;

@@ -14,6 +14,7 @@ anyhow = "1.0"
 bytemuck = { version = "1.24", features = ["derive"] }
 clap = { version = "4.5", features = ["derive"] }
 encoding_rs = "0.8"
+fontdue = "0.9.3"
 glam = { version = "0.34.1", default-features = false, features = ["std"] }
 libm = { version = "=0.2.16", default-features = false }
 png = "0.18"

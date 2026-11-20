@@ -2,7 +2,7 @@ use super::{Shared, load_texture};
 use anyhow::Result;
 use std::rc::Rc;
 use storm_core::{Entity, EntityInit, Message, Stage};
-use storm_render::loading::LoadingPictures;
+use storm_render::loading::{LoadingPictures, LoadingText};
 
 pub(super) struct InfoActor {
     shared: Rc<Shared>,
@@ -40,7 +40,26 @@ impl Entity for InfoActor {
         };
         let background = texture("picbackfilename")?;
         let foreground = texture("picfilename")?;
-        if background.is_some() || foreground.is_some() {
+        let text = if let Some(message) = context.store.value(root, Some("infoStr"))
+            && !message.trim().is_empty()
+        {
+            let name = context
+                .store
+                .value(root, Some("fontfilename"))
+                .filter(|value| !value.is_empty())
+                .unwrap_or("RESOURCE/Fonts/Interface.ttf");
+            match self.shared.game.read_optional(name, 8 * 1024 * 1024)? {
+                Some(bytes) => LoadingText::rasterize(
+                    &bytes,
+                    message,
+                    context.store.as_float(root, Some("scale"), 1.0),
+                )?,
+                None => None,
+            }
+        } else {
+            None
+        };
+        if background.is_some() || foreground.is_some() || text.is_some() {
             let border = if foreground.is_some() {
                 texture("picborderfilename")?
             } else {
@@ -50,6 +69,7 @@ impl Entity for InfoActor {
                 background,
                 foreground,
                 border,
+                text,
             }));
         }
         Ok(true)

@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 bytemuck.workspace = true
+fontdue.workspace = true
 glam.workspace = true
 libm.workspace = true
 storm-formats = { path = "../storm-formats" }

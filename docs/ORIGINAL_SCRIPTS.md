@@ -268,12 +268,17 @@ engine's TX texture reader. Projects can set `picborderfilename` for an
 optional transparent frame. The backdrop fills the window and the renderer
 fits the centered foreground to its own aspect ratio. Realize layer
 membership and message 1 control when the pictures are submitted. Both the
-desktop window and `--headless` use the same compositor. Text remains
-pending.
+desktop window and `--headless` use the same compositor.
+
+`infoStr` displays a centered caption, wraps long messages, and respects
+the optional `scale` attribute. With `fontfilename` the script selects a
+project-provided TrueType or OpenType font by game-relative path. The
+default path is `RESOURCE/Fonts/Interface.ttf`. A missing font leaves the
+configured pictures visible. Complex-script shaping remains pending.
 
 `ReloadProgressStart`, `ReloadProgressUpdate`, and `ReloadProgressEnd`
 are available through `scriptLocationLibrary`. They show, advance, and
-clear an activity indicator over the last loading picture. The window
+clear a circular activity indicator over the last loading picture. The window
 can present an update during synchronous script execution. Texture assets
 are optional. Updates are limited to one every 50 milliseconds of
 monotonic time, independently of the simulation speed.
