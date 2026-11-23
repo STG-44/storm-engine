@@ -124,6 +124,10 @@ impl ShipState {
                 "invalid native rope outputs"
             );
             ensure!(
+                frame.ropes.len() <= 4096 && frame.ropes.values().all(|pose| pose.is_finite()),
+                "invalid native rope frame"
+            );
+            ensure!(
                 frame.cloth_indices.len() <= 4096
                     && frame.cloth_indices.iter().all(|(mesh, t)| frame
                         .cloth
@@ -381,6 +385,7 @@ pub type SailRopePoints = BTreeMap<String, [Option<[f32; 3]>; 4]>;
 pub struct NativeRigFrame {
     /// Local points written by native cloth, grouped by original node/sail group.
     pub rope_points: BTreeMap<String, SailRopePoints>,
+    pub ropes: BTreeMap<i32, storm_sim::rope::Pose>,
     /// Select the pinned diagnostic mast frame used by free-cloth CPU and draw paths.
     pub pinned_cloth_fall: bool,
     pub cloth_indices: BTreeMap<usize, storm_sim::sail_topology::Topology>,

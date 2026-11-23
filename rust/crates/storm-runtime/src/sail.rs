@@ -2,6 +2,7 @@
 use crate::{
     GameDirectory, NativeHost, config::ini_field, model::Models, random::Random, weather::Weather,
 };
+use crate::{model::DrawPart, rope};
 use anyhow::{Context, Result, bail, ensure};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use storm_core::{
@@ -231,6 +232,7 @@ impl Cloth {
                 sail_roll::Parameters {
                     height: self.input.height,
                     turning: self.turning,
+                    ties: self.input.ties,
                     ..settings.roll
                 },
                 &settings.table,
@@ -264,7 +266,14 @@ struct Attachment {
 }
 
 impl Attachment {
-    fn update(&mut self, settings: &Settings, wind: [f32; 3], base: f32, delta: u32) -> Result<()> {
+    fn update(
+        &mut self,
+        settings: &Settings,
+        wind: [f32; 3],
+        base: f32,
+        delta: u32,
+        mut ropes: Option<&mut rope::Group>,
+    ) -> Result<()> {
         for (cloth, sail) in self.cloth.iter_mut().zip(&mut self.drive.sails) {
             cloth.motion.advance(delta, settings.rate)?;
             sail.rolling = cloth.motion.rolling;
@@ -273,7 +282,21 @@ impl Attachment {
         let outputs = self.drive.evaluate(wind, settings.coefficients)?;
         let mut frame = NativeRigFrame::default();
         for (cloth, output) in self.cloth.iter_mut().zip(outputs) {
+            let patch = self.asset.meshes[cloth.mesh]
+                .sail
+                .as_ref()
+                .context("missing sail attachment mesh")?;
+            let ties = ropes.as_ref().map_or([None; 4], |group| group.ties(patch));
+            cloth.input.ties = ties.map(|tie| tie.is_some());
+            for (point, tie) in cloth.wave.rope_points.iter_mut().zip(ties) {
+                if let Some(tie) = tie {
+                    *point = tie.point;
+                }
+            }
             cloth.deform(settings, output.wind, base, delta)?;
+            if let Some(group) = ropes.as_deref_mut() {
+                group.set_ties(ties, cloth.wave.rope_points);
+            }
             frame.sails.insert(cloth.mesh, cloth.motion.deployment());
             frame.cloth.insert(cloth.mesh, cloth.vertices.clone());
             let indices = if cloth.motion.rolling {
@@ -288,7 +311,11 @@ impl Attachment {
     }
 }
 
-pub(crate) fn register(host: &mut NativeHost, game: GameDirectory) -> Result<()> {
+pub(crate) fn register(
+    host: &mut NativeHost,
+    game: GameDirectory,
+    ropes: rope::Groups,
+) -> Result<()> {
     let models = host.models.clone();
     let weather = host.weather.clone();
     let rng = host.random.clone();
@@ -298,6 +325,7 @@ pub(crate) fn register(host: &mut NativeHost, game: GameDirectory) -> Result<()>
             models: models.clone(),
             weather: weather.clone(),
             rng: rng.clone(),
+            ropes: ropes.clone(),
             wind: (0.0, 4.8),
             minimum: 0.0,
             groups: Vec::new(),
@@ -311,6 +339,7 @@ struct Actor {
     models: Option<Models>,
     weather: Option<Weather>,
     rng: Rc<RefCell<Random>>,
+    ropes: rope::Groups,
     wind: (f32, f32),
     minimum: f32,
     groups: Vec<Attachment>,
@@ -366,7 +395,7 @@ impl Actor {
             frame: Arc::default(),
         };
         let (wind, base) = model_wind(self.wind, model_draw.matrix)?;
-        group.update(&self.settings, wind, base, 0)?;
+        group.update(&self.settings, wind, base, 0, None)?;
         group.drive.speed = 0.0; // First measured speed becomes available at Execute.
         self.groups.retain(|group| {
             !group.drive.deleted || (group.drive.ship != ship.raw() && group.model != model)
@@ -487,7 +516,8 @@ impl Entity for Actor {
                     let draw = models.loaded(group.model)?;
                     if let Some(draw) = draw.filter(|draw| draw.revision == group.revision) {
                         let (wind, base) = model_wind(self.wind, draw.matrix)?;
-                        group.update(&self.settings, wind, base, delta)?;
+                        let mut ropes = self.ropes.for_model(group.model, group.revision);
+                        group.update(&self.settings, wind, base, delta, ropes.as_deref_mut())?;
                     } else {
                         group.drive.deleted = true;
                     }
@@ -507,6 +537,7 @@ impl Entity for Actor {
                         models.queue_draw(crate::model::Draw {
                             asset: group.asset.clone(),
                             rig: Some(group.frame.clone()),
+                            part: DrawPart::Sails,
                             ..draw
                         })?;
                     }

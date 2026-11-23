@@ -429,9 +429,9 @@ pinned run also creates `Weather`, blends the fog and sun colors, and
 completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
 `WhrCreateAstronomyEnvironment` and `WhrCreateSkyEnvironment`. The script
 VM now supplies the original `Cos` builtin for the weather's particle wind.
-In `CreateRiggingEnvironment`, startup creates `Sail`, assigns its layers and
-sets `MinSpeed`. It then stops at the missing `Rope` class on
-`sea_ai/AIShip.c:40`. The probe uses the original source files as supplied.
+In `CreateRiggingEnvironment`, startup creates `Sail` and `Rope` and assigns
+their layers. It then stops at the missing `Flag` class on
+`sea_ai/AIShip.c:44`. The probe uses the original source files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -441,9 +441,18 @@ three sail sets. Realize uses the full or rolled grid and the original
 common canvas. The speed and capacity messages support checked float
 outputs. Removing an attachment or changing its model revision retires its
 cloth. This path currently uses fixed yards, the near grid for deployed
-cloth and the default canvas. Rope constraints, per-ship textures and
-emblems, damage, detached sails, camera LOD and the native SHIP caller
-remain pending.
+cloth and the default canvas. Per-ship textures and emblems, damage,
+detached sails, camera LOD and the native SHIP caller remain pending.
+
+`Rope` reads the original `[ROPES]` settings and texture. Its attachment
+message pairs the ship's `rope`, `fal`, and `stay` locators through the
+MODELR hierarchy. It advances the five-sided rope geometry using the
+original section counts, swing and sag, and applies the configured
+view-distance test. Ends tagged with sail groups follow the cloth points
+published by the attached and rolled sail calculations. Individual ropes
+and whole groups can be removed without retiring the model or cloth.
+The constraint that uses rope lengths to limit yard rotation and the
+distinct shroud entities remain pending.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM

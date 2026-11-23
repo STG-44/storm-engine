@@ -373,6 +373,7 @@ struct DrawMesh {
     texture: usize,
     sail: Option<(SailPatch, Vec<ModelVertex>)>,
     rigging: Option<(RigMesh, Vec<ModelVertex>)>,
+    rigging_culled: bool,
 }
 
 pub struct ModelScene {
@@ -922,6 +923,7 @@ impl ModelScene {
                 texture: source.texture,
                 sail: source.sail.clone().map(|s| (s, source.vertices.clone())),
                 rigging: source.rigging.clone().map(|r| (r, source.vertices.clone())),
+                rigging_culled: false,
                 dynamic: source.dynamic.clone().map(|d| (d, source.vertices.clone())),
                 ship_node: source.ship_node.clone(),
             });
@@ -1210,7 +1212,7 @@ impl ModelScene {
         let valid_count = if matches!(&water, Water::Fleet) {
             (1..=16).contains(&scenes.len())
         } else {
-            scenes.len() <= 32
+            scenes.len() <= 48
         };
         ensure!(valid_count, "model scene count exceeds renderer capacity");
         if scenes.is_empty()
@@ -1413,10 +1415,11 @@ impl ModelScene {
             {
                 continue;
             }
-            if mesh
-                .rigging
-                .as_ref()
-                .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
+            if mesh.rigging_culled
+                || mesh
+                    .rigging
+                    .as_ref()
+                    .is_some_and(|(rig, _)| matches!(rig,RigMesh::Flag(f) if !f.is_visible()))
             {
                 continue;
             }
@@ -1459,20 +1462,21 @@ impl ModelScene {
     ) -> Result<()> {
         self.sync_particle_profiles(gpu)?;
         let uniform = camera.uniform(width, height, seconds)?;
+        let base = self.pose_matrix()?;
+        let [eye_x, eye_y, eye_z, _] = uniform.eye_time;
+        let camera_eye = Vec3::new(eye_x, eye_y, eye_z);
         wind.validate()?;
         // Cloth currently accepts horizontal wind only: project the inverse rigid
         // rotation into local XZ, including pitch/roll, rather than subtracting yaw.
         let direction = Vec3::new(wind.direction.sin(), 0.0, wind.direction.cos());
-        let local = self.pose_matrix()?.inverse().transform_vector3(direction) * wind.speed;
+        let inverse_pose = base.inverse();
+        let local = inverse_pose.transform_vector3(direction) * wind.speed;
         let local_wind = SailWind {
             direction: local.x.atan2(local.z),
             speed: local.x.hypot(local.z).min(40.0),
         };
-        let eye = self.pose_matrix()?.inverse().transform_point3(Vec3::new(
-            uniform.eye_time[0],
-            uniform.eye_time[1],
-            uniform.eye_time[2],
-        ));
+        let eye = inverse_pose.transform_point3(camera_eye);
+        let distance_squared = camera_eye.distance_squared(base.w_axis.truncate());
         let has_xps = self
             .meshes
             .iter()
@@ -1633,6 +1637,11 @@ impl ModelScene {
         }
         for mesh in &mut self.meshes {
             if let Some((rigging, vertices)) = &mut mesh.rigging {
+                mesh.rigging_culled = matches!(rigging, RigMesh::NativeRopes(lines)
+                    if lines.first().is_some_and(|line| !line.geometry.visible_from(distance_squared, storm_sim::sail_lod::VERTICAL_FOV)));
+                if mesh.rigging_culled {
+                    continue;
+                }
                 rigging.deform_with_frame(
                     vertices,
                     local_wind,
@@ -1667,7 +1676,6 @@ impl ModelScene {
             0,
             bytemuck::bytes_of(&sea_uniform),
         );
-        let base = self.pose_matrix()?;
         self.pose_bytes[..OBJECT_BYTES].copy_from_slice(bytemuck::bytes_of(
             &ObjectUniform::new(base, 0, false, self.ambient)
                 .native_normals(self.model_root.is_some()),

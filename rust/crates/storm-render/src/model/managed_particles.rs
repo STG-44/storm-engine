@@ -123,6 +123,7 @@ impl ModelScene {
                 texture,
                 sail: None,
                 rigging: None,
+                rigging_culled: false,
             });
         }
         self.pose_bytes

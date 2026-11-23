@@ -10,6 +10,7 @@ pub mod particle_transform;
 pub mod pose_history;
 mod rig;
 pub mod rig_compaction;
+pub mod rope;
 pub mod sail_drive;
 pub mod sail_free;
 pub mod sail_geometry;

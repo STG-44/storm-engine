@@ -35,7 +35,7 @@ struct Owner {
     id: u64,
     revision: u64,
     asset: std::rc::Weak<ModelAsset>,
-    cloth: bool,
+    part: DrawPart,
 }
 impl Owner {
     fn for_draw(draw: &Draw) -> Self {
@@ -43,7 +43,7 @@ impl Owner {
             id: draw.entity.raw(),
             revision: draw.revision,
             asset: Rc::downgrade(&draw.asset),
-            cloth: draw.rig.is_some(),
+            part: draw.part,
         }
     }
     fn matches(&self, draw: &Draw) -> bool {
@@ -54,12 +54,12 @@ impl Owner {
                 .upgrade()
                 .is_some_and(|asset| Rc::ptr_eq(&asset, &draw.asset))
     }
-    fn key(&self) -> (u64, bool) {
-        (self.id, self.cloth)
+    fn key(&self) -> (u64, DrawPart) {
+        (self.id, self.part)
     }
 }
-fn draw_key(draw: &Draw) -> (u64, bool) {
-    (draw.entity.raw(), draw.rig.is_some())
+fn draw_key(draw: &Draw) -> (u64, DrawPart) {
+    (draw.entity.raw(), draw.part)
 }
 impl Default for ModelScenes {
     fn default() -> Self {
@@ -93,10 +93,11 @@ impl ModelScenes {
         self.framed = true;
     }
     pub fn prepare(&mut self, gpu: &Gpu, draws: &[Draw], live: &[EntityId]) -> Result<()> {
-        let cloth_draws = draws.iter().filter(|draw| draw.rig.is_some()).count();
         ensure!(
-            draws.len() - cloth_draws <= 16 && cloth_draws <= 16,
-            "runtime renderer supports at most 16 models and 16 cloth attachments"
+            [DrawPart::Body, DrawPart::Sails, DrawPart::Ropes]
+                .into_iter()
+                .all(|part| draws.iter().filter(|draw| draw.part == part).count() <= 16),
+            "runtime renderer supports at most 16 active draws for each model part"
         );
         let mut ids = BTreeSet::new();
         let mut replacements = BTreeMap::new();
@@ -147,7 +148,10 @@ impl ModelScenes {
         let live = live.iter().map(|id| id.raw()).collect::<BTreeSet<_>>();
         for (key, (owner, scene)) in previous {
             // The underlying model can stay live after its SAIL group is retired.
-            if !owner.cloth && live.contains(&owner.id) && !ids.contains(&key) && scenes.len() < 32
+            if owner.part == DrawPart::Body
+                && live.contains(&owner.id)
+                && !ids.contains(&key)
+                && scenes.len() < 48
             {
                 owners.push(owner);
                 scenes.push(scene);

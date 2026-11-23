@@ -1,12 +1,14 @@
 //! Portable CPU decoding of 2D TX mip chains into straight-alpha RGBA8.
 use crate::{FormatError, TxHeader};
 
+#[derive(Clone)]
 pub struct Mip {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct Texture {
     pub header: TxHeader,
     pub mips: Vec<Mip>,

@@ -119,13 +119,21 @@ fn fixture() -> Result<Files> {
 }
 
 #[test]
-fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> Result<()> {
+fn configured_sails_and_ropes_follow_cloth_and_have_independent_lifetimes() -> Result<()> {
     let files = fixture()?;
     let root = files.0.join("RESOURCE");
     let body = std::fs::read(root.join("MODELS/root_yard.gm"))?;
     std::fs::write(
         root.join("MODELS/ship.gm"),
-        with_labels(&body, &[("geometry", "spars", [0.0, 6.0, 0.0])]),
+        with_labels(
+            &body,
+            &[
+                ("geometry", "spars", [0.0, 6.0, 0.0]),
+                ("rigging", "ropeb5", [-1.0, 0.0, 1.0]),
+                ("rigging", "falb6", [-1.0, 0.0, -1.0]),
+                ("rigging", "ropeb7", [0.0, 2.0, 0.0]),
+            ],
+        ),
     )?;
     std::fs::write(
         root.join("MODELS/ship_spars.gm"),
@@ -140,6 +148,8 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
                 ("sailn2", "sail3", [4.0, -3.0, 0.0]),
                 ("sailn2", "sail4", [0.0, -3.0, 0.0]),
                 ("sailn2", "sail0", [2.0, -1.5, 0.4]),
+                ("sailn2", "ropee5", [4.0, -3.0, 0.0]),
+                ("rigging", "fale6", [1.0, 0.0, 0.0]),
             ],
         ),
     )?;
@@ -154,12 +164,13 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
         .flat_map(u32::to_le_bytes)
         .collect::<Vec<_>>();
     canvas.extend([240, 240, 240, 255]);
-    std::fs::write(root.join("Textures/Ships/parus_common.tga.tx"), canvas)?;
+    std::fs::write(root.join("Textures/Ships/parus_common.tga.tx"), &canvas)?;
+    std::fs::write(root.join("Textures/sail_rope.tga.tx"), &canvas)?;
     std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
     std::fs::write(
         files.0.join("main.c"),
         r#"
-        object ship, cloth, missing, weather;
+        object ship, cloth, lines, missing, weather;
         float maximum, speed, fallback;
         void Main() {
             CreateEntity(&weather,"Weather");
@@ -168,14 +179,20 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
             CreateEntity(&ship,"MODELR");
             CreateEntity(&missing,"MODELR");
             CreateEntity(&cloth,"Sail");
+            CreateEntity(&lines,"Rope");
             cloth.MinSpeed=0.05;
             SendMessage(ship,"ls",20500,"ship");
             SendMessage(cloth,"liil",40000,ship,ship,1);
+            SendMessage(lines,"lii",40100,ship,ship);
             LayerAddObject(0,cloth,0);
+            LayerAddObject(0,lines,1);
             LayerAddObject(1,ship,0);
             LayerAddObject(1,cloth,1);
+            LayerAddObject(1,lines,2);
             SetEventHandler("request","Request",0);
             SetEventHandler("remove","Remove",0);
+            SetEventHandler("cut","Cut",0);
+            SetEventHandler("unrig","Unrig",0);
             SetEventHandler("maximum","MaxSpeed",0);
             SetEventHandler("fallback","FallbackSpeed",0);
         }
@@ -186,6 +203,8 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
             SendMessage(cloth,"lief",40002,missing,&fallback,1.0);
         }
         void Remove(){ SendMessage(cloth,"li",40030,ship); }
+        void Cut(){ SendMessage(lines,"lil",40101,ship,5); }
+        void Unrig(){ SendMessage(lines,"li",40102,ship); }
         float MaxSpeed(){ return maximum; }
         float FallbackSpeed(){ return fallback; }
         "#,
@@ -196,13 +215,20 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
     let mut engine =
         crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
     engine.register_service(models.clone())?;
-    let step = |engine: &mut Engine, delta| -> Result<Arc<NativeRigFrame>> {
+    let step = |engine: &mut Engine, delta| -> Result<(Arc<NativeRigFrame>, Arc<NativeRigFrame>)> {
         engine.frame(delta)?;
         let draws = models.take_draws()?;
-        let [body, cloth] = draws.as_slice() else {
-            bail!("expected separate body and cloth draws");
+        let [body, cloth, ropes] = draws.as_slice() else {
+            bail!("expected separate body, cloth and rope draws");
         };
         assert_eq!(body.entity, cloth.entity);
+        assert_eq!(body.entity, ropes.entity);
+        assert_eq!(
+            [body.part, cloth.part, ropes.part],
+            [DrawPart::Body, DrawPart::Sails, DrawPart::Ropes]
+        );
+        assert_eq!(ropes.asset.rigging_stats.ropes, 2);
+        assert_eq!(ropes.asset.rigging_stats.unmatched_ropes, 1);
         assert_eq!(body.asset.sails, 0);
         assert_eq!(cloth.asset.sails, 2);
         assert_eq!(cloth.asset.meshes.len(), 2);
@@ -215,15 +241,18 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
                 .native_limit_point(),
             Some([2.0, -1.5, 0.4])
         );
-        cloth.rig.clone().context("missing cloth frame")
+        Ok((
+            cloth.rig.clone().context("missing cloth frame")?,
+            ropes.rig.clone().context("missing rope frame")?,
+        ))
     };
-    let full = step(&mut engine, 16)?;
+    let (full, full_ropes) = step(&mut engine, 16)?;
     assert!(full.sails.values().all(|&value| value == 1.0));
     assert_eq!(
         full.cloth.values().map(Vec::len).collect::<Vec<_>>(),
         [221, 153]
     );
-    let next = step(&mut engine, 16)?;
+    let (next, _) = step(&mut engine, 16)?;
     assert_ne!(next.cloth, full.cloth);
 
     let request = |engine: &mut Engine, value| {
@@ -234,18 +263,28 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
     };
     let event = |engine: &mut Engine, name| engine.emit_event(name, &mut Message::new("", vec![])?);
     request(&mut engine, 0.5)?;
-    let folding = step(&mut engine, 50)?;
+    let (folding, _) = step(&mut engine, 50)?;
     assert_eq!(
         folding.sails.values().copied().collect::<Vec<_>>(),
         [0.5, 1.0]
     );
-    let partial = step(&mut engine, 100)?;
+    let (partial, partial_ropes) = step(&mut engine, 100)?;
     assert_eq!(
         partial.sails.values().copied().collect::<Vec<_>>(),
         [0.0, 1.0]
     );
     assert_ne!(partial.cloth_indices[&0], full.cloth_indices[&0]);
     assert_eq!(partial.cloth_indices[&1], full.cloth_indices[&1]);
+    assert_eq!(full_ropes.ropes[&5].ends[0], [-1.0, 0.0, 1.0]);
+    assert_eq!(partial_ropes.ropes[&5].ends[1], [4.0, 6.0, 0.0]);
+    assert_ne!(
+        full_ropes.ropes[&5].ends[1],
+        partial_ropes.ropes[&5].ends[1]
+    );
+    assert_eq!(
+        full_ropes.ropes[&1006].ends,
+        partial_ropes.ropes[&1006].ends
+    );
     assert!(matches!(
         event(&mut engine, "maximum")?,
         Some(storm_script::Value::Float(1.0))
@@ -256,14 +295,23 @@ fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> R
     ));
 
     request(&mut engine, 0.0)?;
-    let furled = step(&mut engine, 110)?;
+    let (furled, _) = step(&mut engine, 110)?;
     assert!(furled.sails.values().all(|&value| value == 0.0));
     request(&mut engine, 1.0)?;
     step(&mut engine, 110)?;
-    let reopened = step(&mut engine, 16)?;
+    let (reopened, _) = step(&mut engine, 16)?;
     assert!(reopened.sails.values().all(|&value| value == 1.0));
 
+    event(&mut engine, "cut")?;
+    let (_, ropes) = step(&mut engine, 16)?;
+    assert_eq!(ropes.ropes.keys().copied().collect::<Vec<_>>(), [1006]);
     event(&mut engine, "remove")?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    assert_eq!(draws.len(), 2);
+    let ropes = &draws[1].rig.as_ref().unwrap().ropes;
+    assert_eq!(ropes.keys().copied().collect::<Vec<_>>(), [1006]);
+    event(&mut engine, "unrig")?;
     engine.frame(16)?;
     let draws = models.take_draws()?;
     assert_eq!(draws.len(), 1);

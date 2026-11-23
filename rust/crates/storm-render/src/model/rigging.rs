@@ -5,8 +5,10 @@ use glam::{Mat4, Vec3};
 use std::collections::BTreeMap;
 use storm_formats::geometry::Label;
 use storm_sim::{FlagCell, FlagSelection, FlagTexture, RigState};
+mod native_rope;
 #[cfg(test)]
 mod tests;
+pub use native_rope::NativeRope;
 
 const SIDES: usize = 6;
 const FLAG_SEGMENTS: usize = 12;
@@ -686,6 +688,7 @@ pub(super) fn select_flags<'a>(
 #[derive(Clone, Debug)]
 pub enum RigMesh {
     Ropes(Vec<RopeLine>),
+    NativeRopes(Vec<NativeRope>),
     Flag(FlagPatch),
 }
 impl RigMesh {
@@ -751,18 +754,29 @@ impl RigMesh {
     pub fn index_count(&self) -> usize {
         match self {
             Self::Ropes(lines) => lines.iter().map(|l| l.segments * SIDES * 6).sum(),
+            Self::NativeRopes(lines) => lines.iter().map(|l| l.geometry.index_count()).sum(),
             Self::Flag(f) => (FLAG_SEGMENTS * 2 - usize::from(f.lower.is_none())) * 3,
         }
     }
     pub fn vertex_count(&self) -> usize {
         match self {
             Self::Ropes(lines) => lines.iter().map(RopeLine::vertex_count).sum(),
+            Self::NativeRopes(lines) => lines.iter().map(|l| l.geometry.vertex_count()).sum(),
             Self::Flag(f) => f.vertex_count(),
         }
     }
     pub fn indices(&self) -> Vec<u32> {
         match self {
             Self::Flag(f) => f.indices(),
+            Self::NativeRopes(lines) => {
+                let mut offset = 0;
+                let mut out = Vec::with_capacity(self.index_count());
+                for line in lines {
+                    out.extend(line.geometry.indices().map(|i| i + offset));
+                    offset += line.geometry.vertex_count() as u32;
+                }
+                out
+            }
             Self::Ropes(lines) => {
                 let mut out = Vec::new();
                 let mut offset = 0u32;
@@ -826,6 +840,14 @@ impl RigMesh {
         );
         match self {
             Self::Flag(f) => f.deform(out, wind, seconds),
+            Self::NativeRopes(lines) => {
+                let mut offset = 0;
+                for line in lines {
+                    let count = line.geometry.vertex_count();
+                    line.deform(&mut out[offset..offset + count], frame);
+                    offset += count;
+                }
+            }
             Self::Ropes(lines) => {
                 let mut offset = 0;
                 for line in lines {

@@ -192,7 +192,7 @@ impl ModelAsset {
         let (ropes, _, _) = collector.build(&[], &RiggingConfig::default())?;
         let mut builder = Builder {
             preview: true,
-            sail_overlay: None,
+            overlay: None,
             asset,
             files: None,
             cache: BTreeMap::new(),

@@ -24,6 +24,13 @@ const IDENTITY: [f32; 16] = [
 ];
 const MAX_DRAWS: usize = 256;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DrawPart {
+    Body,
+    Sails,
+    Ropes,
+}
+
 #[derive(Clone)]
 pub struct Draw {
     pub entity: EntityId,
@@ -33,6 +40,7 @@ pub struct Draw {
     pub matrix: [f32; 16],
     pub ambient_light: Option<[u8; 3]>,
     pub rig: Option<Arc<NativeRigFrame>>,
+    pub part: DrawPart,
 }
 struct State {
     geometry: Option<Rc<ModelAsset>>,
@@ -132,6 +140,7 @@ impl Models {
             matrix: state.matrix,
             ambient_light: self.0.ambient_light.get(),
             rig: None,
+            part: DrawPart::Body,
         }))
     }
 
@@ -140,20 +149,7 @@ impl Models {
         entity: EntityId,
         damage: SailDamageSettings,
     ) -> Result<(u64, Rc<ModelAsset>)> {
-        let (source, revision) = {
-            let models = self.0.models.borrow();
-            let state = models
-                .get(&entity.raw())
-                .context("sail group requires a MODELR entity")?
-                .borrow();
-            (
-                state
-                    .source
-                    .clone()
-                    .context("sail group MODELR has no loaded geometry")?,
-                state.revision,
-            )
-        };
+        let (source, revision) = self.overlay_source(entity)?;
         let asset = ModelAsset::load_sails(
             &source,
             self.0.game.root(),
@@ -164,6 +160,37 @@ impl Models {
         Ok((revision, Rc::new(asset)))
     }
 
+    pub(crate) fn load_ropes(
+        &self,
+        entity: EntityId,
+        settings: storm_sim::rope::Settings,
+        texture: Rc<storm_formats::texture::Texture>,
+    ) -> Result<(u64, Rc<ModelAsset>)> {
+        let (source, revision) = self.overlay_source(entity)?;
+        let asset = ModelAsset::load_ropes(&source, settings, texture)
+            .with_context(|| format!("load ropes from {}", source.display()))?;
+        Ok((revision, Rc::new(asset)))
+    }
+
+    fn overlay_source(&self, entity: EntityId) -> Result<(PathBuf, u64)> {
+        let models = self
+            .0
+            .models
+            .try_borrow()
+            .context("reentrant model registry")?;
+        let state = models
+            .get(&entity.raw())
+            .context("rigging attachment requires a MODELR entity")?
+            .try_borrow()
+            .context("reentrant model state")?;
+        Ok((
+            state
+                .source
+                .clone()
+                .context("rigging attachment has no loaded geometry")?,
+            state.revision,
+        ))
+    }
     pub(crate) fn queue_draw(&self, draw: Draw) -> Result<()> {
         let mut draws = self
             .0

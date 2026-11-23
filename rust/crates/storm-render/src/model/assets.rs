@@ -10,6 +10,7 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Component, Path, PathBuf},
+    rc::Rc,
 };
 use storm_formats::{
     TxHeader,
@@ -501,7 +502,25 @@ impl ModelAsset {
             &options,
             false,
             Some((String::new(), texture_paths.clone())),
-            Some(damage),
+            Some(Overlay::Sails(damage)),
+        )
+    }
+
+    pub fn load_ropes(
+        path: &Path,
+        settings: storm_sim::rope::Settings,
+        texture: Rc<Texture>,
+    ) -> Result<Self> {
+        let options = LoadOptions {
+            untextured: true,
+            ..Default::default()
+        };
+        Self::load_impl(
+            path,
+            &options,
+            false,
+            None,
+            Some(Overlay::Ropes(settings, texture)),
         )
     }
 
@@ -510,7 +529,7 @@ impl ModelAsset {
         options: &LoadOptions,
         preview: bool,
         native: Option<(String, TexturePaths)>,
-        sail_overlay: Option<SailDamageSettings>,
+        overlay: Option<Overlay>,
     ) -> Result<Self> {
         ensure!(
             (options.particle_profiles.is_empty() && options.particle_project.is_none())
@@ -550,6 +569,7 @@ impl ModelAsset {
         if let Some(files) = &mut files {
             files.native = native;
         }
+        let allow_empty = overlay.is_some();
         let mut builder = Builder {
             asset: Self {
                 sail_damage: None,
@@ -569,7 +589,7 @@ impl ModelAsset {
             active: BTreeSet::new(),
             single: options.single_mesh,
             preview,
-            sail_overlay,
+            overlay,
             rigging: rigging::Collector::default(),
             render_bytes: 4,
         };
@@ -586,6 +606,15 @@ impl ModelAsset {
             Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
             0,
         )?;
+        if let Some(Overlay::Ropes(settings, texture)) = builder.overlay.take() {
+            let (lines, stats) = builder.rigging.build_native_ropes(settings)?;
+            builder.asset.rigging_stats = stats;
+            if !lines.is_empty() {
+                builder.reserve(texture.mips.iter().map(|m| m.rgba.len()).sum())?;
+                builder.asset.textures.push((*texture).clone());
+                builder.add_rig_mesh(RigMesh::NativeRopes(lines), 1)?;
+            }
+        }
         if !options.single_mesh && preview {
             builder.add_rigging()?;
             if builder.asset.sails > 0 {
@@ -604,10 +633,7 @@ impl ModelAsset {
             }
         }
         if builder.asset.meshes.is_empty() {
-            ensure!(
-                sail_overlay.is_some(),
-                "model contains no visible static geometry"
-            );
+            ensure!(allow_empty, "model contains no visible static geometry");
             return Ok(builder.asset);
         }
         let mut min = Vec3::splat(f32::INFINITY);
@@ -634,6 +660,11 @@ impl ModelAsset {
     }
 }
 
+enum Overlay {
+    Sails(SailDamageSettings),
+    Ropes(storm_sim::rope::Settings, Rc<Texture>),
+}
+
 struct Builder {
     asset: ModelAsset,
     files: Option<TextureFiles>,
@@ -641,7 +672,7 @@ struct Builder {
     active: BTreeSet<PathBuf>,
     single: bool,
     preview: bool,
-    sail_overlay: Option<SailDamageSettings>,
+    overlay: Option<Overlay>,
     render_bytes: usize,
     rigging: rigging::Collector,
 }
@@ -797,11 +828,11 @@ impl Builder {
         }
         ensure!(self.asset.ship.fires.len() <= 256, "too many fire locators");
         self.asset.geometry_files += 1;
-        if self.preview {
+        if self.preview || matches!(self.overlay, Some(Overlay::Ropes(..))) {
             self.rigging.add(&model.labels, world, node);
         }
         let normals = world.inverse().transpose();
-        let include_body = self.sail_overlay.is_none();
+        let include_body = self.overlay.is_none();
         for object in model.objects.iter().filter(|_| include_body) {
             if object.flags & 1 == 0 || object.triangle_count == 0 {
                 continue;
@@ -848,11 +879,11 @@ impl Builder {
             });
         }
         if !self.single {
-            if self.preview || self.sail_overlay.is_some() {
+            if self.preview || matches!(self.overlay, Some(Overlay::Sails(_))) {
                 for mut patch in sails::from_labels(&model.labels, world, node, parent)
                     .with_context(|| format!("sails in {}", path.display()))?
                 {
-                    let texture = if let Some(damage) = self.sail_overlay {
+                    let texture = if let Some(Overlay::Sails(damage)) = self.overlay {
                         patch.damage_settings = damage;
                         self.texture("ships/parus_common.tga")?
                     } else {
