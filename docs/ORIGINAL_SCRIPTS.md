@@ -426,9 +426,10 @@ On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
 enters `InitInterface`. It creates `scrshoter`, selects a weather preset and
 creates `sea` and `ShipLights` inside `CreateSea` in `sea_ai/AISea.c`. The
 pinned run also creates `Weather`, blends the fog and sun colors, and
-completes `WhrCreateRainEnvironment`. Startup stops at the missing
-`SunGlow` entity in `WhrCreateSunGlowEnvironment`, before
-`WhrCreateSkyEnvironment`. The original source files were unchanged.
+completes `WhrCreateRainEnvironment` and `WhrCreateSunGlowEnvironment`.
+Startup stops at the missing `Astronomy` class in
+`WhrCreateAstronomyEnvironment`, before `WhrCreateSkyEnvironment`. The
+original source files were unchanged.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM
@@ -451,7 +452,15 @@ message pauses its animation. The renderer reuses the line geometry for
 all four blocks, including the 50,000-drop storm presets, and blends it
 additively against the scene depth in the window and PNG renderer. The
 vertical band currently follows the fallback orbit camera. Collision and
-sea splashes, rainbow, sky and sun effects still require their own passes.
+sea splashes and rainbow still require their own passes.
+
+`SunGlow` resolves the original sun, moon phase, halo, glare and lens flare
+atlas textures at `isDone`. Execute updates their fade values and Realize uses
+the direction supplied by `Weather`. The window and PNG renderer draw the
+depth-tested sun or moon disc, clip the disc and halo to the sea horizon, and
+blend the glare and lens flares additively. The flare and glare visibility
+use the current camera and open-water fade values. Cloud opacity, sail and
+terrain traces, and the sun-road reflection still need their original passes.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
 window and PNG renderer. The thumbnail uses the original 128 × 128 integer

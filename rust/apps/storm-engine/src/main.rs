@@ -160,6 +160,7 @@ fn main() -> Result<()> {
                                 correction: engine.host.color_correction(),
                                 sea: engine.host.sea_draw(),
                                 rain: engine.host.rain_draws(),
+                                sun: engine.host.sun_draws(),
                             },
                         )?;
                     }
@@ -184,6 +185,7 @@ fn main() -> Result<()> {
                 correction: engine.host.color_correction(),
                 sea: engine.host.sea_draw(),
                 rain: engine.host.rain_draws(),
+                sun: engine.host.sun_draws(),
             };
             let frame = storm_render::render_offscreen_with(
                 &gpu,

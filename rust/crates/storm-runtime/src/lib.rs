@@ -16,6 +16,7 @@ pub mod sea;
 mod shared_headers;
 pub mod ship_lights;
 mod sound;
+mod sun_glow;
 mod teleport;
 pub mod weather;
 mod window_settings;

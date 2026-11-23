@@ -78,6 +78,116 @@ fn configured_weather_applies_settings_and_emits_native_midnight_updates() -> Re
 }
 
 #[test]
+fn configured_sun_glow_loads_original_texture_requests_and_switches_to_the_moon() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("RESOURCE/Textures/Weather");
+    std::fs::create_dir_all(&textures)?;
+    for (name, red) in [
+        ("Sun", 40),
+        ("Moon", 50),
+        ("Halo", 60),
+        ("Flares", 70),
+        ("Flash", 80),
+    ] {
+        let mut texture = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        texture.extend([1, 2, red, 255]);
+        std::fs::write(textures.join(format!("{name}.tga.tx")), texture)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object weather, sun;
+        #event_handler("night", "Night");
+        #event_handler("clear", "Clear");
+        void Main() {
+            CreateEntity(&weather, "Weather");
+            weather.Sun.HeightAngle=0.2;
+            weather.Sun.AzimuthAngle=0.1;
+            weather.isDone="";
+            CreateEntity(&sun, "SunGlow");
+            LayerAddObject(0, &sun, -2);
+            LayerAddObject(1, &sun, -2);
+            sun.Glow.Dist=3500.0;
+            sun.Glow.SunSize=400;
+            sun.Glow.MoonSize=110;
+            sun.Glow.Size=1250;
+            sun.Glow.Color=argb(255,120,200,250);
+            sun.Glow.DecayTime=8.0;
+            sun.Glow.SunTexture="weather\\sun.tga";
+            sun.Glow.MoonTexture="weather\\moon.tga.tx";
+            sun.Glow.GlowTexture="weather\\halo.tga";
+            sun.Flare.Dist=3500.0;
+            sun.Flare.Scale=2.0;
+            sun.Flare.TexSizeX=2;
+            sun.Flare.TexSizeY=2;
+            sun.Flare.Texture="weather\\flares.tga";
+            sun.Flares.f0="0.8,250,2,0x503020";
+            sun.Overflow.Size=3700.0;
+            sun.Overflow.Start=0.7;
+            sun.Overflow.Color=argb(0,100,100,100);
+            sun.Overflow.Texture="weather\\flash.tga";
+            sun.isDone=true;
+        }
+        void Night() {
+            sun.Moon=true;
+            weather.Sun.AzimuthAngle=0.5;
+            weather.isDone="";
+            sun.isDone=true;
+        }
+        void Clear() { sun.Clear=""; DeleteAttribute(&sun,""); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(0)?;
+    let first = engine.host.sun_draws().remove(0);
+    assert_eq!(first.distance, 3500.0);
+    assert_eq!(first.halo_alpha, 0.0);
+    assert!(first.flares.is_none());
+    let first_disc = first.disc.unwrap();
+    assert_eq!(first_disc.texture.mips[0].rgba, [40, 2, 1, 255]);
+    assert_eq!(first_disc.color, [120, 200, 250]);
+    assert_eq!(first_disc.size, 400.0);
+    assert_eq!(first.halo.unwrap().texture.mips[0].rgba[0], 60);
+    assert_eq!(first.overflow.unwrap().sprite.texture.mips[0].rgba[0], 80);
+    engine.frame(50)?;
+    let day = engine.host.sun_draws().remove(0);
+    assert!((day.halo_alpha - 0.4).abs() < 1e-6);
+    assert!(std::rc::Rc::ptr_eq(
+        &first_disc.texture,
+        &day.disc.unwrap().texture
+    ));
+    let flares = day.flares.unwrap();
+    assert_eq!(flares.grid, [2, 2]);
+    assert_eq!(flares.atlas.mips[0].rgba[0], 70);
+    assert_eq!(flares.entries[0].tile, 2);
+    assert_eq!(flares.entries[0].color, [80, 48, 32]);
+    assert!((flares.alpha - 0.16).abs() < 1e-6);
+    let mut event = Message::new("", Vec::new())?;
+    engine.emit_event("night", &mut event)?;
+    engine.frame(16)?;
+    let night = engine.host.sun_draws().remove(0);
+    assert_ne!(night.direction, first.direction);
+    assert_eq!(
+        night.direction,
+        engine.host.weather_state().unwrap().light_position
+    );
+    assert!(night.halo.is_none());
+    let moon = night.disc.unwrap();
+    assert_eq!(moon.size, 110.0);
+    assert_eq!(moon.texture.mips[0].rgba[0], 50);
+    engine.emit_event("clear", &mut event)?;
+    engine.frame(16)?;
+    assert!(engine.host.sun_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_rain_generates_and_animates_streaks_only_while_visible() -> Result<()> {
     let temp = Temporary::new()?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;

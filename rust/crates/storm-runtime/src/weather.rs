@@ -215,9 +215,17 @@ pub(crate) struct Weather(Rc<Shared>);
 
 impl Weather {
     pub(crate) fn wind(&self) -> Option<(f32, f32)> {
-        let states = self.0.states.borrow();
-        let weather = &states.values().next()?.values;
+        let weather = self.first_state()?;
         Some((weather.wind_angle, weather.wind_speed))
+    }
+
+    pub(crate) fn first_state(&self) -> Option<WeatherState> {
+        self.0
+            .states
+            .borrow()
+            .values()
+            .next()
+            .map(|state| state.values)
     }
 
     pub(crate) fn register(host: &mut NativeHost) -> Result<()> {

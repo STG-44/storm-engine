@@ -8,6 +8,8 @@ mod ocean;
 pub use ocean::OceanRenderer;
 mod rain;
 pub use rain::{RainBlock, RainDraw, RainRenderer};
+mod sun_glow;
+pub use sun_glow::{Flare, FlareDraw, OverflowDraw, SunDraw, SunRenderer, SunSprite};
 mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
@@ -433,6 +435,12 @@ enum Water<'a> {
     None,
     Fleet,
     Configured(&'a mut OceanRenderer, &'a storm_sim::sea::Surface),
+}
+
+#[derive(Default)]
+pub struct Atmosphere<'a> {
+    pub rain: Option<(&'a mut RainRenderer, &'a [RainDraw])>,
+    pub sun: Option<(&'a mut SunRenderer, &'a [SunDraw])>,
 }
 
 pub(crate) fn upload_texture(
@@ -1057,7 +1065,7 @@ impl ModelScene {
             camera,
             wind,
             Water::Fleet,
-            None,
+            Atmosphere::default(),
         )
     }
     /// Runtime static models without the preview ocean. Empty registered scenes
@@ -1085,7 +1093,7 @@ impl ModelScene {
             camera,
             wind,
             Water::None,
-            None,
+            Atmosphere::default(),
         )
     }
 
@@ -1126,6 +1134,31 @@ impl ModelScene {
         sea: Option<(&mut OceanRenderer, &storm_sim::sea::Surface)>,
         rain: Option<(&mut RainRenderer, &[RainDraw])>,
     ) -> Result<()> {
+        Self::draw_configured_with_atmosphere(
+            scenes,
+            gpu,
+            encoder,
+            target,
+            size,
+            seconds,
+            camera,
+            sea,
+            Atmosphere { rain, sun: None },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_configured_with_atmosphere(
+        scenes: &mut [Self],
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        camera: &OrbitCamera,
+        sea: Option<(&mut OceanRenderer, &storm_sim::sea::Surface)>,
+        atmosphere: Atmosphere<'_>,
+    ) -> Result<()> {
         Self::draw_collection(
             scenes,
             gpu,
@@ -1142,7 +1175,7 @@ impl ModelScene {
             sea.map_or(Water::None, |(renderer, surface)| {
                 Water::Configured(renderer, surface)
             }),
-            rain,
+            atmosphere,
         )
     }
 
@@ -1158,13 +1191,13 @@ impl ModelScene {
         camera: &OrbitCamera,
         wind: SailWind,
         mut water: Water<'_>,
-        mut rain: Option<(&mut RainRenderer, &[RainDraw])>,
+        Atmosphere { mut rain, mut sun }: Atmosphere<'_>,
     ) -> Result<()> {
         ensure!(
             (!matches!(&water, Water::Fleet) || !scenes.is_empty()) && scenes.len() <= 16,
             "fleet scene count must be 1..=16"
         );
-        if scenes.is_empty() && matches!(&water, Water::None) && rain.is_none() {
+        if scenes.is_empty() && matches!(&water, Water::None) && rain.is_none() && sun.is_none() {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Empty runtime model scene"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1210,6 +1243,7 @@ impl ModelScene {
                 scenes.is_empty(),
             )?;
         }
+        let atmosphere_depth = scenes.is_empty() && matches!(&water, Water::None);
         if let Some((renderer, draws)) = &mut rain {
             renderer.prepare(
                 gpu,
@@ -1217,17 +1251,29 @@ impl ModelScene {
                 seconds,
                 camera,
                 draws,
-                scenes.is_empty() && matches!(&water, Water::None),
+                atmosphere_depth,
+            )?;
+        }
+        if let Some((renderer, draws)) = &mut sun {
+            renderer.prepare(
+                gpu,
+                [width, height],
+                seconds,
+                camera,
+                draws,
+                atmosphere_depth && rain.is_none(),
             )?;
         }
         let depth = if let Some(scene) = scenes.first() {
             &scene.depth
         } else if let Water::Configured(renderer, _) = &water {
             renderer.depth().expect("prepared SEA depth")
+        } else if let Some((renderer, _)) = &rain {
+            renderer.depth().expect("prepared rain depth")
         } else {
-            rain.as_ref()
+            sun.as_ref()
                 .and_then(|(renderer, _)| renderer.depth())
-                .expect("prepared rain depth")
+                .expect("prepared sun depth")
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
@@ -1263,6 +1309,12 @@ impl ModelScene {
             for scene in scenes.iter() {
                 scene.encode_meshes(&mut pass, seconds, particles);
             }
+            if !particles && let Some((renderer, _)) = &sun {
+                renderer.encode(&mut pass, true);
+            }
+        }
+        if let Some((renderer, _)) = &sun {
+            renderer.encode(&mut pass, false);
         }
         if let Some((renderer, _)) = &rain {
             renderer.encode(&mut pass);
