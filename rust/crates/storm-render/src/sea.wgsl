@@ -44,6 +44,6 @@ fn fragment_main(@builtin(position) pixel: vec4<f32>) -> @location(0) vec4<f32> 
     let sun = normalize(vec3(0.42, 0.16, -1.0));
     let specular = pow(max(dot(reflected, sun), 0.0), 160.0);
     var water = mix(body, sky(reflected), fresnel) + vec3(1.0, 0.73, 0.38) * specular * 1.5;
-    water = mix(water, vec3(0.51, 0.65, 0.67), 1.0 - exp(-distance * 0.0018));
+    water = mix(sky(ray), water, exp(-distance * 0.0018));
     return vec4(water, 1.0);
 }

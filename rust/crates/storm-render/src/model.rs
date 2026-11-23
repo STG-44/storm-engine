@@ -1254,6 +1254,7 @@ impl ModelScene {
             scene.prepare_frame(gpu, width, height, seconds, camera, wind)?;
         }
         let painted_sky = sky.as_ref().is_some_and(|(_, draw)| draw.has_textures());
+        let sea_horizon = painted_sky && matches!(&water, Water::Configured(..));
         if let Water::Configured(renderer, surface) = &mut water {
             renderer.prepare(
                 gpu,
@@ -1262,7 +1263,7 @@ impl ModelScene {
                 camera,
                 surface,
                 scenes.is_empty(),
-                painted_sky,
+                sea_horizon,
             )?;
         }
         let atmosphere_depth = scenes.is_empty() && matches!(&water, Water::None);
@@ -1344,7 +1345,7 @@ impl ModelScene {
             ..Default::default()
         });
         if let Some((renderer, draw)) = &sky {
-            renderer.encode_faces(&mut pass, false);
+            renderer.encode_faces(&mut pass, false, sea_horizon);
             if painted_sky && draw.celestial {
                 if let Some((renderer, _)) = &astronomy {
                     renderer.encode(&mut pass);
@@ -1352,9 +1353,9 @@ impl ModelScene {
                 if let Some((renderer, _)) = &sun {
                     renderer.encode(&mut pass, true);
                 }
-                renderer.encode_faces(&mut pass, true);
+                renderer.encode_faces(&mut pass, true, false);
             }
-            renderer.encode_fog(&mut pass);
+            renderer.encode_fog(&mut pass, sea_horizon);
         }
         match &water {
             Water::None => {}

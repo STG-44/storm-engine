@@ -79,7 +79,9 @@ struct FaceVertex {
     uv: [f32; 2],
 }
 
-fn face_vertices() -> [FaceVertex; 30] {
+const SKY_FACE_VERTICES: u32 = 30;
+
+fn face_vertices() -> [FaceVertex; 54] {
     let corners = [
         [-1.0, 0.0, -1.0],
         [1.0, 0.0, -1.0],
@@ -107,16 +109,23 @@ fn face_vertices() -> [FaceVertex; 30] {
         [right, inset],
     ];
     std::array::from_fn(|i| {
-        let face = i / 6;
+        let below = i >= SKY_FACE_VERTICES as usize;
+        let face = (i % SKY_FACE_VERTICES as usize) / 6;
         let corner = [0, 1, 2, 0, 2, 3][i % 6];
-        FaceVertex {
+        let mut vertex = FaceVertex {
             position: corners[faces[face][corner]],
             uv: if face == 4 {
                 top_uv[corner]
             } else {
                 side_uv[corner]
             },
+        };
+        if below {
+            // Continue each side's bottom texel behind the distant water.
+            vertex.position[1] -= 1.0;
+            vertex.uv[1] = 1.0;
         }
+        vertex
     })
 }
 
@@ -143,7 +152,7 @@ pub fn sky_fog_positions() -> &'static [[f32; 3]] {
     &POSITIONS
 }
 
-fn fog_indices() -> Vec<u16> {
+fn fog_mesh_indices() -> (Vec<u16>, u32) {
     let mut indices = Vec::new();
     for ring in 0..FOG_RINGS {
         for segment in 0..FOG_SEGMENTS {
@@ -163,7 +172,15 @@ fn fog_indices() -> Vec<u16> {
             }
         }
     }
-    indices
+    let upper_count = indices.len() as u32;
+    // Carry the fog at the horizon down with the sky. These visual vertices
+    // share the bottom ring's colors and need no additional script samples.
+    let first_lower = FOG_TOP + 1;
+    for a in 0..FOG_SEGMENTS {
+        let b = (a + 1) % FOG_SEGMENTS;
+        indices.extend([a, first_lower + a, first_lower + b, a, first_lower + b, b]);
+    }
+    (indices, upper_count)
 }
 
 #[repr(C)]
@@ -213,6 +230,7 @@ pub struct SkyRenderer {
     fog_colors: wgpu::Buffer,
     fog_indices: wgpu::Buffer,
     fog_count: u32,
+    fog_upper_count: u32,
     active_fog: Option<Rc<[[u8; 4]]>>,
     depth: Option<([u32; 2], wgpu::TextureView)>,
 }
@@ -361,7 +379,13 @@ impl SkyRenderer {
                 usage,
             })
         };
-        let indices = fog_indices();
+        let (indices, fog_upper_count) = fog_mesh_indices();
+        let mut fog_positions = sky_fog_positions().to_vec();
+        fog_positions.extend(
+            sky_fog_positions()[..FOG_SEGMENTS as usize]
+                .iter()
+                .map(|&[x, _, z]| [x, -FOG_RADIUS, z]),
+        );
         Self {
             base,
             clouds,
@@ -383,12 +407,12 @@ impl SkyRenderer {
             ),
             fog_positions: buffer(
                 "Sky horizon mesh",
-                bytemuck::cast_slice(sky_fog_positions()),
+                bytemuck::cast_slice(&fog_positions),
                 wgpu::BufferUsages::VERTEX,
             ),
             fog_colors: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Sky horizon colors"),
-                size: 4 * sky_fog_positions().len() as u64,
+                size: 4 * fog_positions.len() as u64,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::VERTEX,
                 mapped_at_creation: false,
             }),
@@ -398,6 +422,7 @@ impl SkyRenderer {
                 wgpu::BufferUsages::INDEX,
             ),
             fog_count: indices.len() as u32,
+            fog_upper_count,
             active_fog: None,
             depth: None,
         }
@@ -482,6 +507,11 @@ impl SkyRenderer {
             {
                 gpu.queue
                     .write_buffer(&self.fog_colors, 0, bytemuck::cast_slice(colors));
+                gpu.queue.write_buffer(
+                    &self.fog_colors,
+                    colors.len() as u64 * 4,
+                    bytemuck::cast_slice(&colors[..FOG_SEGMENTS as usize]),
+                );
             }
         }
         self.active_fog = draw.fog.clone();
@@ -495,7 +525,12 @@ impl SkyRenderer {
         self.depth.as_ref().map(|(_, view)| view)
     }
 
-    pub(super) fn encode_faces(&self, pass: &mut wgpu::RenderPass<'_>, clouds: bool) {
+    pub(super) fn encode_faces(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        clouds: bool,
+        below_horizon: bool,
+    ) {
         pass.set_pipeline(if clouds { &self.clouds } else { &self.base });
         pass.set_bind_group(0, &self.view_group, &[]);
         pass.set_vertex_buffer(0, self.positions.slice(..));
@@ -504,18 +539,27 @@ impl SkyRenderer {
                 pass.set_bind_group(1, group, &[]);
                 let first = index as u32 * 6;
                 pass.draw(first..first + 6, 0..1);
+                if below_horizon && index < 4 {
+                    let lower = SKY_FACE_VERTICES + first;
+                    pass.draw(lower..lower + 6, 0..1);
+                }
             }
         }
     }
 
-    pub(super) fn encode_fog(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(super) fn encode_fog(&self, pass: &mut wgpu::RenderPass<'_>, below_horizon: bool) {
         if self.active_fog.is_some() {
             pass.set_pipeline(&self.fog);
             pass.set_bind_group(0, &self.view_group, &[]);
             pass.set_vertex_buffer(0, self.fog_positions.slice(..));
             pass.set_vertex_buffer(1, self.fog_colors.slice(..));
             pass.set_index_buffer(self.fog_indices.slice(..), wgpu::IndexFormat::Uint16);
-            pass.draw_indexed(0..self.fog_count, 0, 0..1);
+            let count = if below_horizon {
+                self.fog_count
+            } else {
+                self.fog_upper_count
+            };
+            pass.draw_indexed(0..count, 0, 0..1);
         }
     }
 }
@@ -525,14 +569,97 @@ mod tests {
     use super::*;
     use crate::{
         create_instance,
-        model::{AstronomyRenderer, Atmosphere, CelestialDraw, CelestialSprite, ModelScene},
+        model::{
+            AstronomyRenderer, Atmosphere, CelestialDraw, CelestialSprite, ModelScene,
+            OceanRenderer,
+        },
         render_offscreen_with,
     };
+    use std::sync::Arc;
+    use storm_sim::sea::{Frames, Parameters, Sea};
 
     fn tex([r, g, b, a]: [u8; 4]) -> Result<Rc<Texture>> {
         let mut tx = [0u32, 1, 1, 1, 21, 4].map(u32::to_le_bytes).concat();
         tx.extend([b, g, r, a]);
         Ok(Rc::new(Texture::read(&tx)?))
+    }
+
+    #[test]
+    #[ignore = "requires a native GPU or software Vulkan"]
+    fn configured_water_fades_into_the_sky_horizon_with_and_without_fog() -> Result<()> {
+        let instance = create_instance(wgpu::Backends::PRIMARY)?;
+        let gpu = pollster::block_on(Gpu::request(&instance, None))?;
+        let format = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let mut sky = SkyRenderer::new(&gpu, format);
+        let mut water = OceanRenderer::new(&gpu, format);
+        let mut camera = OrbitCamera::from_bounds(Vec3::new(0.0, 12.0, 0.0), 2.0);
+        camera.pitch = 0.0;
+        camera.yaw = 0.0;
+        let ocean = Sea::new(
+            Arc::new(Frames::fixture()),
+            Parameters {
+                amplitude: [0.0; 2],
+                ..Parameters::default()
+            },
+        )?;
+        let texture = tex([87, 32, 123, 255])?;
+        let faces = Rc::new(SkyFaces(std::array::from_fn(|_| Some(texture.clone()))));
+        let mut draw = SkyDraw {
+            current: faces.clone(),
+            next: faces,
+            size: 2048.0,
+            angle: 0.0,
+            blend: 0.0,
+            celestial: false,
+            fog: None,
+        };
+        let size = [96, 400];
+        let mut render = |draw: &SkyDraw| {
+            render_offscreen_with(&gpu, size[0], size[1], 0.0, |encoder, target| {
+                ModelScene::draw_configured_with_atmosphere(
+                    &mut [],
+                    &gpu,
+                    encoder,
+                    target,
+                    size,
+                    0.0,
+                    &camera,
+                    Some((&mut water, ocean.surface())),
+                    Atmosphere {
+                        sky: Some((&mut sky, draw)),
+                        ..Atmosphere::default()
+                    },
+                )
+            })
+        };
+        for fog in [
+            None,
+            Some(vec![[120, 61, 30, 255]; sky_fog_positions().len()].into()),
+        ] {
+            draw.fog = fog;
+            let frame = render(&draw)?;
+            let pixel = |row: usize| {
+                let offset = 4 * (row * size[0] as usize + size[0] as usize / 2);
+                &frame.rgba[offset..offset + 4]
+            };
+            let horizon = pixel(198);
+            if draw.fog.is_none() {
+                assert_eq!(horizon, [87, 32, 123, 255]);
+            } else {
+                assert!(horizon[0] > 120 && horizon[1] > 61 && horizon[2] < 123);
+            }
+            // Row 204 is below the original texture and fog boundaries.
+            for (actual, expected) in pixel(204).iter().zip(horizon) {
+                assert!(
+                    actual.abs_diff(*expected) <= 10,
+                    "{:?} vs {:?}",
+                    pixel(204),
+                    horizon
+                );
+            }
+            assert_ne!(pixel(350), horizon, "nearby waves remain visible");
+        }
+        Ok(())
     }
 
     #[test]

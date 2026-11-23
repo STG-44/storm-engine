@@ -76,8 +76,13 @@ struct Pixel {
         let specular = pow(max(dot(reflect(-normalize(camera.light.xyz), normal), -ray), 0.0), 120.0);
         let water = mix(vec3(0.012, 0.095, 0.125), reflection, fresnel)
             + specular * vec3(0.9, 0.8, 0.56);
-        let haze = 1.0 - exp(-distance / (camera.light.w * 120.0));
-        output.color = vec4(mix(water, vec3(0.62, 0.78, 0.84), haze), 1.0);
+        let visibility = exp(-distance / (camera.light.w * 120.0));
+        if native_sea.bounds.y > 0.5 {
+            // The configured sky and horizon fog are already in the color target.
+            output.color = vec4(water, visibility);
+        } else {
+            output.color = vec4(mix(output.color.rgb, water, visibility), 1.0);
+        }
         let clip = camera.view_projection * vec4(p, 1.0);
         output.depth = clamp(clip.z / clip.w, 0.0, 1.0);
     } else if native_sea.bounds.y > 0.5 {

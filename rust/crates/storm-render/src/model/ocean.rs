@@ -35,7 +35,11 @@ pub(super) fn pipeline(
             module: &shader,
             entry_point: Some("fragment_main"),
             compilation_options: Default::default(),
-            targets: &[Some(format.into())],
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
         }),
         multiview_mask: None,
         cache: None,

@@ -480,7 +480,9 @@ the Weather hour. The renderer draws the blended background, composites
 celestial sprites with the two textures' cloud alpha, and samples the same
 transmittance for solar glare. The sky stage evaluates `WhrCalcFogColor`
 at the 513 original hemisphere vertices after `isDone` or `TimeUpdate`.
-The configured sea leaves the background pass visible above the horizon.
+The configured sea fades into the same sky and fog drawn above its horizon.
+The renderer continues the sky's bottom texels and the fog's bottom ring
+behind the water so a fixed haze color cannot form a stripe at the join.
 The original environment-map reflection remains pending.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
