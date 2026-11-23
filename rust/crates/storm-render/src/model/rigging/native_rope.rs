@@ -1,4 +1,6 @@
-use super::{Collector, LocatorEnd, LocatorRope, ModelVertex, PlacedLabel, RiggingStats};
+use super::{
+    Collector, LocatorEnd, LocatorRope, ModelVertex, PlacedLabel, RiggingStats, reflect_z,
+};
 use crate::model::{ModelAsset, NativeRigFrame, RigMesh};
 use anyhow::{Result, ensure};
 use std::collections::BTreeMap;
@@ -45,10 +47,6 @@ impl ModelAsset {
             })
             .unwrap_or_default()
     }
-}
-
-fn reflect_z([x, y, z]: [f32; 3]) -> [f32; 3] {
-    [x, y, -z]
 }
 
 impl Collector {

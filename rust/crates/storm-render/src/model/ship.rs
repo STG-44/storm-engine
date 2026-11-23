@@ -128,6 +128,7 @@ impl ShipState {
                 "invalid native rope frame"
             );
             ensure!(frame.flags.len() <= 512, "invalid flag frame");
+            ensure!(frame.removed_shrouds.len() <= 4096, "invalid shroud frame");
             if let Some(wind) = frame.flag_wind {
                 wind.validate()?;
             }
@@ -391,6 +392,7 @@ pub struct NativeRigFrame {
     pub rope_points: BTreeMap<String, SailRopePoints>,
     pub ropes: BTreeMap<i32, storm_sim::rope::Pose>,
     pub flags: BTreeMap<usize, storm_sim::FlagTexture>,
+    pub removed_shrouds: std::collections::BTreeSet<usize>,
     pub flag_wind: Option<super::SailWind>,
     /// Select the pinned diagnostic mast frame used by free-cloth CPU and draw paths.
     pub pinned_cloth_fall: bool,

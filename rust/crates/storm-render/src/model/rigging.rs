@@ -6,12 +6,29 @@ use std::collections::BTreeMap;
 use storm_formats::geometry::Label;
 use storm_sim::{FlagCell, FlagSelection, FlagTexture, RigState};
 mod native_rope;
+mod native_shroud;
 #[cfg(test)]
 mod tests;
 pub use native_rope::NativeRope;
+pub use native_shroud::NativeShroud;
 
 const SIDES: usize = 6;
 const FLAG_SEGMENTS: usize = 12;
+
+fn reflect_z([x, y, z]: [f32; 3]) -> [f32; 3] {
+    [x, y, -z]
+}
+
+fn shroud_locator(name: &str, prefix: &str) -> Option<(u32, usize)> {
+    let (&side, number) = name.strip_prefix(prefix)?.as_bytes().split_last()?;
+    let index = match side {
+        b'u' => 0,
+        b'l' => 1,
+        b'r' => 2,
+        _ => return None,
+    };
+    Some((std::str::from_utf8(number).ok()?.parse().ok()?, index))
+}
 
 #[derive(Clone, Debug)]
 pub struct RiggingConfig {
@@ -175,19 +192,7 @@ impl Collector {
                 }
             }
             for prefix in ["vant", "vanx", "vanz"] {
-                if let Some(tail) = l.name.strip_prefix(prefix) {
-                    let Some((&end, id)) = tail.as_bytes().split_last() else {
-                        continue;
-                    };
-                    let Ok(id) = std::str::from_utf8(id)?.parse::<u32>() else {
-                        continue;
-                    };
-                    let index = match end {
-                        b'u' => 0,
-                        b'l' => 1,
-                        b'r' => 2,
-                        _ => continue,
-                    };
+                if let Some((id, index)) = shroud_locator(&l.name, prefix) {
                     let entry = shrouds.entry((prefix.into(), id)).or_insert([None; 3]);
                     duplicate_points += usize::from(entry[index].is_some());
                     entry[index] = Some(l.position);
@@ -713,9 +718,22 @@ pub(super) fn select_flags<'a>(
 pub enum RigMesh {
     Ropes(Vec<RopeLine>),
     NativeRopes(Vec<NativeRope>),
+    NativeShroud(Box<NativeShroud>),
     Flag(FlagPatch),
 }
 impl RigMesh {
+    pub(super) fn visible_from(&self, distance_squared: f32, perspective: f32) -> bool {
+        match self {
+            Self::NativeRopes(lines) => lines
+                .first()
+                .is_none_or(|line| line.geometry.visible_from(distance_squared, perspective)),
+            Self::NativeShroud(shroud) => {
+                shroud.geometry.visible_from(distance_squared, perspective)
+            }
+            _ => true,
+        }
+    }
+
     pub(super) fn follow_damage(
         &self,
         out: &mut [ModelVertex],
@@ -772,6 +790,7 @@ impl RigMesh {
     pub fn node(&self) -> Option<&str> {
         match self {
             Self::Flag(f) => f.origin.as_ref().map(|o| o.node.as_str()),
+            Self::NativeShroud(shroud) => Some(&shroud.mast_node),
             _ => None,
         }
     }
@@ -779,6 +798,7 @@ impl RigMesh {
         match self {
             Self::Ropes(lines) => lines.iter().map(|l| l.segments * SIDES * 6).sum(),
             Self::NativeRopes(lines) => lines.iter().map(|l| l.geometry.index_count()).sum(),
+            Self::NativeShroud(shroud) => shroud.geometry.index_count(),
             Self::Flag(f) => (FLAG_SEGMENTS * 2 - usize::from(f.lower.is_none())) * 3,
         }
     }
@@ -786,12 +806,14 @@ impl RigMesh {
         match self {
             Self::Ropes(lines) => lines.iter().map(RopeLine::vertex_count).sum(),
             Self::NativeRopes(lines) => lines.iter().map(|l| l.geometry.vertex_count()).sum(),
+            Self::NativeShroud(shroud) => shroud.geometry.vertex_count(),
             Self::Flag(f) => f.vertex_count(),
         }
     }
     pub fn indices(&self) -> Vec<u32> {
         match self {
             Self::Flag(f) => f.indices(),
+            Self::NativeShroud(shroud) => shroud.geometry.indices().collect(),
             Self::NativeRopes(lines) => {
                 let mut offset = 0;
                 let mut out = Vec::with_capacity(self.index_count());
@@ -864,6 +886,7 @@ impl RigMesh {
         );
         match self {
             Self::Flag(f) => f.deform(out, wind, seconds),
+            Self::NativeShroud(shroud) => shroud.write_vertices(out),
             Self::NativeRopes(lines) => {
                 let mut offset = 0;
                 for line in lines {

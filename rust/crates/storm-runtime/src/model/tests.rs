@@ -453,6 +453,172 @@ fn configured_ship_and_town_flags_use_script_atlas_replies() -> Result<()> {
 }
 
 #[test]
+fn configured_shroud_variants_follow_models_and_retire_by_mast_and_group() -> Result<()> {
+    use storm_render::model::RigMesh;
+    use storm_sim::shroud::Kind;
+
+    let files = fixture()?;
+    let root = files.0.join("RESOURCE");
+    let body = std::fs::read(root.join("MODELS/root_yard.gm"))?;
+    std::fs::write(
+        root.join("MODELS/rigged.gm"),
+        with_labels(
+            &body,
+            &[
+                ("geometry", "mast1", [0.0, 4.0, 0.0]),
+                ("geometry", "mast2", [1.0, 8.0, 0.0]),
+                ("shrouds", "vant1l", [-2.0, 1.0, 1.0]),
+                ("shrouds", "vant1r", [-2.0, 1.0, -1.0]),
+                ("shrouds", "vant2l", [2.0, 1.0, 1.0]),
+                ("shrouds", "vant2r", [2.0, 1.0, -1.0]),
+                ("shrouds", "vanx10l", [-1.0, 1.0, 1.0]),
+                ("shrouds", "vanx10r", [-1.0, 1.0, -1.0]),
+                ("shrouds", "vanz3l", [1.0, 1.0, 1.0]),
+                ("shrouds", "vanz3r", [1.0, 1.0, -1.0]),
+                ("shrouds", "vanz4l", [1.0, 1.0, 1.0]),
+            ],
+        ),
+    )?;
+    std::fs::write(
+        root.join("MODELS/rigged_mast1.gm"),
+        with_labels(
+            &body,
+            &[
+                ("shrouds", "vant1u", [0.0, 0.5, 0.0]),
+                ("shrouds", "vanx10u", [0.0, 0.0, 0.0]),
+            ],
+        ),
+    )?;
+    std::fs::write(
+        root.join("MODELS/rigged_mast2.gm"),
+        with_labels(
+            &body,
+            &[
+                ("shrouds", "vant2u", [0.0, 0.5, 0.0]),
+                ("shrouds", "vanz3u", [0.0, 0.0, 0.0]),
+            ],
+        ),
+    )?;
+    std::fs::create_dir(root.join("INI"))?;
+    std::fs::write(
+        root.join("INI/rigging.ini"),
+        "[VANTS]\nTextureName=vant.tga\nfRopeQuant=5\n\
+         [VANTS_L]\nTextureName=vanx.tga\nfRopeQuant=3\n\
+         [VANTS_Z]\nTextureName=vanz.tga\nfRopeQuant=2\n",
+    )?;
+    for (name, color) in [
+        ("vant", [0, 0, 255, 255]),
+        ("vanx", [0, 255, 0, 255]),
+        ("vanz", [255, 0, 0, 255]),
+    ] {
+        let mut tx = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        tx.extend(color);
+        std::fs::write(root.join("Textures").join(format!("{name}.tga.tx")), tx)?;
+    }
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"
+        object ship, standard, narrow, light;
+        void Main() {
+            CreateEntity(&ship,"MODELR");
+            CreateEntity(&standard,"Vant");
+            CreateEntity(&narrow,"VantL");
+            CreateEntity(&light,"VantZ");
+            SendMessage(ship,"ls",20500,"rigged");
+            SendMessage(standard,"lii",40300,ship,ship);
+            SendMessage(narrow,"lii",40300,ship,ship);
+            SendMessage(light,"lii",40300,ship,ship);
+            LayerAddObject(0,standard,1);
+            LayerAddObject(0,narrow,1);
+            LayerAddObject(0,light,1);
+            LayerAddObject(1,ship,1);
+            LayerAddObject(1,standard,2);
+            LayerAddObject(1,narrow,2);
+            LayerAddObject(1,light,2);
+            SetEventHandler("move_model","Move",0);
+            SetEventHandler("detach_mast","Detach",0);
+            SetEventHandler("delete_group","DelGroup",0);
+            SetEventHandler("reload_model","Reload",0);
+        }
+        void Move(){ SendMessage(ship,"lffffffffffff",20506,2.0,3.0,4.0,1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0); }
+        void Detach(){ SendMessage(standard,"lis",40302,ship,"MAST1"); }
+        void DelGroup(){ SendMessage(narrow,"li",40301,ship); }
+        void Reload(){ SendMessage(ship,"ls",20500,"rigged"); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine =
+        crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    let [body, standard, narrow, light] = draws.as_slice() else {
+        bail!("expected hull and three independent shroud classes");
+    };
+    for (draw, kind, vertex_count, color) in [
+        (standard, Kind::Vant, 73, [255, 0, 0, 255]),
+        (narrow, Kind::VantL, 49, [0, 255, 0, 255]),
+        (light, Kind::VantZ, 37, [0, 0, 255, 255]),
+    ] {
+        assert_eq!(draw.entity, body.entity);
+        assert_eq!(draw.part, DrawPart::Shrouds(kind));
+        assert_eq!(draw.asset.textures[1].mips[0].rgba, color);
+        assert!(
+            draw.asset
+                .meshes
+                .iter()
+                .all(|mesh| mesh.vertices.len() == vertex_count)
+        );
+    }
+    let Some(RigMesh::NativeShroud(shroud)) = &narrow.asset.meshes[0].rigging else {
+        bail!("expected native shroud mesh");
+    };
+    assert_eq!(shroud.number, 10);
+    assert_eq!(shroud.mast_node, "mast1");
+    assert_eq!(
+        standard.asset.meshes[1].vertices[0].position,
+        [1.0, 8.5, 0.0]
+    );
+    assert_eq!(light.asset.rigging_stats.incomplete_shrouds, 1);
+
+    let event = |engine: &mut Engine, name| engine.emit_event(name, &mut Message::new("", vec![])?);
+    event(&mut engine, "move_model")?;
+    event(&mut engine, "detach_mast")?;
+    event(&mut engine, "delete_group")?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    let [body, standard, light] = draws.as_slice() else {
+        bail!("expected hull and two remaining shroud groups");
+    };
+    assert_eq!(
+        standard
+            .rig
+            .as_ref()
+            .unwrap()
+            .removed_shrouds
+            .iter()
+            .copied()
+            .collect::<Vec<_>>(),
+        [0]
+    );
+    assert_eq!(&body.matrix[12..15], &[2.0, 3.0, 4.0]);
+    assert_eq!(body.matrix, standard.matrix);
+    assert_eq!(body.matrix, light.matrix);
+    event(&mut engine, "reload_model")?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    assert_eq!(draws.len(), 1);
+    assert_eq!(draws[0].revision, 2);
+    engine.shutdown()
+}
+
+#[test]
 fn configured_renderer_shares_texture_paths_and_keeps_reference_counted_slots() -> Result<()> {
     let files = fixture()?;
     for name in ["ui", "ui/alternate", "ui/top", "ui/corrupt"] {

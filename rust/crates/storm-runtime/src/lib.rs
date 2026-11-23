@@ -23,6 +23,7 @@ mod sky;
 mod sound;
 mod sun_glow;
 mod teleport;
+mod vant;
 pub mod weather;
 mod window_settings;
 pub use window_settings::WindowSettings;

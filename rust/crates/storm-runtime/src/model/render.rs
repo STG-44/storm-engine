@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use storm_render::{
     Frame, Gpu,
     model::{
-        AstronomyRenderer, Atmosphere, CelestialDraw, ModelScene, OceanRenderer, OrbitCamera,
-        RainDraw, RainRenderer, SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer,
-        native_model_matrix,
+        AstronomyRenderer, Atmosphere, CelestialDraw, MAX_CONFIGURED_SCENES, ModelScene,
+        OceanRenderer, OrbitCamera, RainDraw, RainRenderer, SailWind, SkyDraw, SkyRenderer,
+        SunDraw, SunRenderer, native_model_matrix,
     },
 };
 
@@ -93,20 +93,16 @@ impl ModelScenes {
         self.framed = true;
     }
     pub fn prepare(&mut self, gpu: &Gpu, draws: &[Draw], live: &[EntityId]) -> Result<()> {
-        ensure!(
-            [
-                DrawPart::Body,
-                DrawPart::Sails,
-                DrawPart::Ropes,
-                DrawPart::Flags
-            ]
-            .into_iter()
-            .all(|part| draws.iter().filter(|draw| draw.part == part).count() <= 16),
-            "runtime renderer supports at most 16 active draws for each model part"
-        );
+        let mut counts = BTreeMap::<_, usize>::new();
         let mut ids = BTreeSet::new();
         let mut replacements = BTreeMap::new();
         for draw in draws {
+            let count = counts.entry(draw.part).or_default();
+            *count += 1;
+            ensure!(
+                *count <= 16,
+                "runtime renderer supports at most 16 active draws for each model part"
+            );
             ensure!(
                 ids.insert(draw_key(draw)),
                 "repeated model draw of the same part requires per-draw uniforms"
@@ -156,7 +152,7 @@ impl ModelScenes {
             if owner.part == DrawPart::Body
                 && live.contains(&owner.id)
                 && !ids.contains(&key)
-                && scenes.len() < 64
+                && scenes.len() < MAX_CONFIGURED_SCENES
             {
                 owners.push(owner);
                 scenes.push(scene);

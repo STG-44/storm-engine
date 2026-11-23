@@ -32,7 +32,8 @@ mod ship;
 pub use crew::{CrewPatch, Patrol, Skeleton};
 pub use effects::{DynamicMesh, ParticlePatch};
 pub use rigging::{
-    FlagOrigin, FlagPatch, LocatorEnd, LocatorRope, RigMesh, RiggingConfig, RiggingStats,
+    FlagOrigin, FlagPatch, LocatorEnd, LocatorRope, NativeShroud, RigMesh, RiggingConfig,
+    RiggingStats,
 };
 pub use ship::ParticleProjectInfo;
 pub use ship::{
@@ -51,6 +52,7 @@ pub use sails::{SailOrigin, SailPatch, SailShape, SailWind};
 use wgpu::util::DeviceExt;
 
 pub const MODEL_SHADER: &str = include_str!("model.wgsl");
+pub const MAX_CONFIGURED_SCENES: usize = 112;
 pub const OCEAN_SHADER: &str = concat!(
     include_str!("waves.wgsl"),
     "\n",
@@ -1212,7 +1214,7 @@ impl ModelScene {
         let valid_count = if matches!(&water, Water::Fleet) {
             (1..=16).contains(&scenes.len())
         } else {
-            scenes.len() <= 64
+            scenes.len() <= MAX_CONFIGURED_SCENES
         };
         ensure!(valid_count, "model scene count exceeds renderer capacity");
         if scenes.is_empty()
@@ -1652,9 +1654,16 @@ impl ModelScene {
                 {
                     flag.set_texture(*texture)?;
                 }
-                mesh.rigging_culled = matches!(rigging, RigMesh::NativeRopes(lines)
-                    if lines.first().is_some_and(|line| !line.geometry.visible_from(distance_squared, storm_sim::sail_lod::VERTICAL_FOV)));
-                if mesh.rigging_culled {
+                let native_shroud = matches!(rigging, RigMesh::NativeShroud(_));
+                mesh.rigging_culled = !rigging
+                    .visible_from(distance_squared, storm_sim::sail_lod::VERTICAL_FOV)
+                    || (native_shroud
+                        && self
+                            .ship_state
+                            .native_rig
+                            .as_ref()
+                            .is_some_and(|frame| frame.removed_shrouds.contains(&index)));
+                if mesh.rigging_culled || native_shroud {
                     continue;
                 }
                 rigging.deform_with_frame(

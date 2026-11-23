@@ -30,6 +30,7 @@ pub mod ship_queries;
 pub mod ship_rocking;
 pub mod ship_sails;
 pub mod ship_stages;
+pub mod shroud;
 pub use flags::{FlagCell, FlagNation, FlagSelection, FlagTexture, ShipFlagRole, ShipFlagState};
 mod waves;
 pub use rig::{RigLayout, RigState, SailMode, SailTier};

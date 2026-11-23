@@ -538,6 +538,25 @@ impl ModelAsset {
         )
     }
 
+    pub fn load_shrouds(
+        path: &Path,
+        kind: storm_sim::shroud::Kind,
+        settings: storm_sim::shroud::Settings,
+        texture: Rc<Texture>,
+    ) -> Result<Self> {
+        let options = LoadOptions {
+            untextured: true,
+            ..Default::default()
+        };
+        Self::load_impl(
+            path,
+            &options,
+            false,
+            None,
+            Some(Overlay::Shrouds(kind, settings, texture)),
+        )
+    }
+
     fn load_impl(
         path: &Path,
         options: &LoadOptions,
@@ -640,6 +659,16 @@ impl ModelAsset {
                     }
                 }
             }
+            Some(Overlay::Shrouds(kind, settings, texture)) => {
+                let (shrouds, stats) = builder.rigging.build_native_shrouds(kind, settings)?;
+                builder.asset.rigging_stats = stats;
+                if !shrouds.is_empty() {
+                    let index = builder.add_overlay_texture(&texture)?;
+                    for shroud in shrouds {
+                        builder.add_rig_mesh(RigMesh::NativeShroud(Box::new(shroud)), index)?;
+                    }
+                }
+            }
             _ => {}
         }
         if !options.single_mesh && preview {
@@ -691,6 +720,11 @@ enum Overlay {
     Sails(SailDamageSettings),
     Ropes(storm_sim::rope::Settings, Rc<Texture>),
     Flags([u32; 2], Rc<Texture>),
+    Shrouds(
+        storm_sim::shroud::Kind,
+        storm_sim::shroud::Settings,
+        Rc<Texture>,
+    ),
 }
 
 struct Builder {
@@ -862,7 +896,12 @@ impl Builder {
         }
         ensure!(self.asset.ship.fires.len() <= 256, "too many fire locators");
         self.asset.geometry_files += 1;
-        if self.preview || matches!(self.overlay, Some(Overlay::Ropes(..) | Overlay::Flags(..))) {
+        if self.preview
+            || matches!(
+                self.overlay,
+                Some(Overlay::Ropes(..) | Overlay::Flags(..) | Overlay::Shrouds(..))
+            )
+        {
             self.rigging.add(&model.labels, world, node);
         }
         let normals = world.inverse().transpose();

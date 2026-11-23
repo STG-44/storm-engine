@@ -30,6 +30,7 @@ pub enum DrawPart {
     Sails,
     Ropes,
     Flags,
+    Shrouds(storm_sim::shroud::Kind),
 }
 
 #[derive(Clone)]
@@ -182,6 +183,18 @@ impl Models {
         let (source, revision) = self.overlay_source(entity)?;
         let asset = ModelAsset::load_flags(&source, grid, texture)
             .with_context(|| format!("load flags from {}", source.display()))?;
+        Ok((revision, Rc::new(asset)))
+    }
+    pub(crate) fn load_shrouds(
+        &self,
+        entity: EntityId,
+        kind: storm_sim::shroud::Kind,
+        settings: storm_sim::shroud::Settings,
+        texture: Rc<storm_formats::texture::Texture>,
+    ) -> Result<(u64, Rc<ModelAsset>)> {
+        let (source, revision) = self.overlay_source(entity)?;
+        let asset = ModelAsset::load_shrouds(&source, kind, settings, texture)
+            .with_context(|| format!("load shrouds from {}", source.display()))?;
         Ok((revision, Rc::new(asset)))
     }
     fn overlay_source(&self, entity: EntityId) -> Result<(PathBuf, u64)> {
