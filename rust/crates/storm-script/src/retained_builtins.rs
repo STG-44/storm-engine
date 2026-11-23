@@ -20,6 +20,7 @@ const SIGNATURES: &[(&str, usize, Option<Type>)] = &[
     ("clearref", 1, Some(Type::Void)),
     ("copyattributes", 2, Some(Type::Void)),
     ("cos", 1, Some(Type::Float)),
+    ("cos", 1, Some(Type::Float)),
     ("createclass", 1, Some(Type::Object)),
     ("createcontrol", 1, Some(Type::Int)),
     ("createentity", 2, Some(Type::Int)),

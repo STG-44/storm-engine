@@ -287,6 +287,7 @@ impl Application<'_> {
                     rain: self.engine.host.rain_draws(),
                     sun: self.engine.host.sun_draws(),
                     astronomy: self.engine.host.astronomy_draws(),
+                    sky: self.engine.host.sky_draw(),
                 };
                 if let Some(progress) = self.engine.host.loading_progress() {
                     surface.capture_scene(&frame)?;

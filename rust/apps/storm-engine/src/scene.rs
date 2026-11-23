@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
-use storm_render::model::{CelestialDraw, RainDraw, SunDraw};
+use storm_render::model::{CelestialDraw, RainDraw, SkyDraw, SunDraw};
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -27,6 +27,7 @@ pub(crate) struct SceneFrame<'a> {
     pub rain: Vec<RainDraw>,
     pub sun: Vec<SunDraw>,
     pub astronomy: Vec<CelestialDraw>,
+    pub sky: Option<SkyDraw>,
 }
 
 pub(crate) struct SceneRenderer {
@@ -114,6 +115,7 @@ impl SceneRenderer {
             rain: host.rain_draws(),
             sun: host.sun_draws(),
             astronomy: host.astronomy_draws(),
+            sky: host.sky_draw(),
         };
         storm_render::render_offscreen_with(gpu, SIDE, SIDE, seconds, |encoder, target| {
             self.encode(gpu, encoder, Some(&source), [width, height], &frame)?;
@@ -152,6 +154,7 @@ impl SceneRenderer {
                     || !frame.rain.is_empty()
                     || !frame.sun.is_empty()
                     || !frame.astronomy.is_empty()
+                    || frame.sky.is_some()
                 {
                     self.models.encode_configured(
                         gpu,
@@ -164,6 +167,7 @@ impl SceneRenderer {
                             rain: &frame.rain,
                             sun: &frame.sun,
                             astronomy: &frame.astronomy,
+                            sky: frame.sky.as_ref(),
                         },
                     )?;
                 } else {

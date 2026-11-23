@@ -8,7 +8,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
         "and" | "or" | "shl" | "shr" => (2, Type::Int),
-        "sin" | "sqrt" => (1, Type::Float),
+        "sin" | "cos" | "sqrt" => (1, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
         "getarraysize" => (1, Type::Int),
@@ -101,10 +101,12 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
             .map_or(-1, |offset| (start + offset) as i32);
         return Ok(Value::Int(offset));
     }
-    if matches!(name, "sin" | "sqrt") {
+    if matches!(name, "sin" | "cos" | "sqrt") {
         return match (name, value) {
             ("sin", Value::Int(value)) => Ok(Value::Float((value as f32).sin())),
             ("sin", Value::Float(value)) => Ok(Value::Float(f64::from(value).sin() as f32)),
+            ("cos", Value::Int(value)) => Ok(Value::Float((value as f32).cos())),
+            ("cos", Value::Float(value)) => Ok(Value::Float(f64::from(value).cos() as f32)),
             ("sqrt", Value::Int(value)) if value >= 0 => {
                 Ok(Value::Int((value as f32).sqrt() as i32))
             }

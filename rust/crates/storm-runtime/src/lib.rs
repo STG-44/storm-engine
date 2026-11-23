@@ -16,6 +16,7 @@ mod script_libraries;
 pub mod sea;
 mod shared_headers;
 pub mod ship_lights;
+mod sky;
 mod sound;
 mod sun_glow;
 mod teleport;

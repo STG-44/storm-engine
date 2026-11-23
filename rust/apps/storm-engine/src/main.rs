@@ -162,6 +162,7 @@ fn main() -> Result<()> {
                                 rain: engine.host.rain_draws(),
                                 sun: engine.host.sun_draws(),
                                 astronomy: engine.host.astronomy_draws(),
+                                sky: engine.host.sky_draw(),
                             },
                         )?;
                     }
@@ -188,6 +189,7 @@ fn main() -> Result<()> {
                 rain: engine.host.rain_draws(),
                 sun: engine.host.sun_draws(),
                 astronomy: engine.host.astronomy_draws(),
+                sky: engine.host.sky_draw(),
             };
             let frame = storm_render::render_offscreen_with(
                 &gpu,

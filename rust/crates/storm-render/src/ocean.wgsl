@@ -80,6 +80,8 @@ struct Pixel {
         output.color = vec4(mix(water, vec3(0.62, 0.78, 0.84), haze), 1.0);
         let clip = camera.view_projection * vec4(p, 1.0);
         output.depth = clamp(clip.z / clip.w, 0.0, 1.0);
+    } else if native_sea.bounds.y > 0.5 {
+        discard;
     }
     return output;
 }

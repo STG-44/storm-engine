@@ -40,10 +40,15 @@ fn script_string_tests_use_byte_offsets_and_only_fold_ascii() -> Result<()> {
 #[test]
 fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
     let program = Program::compile(
-        "float Wave(int n){return sin(n);} int IntegerRoot(){return sqrt(12);} float Root(float n){return sqrt(n);}
+        "float Wave(int n){return sin(n);} float Wind(float n){return cos(n);} int IntegerRoot(){return sqrt(12);} float Root(float n){return sqrt(n);}
          int Color(){return argb(255, 60, 128, 200);} int Spill(){return argb(0,0,0,256);}",
     )?;
     let limits = Limits::default();
+    assert_eq!(
+        program.call("Wind", &[Value::Float(0.0)], &mut (), limits)?,
+        Value::Float(1.0)
+    );
+    assert_eq!(eval("float", "cos(1)")?, Value::Float(1.0_f32.cos()));
     assert_eq!(
         program.call("Wave", &[Value::Int(0)], &mut (), limits)?,
         Value::Float(0.0)

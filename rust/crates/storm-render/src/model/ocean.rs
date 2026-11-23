@@ -121,6 +121,7 @@ impl OceanRenderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare(
         &mut self,
         gpu: &Gpu,
@@ -129,12 +130,14 @@ impl OceanRenderer {
         camera: &OrbitCamera,
         surface: &Surface,
         standalone: bool,
+        painted_sky: bool,
     ) -> Result<()> {
         surface.validate()?;
         let camera = camera.uniform(size[0], size[1], seconds)?;
         let mut parameters = native_sea::Uniform::from(surface);
         // WaveXZ uses the native camera's X/Z, with the renderer's Z reflected.
         parameters.camera[..2].copy_from_slice(&[camera.eye_time[0], -camera.eye_time[2]]);
+        parameters.bounds[1] = if painted_sky { 1.0 } else { 0.0 };
         gpu.queue
             .write_buffer(&self.camera, 0, bytemuck::bytes_of(&camera));
         gpu.queue

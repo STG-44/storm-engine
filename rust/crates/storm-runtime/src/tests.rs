@@ -78,6 +78,126 @@ fn configured_weather_applies_settings_and_emits_native_midnight_updates() -> Re
 }
 
 #[test]
+fn configured_sky_swaps_weather_faces_samples_fog_and_drives_unscheduled_astronomy() -> Result<()> {
+    let temp = Temporary::new()?;
+    let assets = temp.0.join("RESOURCE/Textures");
+    for (directory, red) in [
+        ("weather/day", 70),
+        ("weather/night", 110),
+        ("weather/astronomy", 255),
+    ] {
+        std::fs::create_dir_all(assets.join(directory))?;
+        let mut tx = [0u32, 1, 1, 1, 21, 4].map(u32::to_le_bytes).concat();
+        tx.extend([10, 20, red, 255]);
+        let names: &[_] = if red == 255 {
+            &["stars"]
+        } else {
+            &["sky_fr", "sky_lf", "sky_bk", "sky_rt", "sky_up"]
+        };
+        for name in names {
+            std::fs::write(assets.join(format!("{directory}/{name}.tga.tx")), &tx)?;
+        }
+    }
+    let mut catalog = 1u32.to_le_bytes().to_vec();
+    for component in [1.0_f32, 0.1, 1.0] {
+        catalog.extend(component.to_le_bytes());
+    }
+    catalog.extend(*b"G0");
+    std::fs::write(temp.0.join("RESOURCE/hic.dat"), catalog)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object weather, sky, astronomy;
+        int fogCalls, tint;
+        #event_handler("WhrCalcFogColor", "FogColor");
+        #event_handler("night", "Night");
+        #event_handler("midnight", "Midnight");
+        #event_handler("remove_sky", "RemoveSky");
+        #event_handler("fog_count", "FogCount");
+        void Main() {
+            CreateEntity(&weather,"Weather");
+            weather.Time.Time=6.0;
+            CreateEntity(&astronomy,"Astronomy");
+            astronomy.Stars.Catalog="hic.dat";
+            astronomy.Stars.Texture="weather\\astronomy\\stars.tga";
+            astronomy.Stars.Enable=true;
+            astronomy.Stars.Spectr.G=argb(0,255,255,255);
+            astronomy.isDone=true;
+            CreateEntity(&sky,"Sky");
+            LayerAddObject(1,&sky,3);
+            sky.Dir.d0="weather\\day\\";
+            sky.Dir.d1="weather\\night\\";
+            sky.Dir=6.0;
+            sky.Size=2048.0;
+            sky.Angle=0.5;
+            sky.RotateSpeed=0.1;
+            tint=44;
+            sky.isDone="";
+        }
+        int FogColor() {
+            float x=GetEventData();
+            float y=GetEventData();
+            float z=GetEventData();
+            fogCalls++;
+            return argb(255-makeint(y/8.0),tint,20,40);
+        }
+        void Night() { weather.Time.Time=18.0; tint=88; sky.TimeUpdate=18.0; }
+        void Midnight() { weather.Time.Time=24.0; }
+        void RemoveSky() { DeleteClass(&sky); }
+        int FogCount() { return fogCalls; }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(0)?;
+    let first = engine.host.sky_draw().unwrap();
+    assert!(first.has_textures() && !first.celestial);
+    assert_eq!((first.blend, first.angle), (0.5, 0.5));
+    assert_eq!(first.current.0[0].as_ref().unwrap().mips[0].rgba[0], 70);
+    assert_eq!(first.next.0[4].as_ref().unwrap().mips[0].rgba[0], 110);
+    let colors = first.fog.as_ref().unwrap();
+    assert_eq!(colors.len(), 513);
+    assert_eq!(
+        (colors[0], colors[512]),
+        ([44, 20, 40, 255], [44, 20, 40, 5])
+    );
+    assert!(engine.host.astronomy_draws().is_empty());
+    let mut event = Message::new("", Vec::new())?;
+    assert!(matches!(
+        engine.emit_event("fog_count", &mut event)?,
+        Some(storm_script::Value::Int(513))
+    ));
+    engine.frame(100)?;
+    let daylight = engine.host.sky_draw().unwrap();
+    assert!(daylight.celestial);
+    assert!((daylight.angle - 0.51).abs() < 1e-6);
+    assert!(std::rc::Rc::ptr_eq(colors, daylight.fog.as_ref().unwrap()));
+    assert_eq!(engine.host.astronomy_draws().len(), 1);
+    engine.emit_event("night", &mut event)?;
+    engine.frame(100)?;
+    let night = engine.host.sky_draw().unwrap();
+    assert!(std::rc::Rc::ptr_eq(&first.next, &night.current));
+    assert!(std::rc::Rc::ptr_eq(&first.current, &night.next));
+    assert_eq!(night.fog.unwrap()[0][0], 88);
+    assert!(matches!(
+        engine.emit_event("fog_count", &mut event)?,
+        Some(storm_script::Value::Int(1026))
+    ));
+    engine.emit_event("midnight", &mut event)?;
+    engine.frame(16)?;
+    let midnight = engine.host.sky_draw().unwrap();
+    assert_eq!(midnight.blend, 0.0);
+    assert!(std::rc::Rc::ptr_eq(&first.current, &midnight.current));
+    engine.emit_event("remove_sky", &mut event)?;
+    engine.frame(16)?;
+    assert!(engine.host.sky_draw().is_none());
+    assert!(engine.host.astronomy_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_astronomy_stages_the_catalog_and_planets_with_weather_fades() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("RESOURCE/Textures/Weather/Astronomy");

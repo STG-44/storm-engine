@@ -10,6 +10,8 @@ mod ocean;
 pub use ocean::OceanRenderer;
 mod rain;
 pub use rain::{RainBlock, RainDraw, RainRenderer};
+mod sky;
+pub use sky::{SkyDraw, SkyFaces, SkyRenderer, sky_fog_positions};
 mod sun_glow;
 pub use sun_glow::{Flare, FlareDraw, OverflowDraw, SunDraw, SunRenderer, SunSprite};
 mod particle_replay;
@@ -444,6 +446,7 @@ pub struct Atmosphere<'a> {
     pub rain: Option<(&'a mut RainRenderer, &'a [RainDraw])>,
     pub sun: Option<(&'a mut SunRenderer, &'a [SunDraw])>,
     pub astronomy: Option<(&'a mut AstronomyRenderer, &'a [CelestialDraw])>,
+    pub sky: Option<(&'a mut SkyRenderer, &'a SkyDraw)>,
 }
 
 pub(crate) fn upload_texture(
@@ -1201,6 +1204,7 @@ impl ModelScene {
             mut rain,
             mut sun,
             mut astronomy,
+            mut sky,
         }: Atmosphere<'_>,
     ) -> Result<()> {
         ensure!(
@@ -1212,6 +1216,7 @@ impl ModelScene {
             && rain.is_none()
             && sun.is_none()
             && astronomy.is_none()
+            && sky.is_none()
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Empty runtime model scene"),
@@ -1248,6 +1253,7 @@ impl ModelScene {
         for scene in scenes.iter_mut() {
             scene.prepare_frame(gpu, width, height, seconds, camera, wind)?;
         }
+        let painted_sky = sky.as_ref().is_some_and(|(_, draw)| draw.has_textures());
         if let Water::Configured(renderer, surface) = &mut water {
             renderer.prepare(
                 gpu,
@@ -1256,6 +1262,7 @@ impl ModelScene {
                 camera,
                 surface,
                 scenes.is_empty(),
+                painted_sky,
             )?;
         }
         let atmosphere_depth = scenes.is_empty() && matches!(&water, Water::None);
@@ -1277,6 +1284,7 @@ impl ModelScene {
                 camera,
                 draws,
                 atmosphere_depth && rain.is_none(),
+                sky.as_ref().map(|(_, draw)| *draw),
             )?;
         }
         if let Some((renderer, draws)) = &mut astronomy {
@@ -1289,6 +1297,16 @@ impl ModelScene {
                 atmosphere_depth && rain.is_none() && sun.is_none(),
             )?;
         }
+        if let Some((renderer, draw)) = &mut sky {
+            renderer.prepare(
+                gpu,
+                [width, height],
+                seconds,
+                camera,
+                draw,
+                atmosphere_depth && rain.is_none() && sun.is_none() && astronomy.is_none(),
+            )?;
+        }
         let depth = if let Some(scene) = scenes.first() {
             &scene.depth
         } else if let Water::Configured(renderer, _) = &water {
@@ -1297,11 +1315,12 @@ impl ModelScene {
             renderer.depth().expect("prepared rain depth")
         } else if let Some((renderer, _)) = &sun {
             renderer.depth().expect("prepared sun depth")
+        } else if let Some((renderer, _)) = &astronomy {
+            renderer.depth().expect("prepared astronomy depth")
         } else {
-            astronomy
-                .as_ref()
+            sky.as_ref()
                 .and_then(|(renderer, _)| renderer.depth())
-                .expect("prepared astronomy depth")
+                .expect("prepared sky depth")
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
@@ -1324,6 +1343,19 @@ impl ModelScene {
             }),
             ..Default::default()
         });
+        if let Some((renderer, draw)) = &sky {
+            renderer.encode_faces(&mut pass, false);
+            if painted_sky && draw.celestial {
+                if let Some((renderer, _)) = &astronomy {
+                    renderer.encode(&mut pass);
+                }
+                if let Some((renderer, _)) = &sun {
+                    renderer.encode(&mut pass, true);
+                }
+                renderer.encode_faces(&mut pass, true);
+            }
+            renderer.encode_fog(&mut pass);
+        }
         match &water {
             Water::None => {}
             Water::Fleet => {
@@ -1337,7 +1369,7 @@ impl ModelScene {
             for scene in scenes.iter() {
                 scene.encode_meshes(&mut pass, seconds, particles);
             }
-            if !particles {
+            if !particles && !painted_sky && sky.as_ref().is_none_or(|(_, draw)| draw.celestial) {
                 if let Some((renderer, _)) = &astronomy {
                     renderer.encode(&mut pass);
                 }

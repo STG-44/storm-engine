@@ -4,7 +4,8 @@ use storm_render::{
     Frame, Gpu,
     model::{
         AstronomyRenderer, Atmosphere, CelestialDraw, ModelScene, OceanRenderer, OrbitCamera,
-        RainDraw, RainRenderer, SailWind, SunDraw, SunRenderer, native_model_matrix,
+        RainDraw, RainRenderer, SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer,
+        native_model_matrix,
     },
 };
 
@@ -21,12 +22,14 @@ pub struct ModelScenes {
     rain: Option<RainRenderer>,
     sun: Option<SunRenderer>,
     astronomy: Option<AstronomyRenderer>,
+    sky: Option<SkyRenderer>,
 }
 #[derive(Default)]
 pub struct AtmosphereDraws<'a> {
     pub rain: &'a [RainDraw],
     pub sun: &'a [SunDraw],
     pub astronomy: &'a [CelestialDraw],
+    pub sky: Option<&'a SkyDraw>,
 }
 struct Owner {
     id: u64,
@@ -68,6 +71,7 @@ impl ModelScenes {
             rain: None,
             sun: None,
             astronomy: None,
+            sky: None,
         }
     }
     pub fn cached(&self) -> usize {
@@ -261,6 +265,7 @@ impl ModelScenes {
             rain,
             sun,
             astronomy,
+            sky,
         }: AtmosphereDraws<'_>,
     ) -> Result<()> {
         let water_view = sea.filter(|_| !self.framed).map(|surface| {
@@ -302,6 +307,13 @@ impl ModelScenes {
                 astronomy,
             )
         });
+        let sky = sky.map(|draw| {
+            (
+                self.sky
+                    .get_or_insert_with(|| SkyRenderer::new(gpu, self.format)),
+                draw,
+            )
+        });
         ModelScene::draw_configured_with_atmosphere(
             &mut self.scenes[..self.active],
             gpu,
@@ -315,6 +327,7 @@ impl ModelScenes {
                 rain,
                 sun,
                 astronomy,
+                sky,
             },
         )
     }

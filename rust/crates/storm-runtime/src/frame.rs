@@ -215,10 +215,37 @@ impl Engine {
         delta_ms: u32,
         screenshot: &mut ScreenshotSource<'_>,
     ) -> Result<()> {
+        let astronomy = self.host.entities.first_id("Astronomy");
+        let mut astronomy_realized = false;
         for id in self.host.entities.layer_ids(LayerType::Realize) {
-            self.host
-                .entities
-                .process_entity_stage(id, Stage::Realize, delta_ms)?;
+            if Some(id) != astronomy || !astronomy_realized {
+                self.host
+                    .entities
+                    .process_entity_stage(id, Stage::Realize, delta_ms)?;
+                astronomy_realized |= Some(id) == astronomy;
+            }
+            if let Some((fog, celestial)) = self
+                .host
+                .skies
+                .as_ref()
+                .and_then(|sky| sky.stage_request(id))
+            {
+                if fog.borrow().dirty {
+                    let colors = self.sky_fog_colors()?;
+                    let mut fog = fog.borrow_mut();
+                    fog.dirty = false;
+                    fog.colors = colors;
+                }
+                if celestial
+                    && !astronomy_realized
+                    && let Some(astronomy) = astronomy
+                {
+                    self.host
+                        .entities
+                        .process_entity_stage(astronomy, Stage::Realize, delta_ms)?;
+                    astronomy_realized = true;
+                }
+            }
             if let Some(event) = self
                 .host
                 .interfaces
@@ -257,6 +284,28 @@ impl Engine {
             }
         }
         Ok(())
+    }
+
+    fn sky_fog_colors(&mut self) -> Result<Option<std::rc::Rc<[[u8; 4]]>>> {
+        let positions = storm_render::model::sky_fog_positions();
+        let mut colors = Vec::with_capacity(positions.len());
+        for &[x, y, z] in positions {
+            let mut message = Message::new(
+                "fff",
+                [x, y, z].into_iter().map(MessageValue::Float).collect(),
+            )?;
+            let result =
+                self.runtime
+                    .emit("WhrCalcFogColor", &mut message, &mut self.host, self.limits)?;
+            let color = match result {
+                Some(Value::Int(color)) => color.to_be_bytes(),
+                None if colors.is_empty() => return Ok(None),
+                _ => anyhow::bail!("WhrCalcFogColor must return a packed color"),
+            };
+            let [a, r, g, b] = color;
+            colors.push([r, g, b, a]);
+        }
+        Ok(Some(colors.into()))
     }
     /// Retains the supported CoreImpl::Run order. State loading, clock
     /// globals, Steam callbacks and dynamic service creation remain separate ports.
@@ -337,6 +386,9 @@ impl Engine {
         }
         if let Some(astronomy) = &self.host.astronomy {
             astronomy.begin_frame();
+        }
+        if let Some(sky) = &self.host.skies {
+            sky.begin_frame();
         }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
@@ -419,6 +471,9 @@ impl Engine {
         }
         if let Some(astronomy) = &self.host.astronomy {
             astronomy.begin_frame();
+        }
+        if let Some(sky) = &self.host.skies {
+            sky.begin_frame();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {

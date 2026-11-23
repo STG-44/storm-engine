@@ -1,4 +1,4 @@
-use super::{Gpu, OrbitCamera, depth_view, opaque_depth, upload_texture};
+use super::{Gpu, OrbitCamera, SkyDraw, depth_view, opaque_depth, upload_texture};
 use anyhow::{Result, ensure};
 use glam::{Mat4, Vec3};
 use std::{
@@ -235,6 +235,7 @@ impl SunRenderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn prepare(
         &mut self,
         gpu: &Gpu,
@@ -243,6 +244,7 @@ impl SunRenderer {
         camera: &OrbitCamera,
         sun: &[SunDraw],
         standalone: bool,
+        sky: Option<&SkyDraw>,
     ) -> Result<()> {
         ensure!(sun.len() <= 16, "sun glow scene draw limit");
         let view = View::new(camera, size, seconds)?;
@@ -251,7 +253,7 @@ impl SunRenderer {
         self.vertices.clear();
         self.batches.clear();
         for draw in sun {
-            self.prepare_draw(gpu, &view, draw)?;
+            self.prepare_draw(gpu, &view, draw, sky)?;
         }
         if standalone && self.depth.as_ref().is_none_or(|(old, _)| *old != size) {
             self.depth = Some((size, depth_view(&gpu.device, size[0], size[1])));
@@ -285,7 +287,13 @@ impl SunRenderer {
         Ok(())
     }
 
-    fn prepare_draw(&mut self, gpu: &Gpu, view: &View, draw: &SunDraw) -> Result<()> {
+    fn prepare_draw(
+        &mut self,
+        gpu: &Gpu,
+        view: &View,
+        draw: &SunDraw,
+        sky: Option<&SkyDraw>,
+    ) -> Result<()> {
         let [x, y, z] = draw.direction;
         let Some(direction) = Vec3::new(x, y, -z).try_normalize() else {
             return Ok(());
@@ -294,6 +302,7 @@ impl SunRenderer {
             return Ok(());
         }
         let center = view.eye + draw.distance * direction;
+        let transmission = sky.map_or(1.0, |sky| sky.transmittance(center, view.eye));
         let sprite = |sprite: &SunSprite, alpha, angle, horizon| Billboard {
             center,
             size: sprite.size,
@@ -307,11 +316,12 @@ impl SunRenderer {
         }
         if let Some(halo) = &draw.halo {
             let angle = direction.dot(view.right);
+            let cloud_fade = (transmission - 1.5 * (1.0 - transmission)).max(0.0);
             self.push(
                 gpu,
                 view,
                 &halo.texture,
-                sprite(halo, draw.halo_alpha, angle, true),
+                sprite(halo, draw.halo_alpha * cloud_fade, angle, true),
                 false,
             )?;
         }
@@ -322,7 +332,12 @@ impl SunRenderer {
             } else {
                 0.0
             };
-            let billboard = sprite(&overflow.sprite, overflow.alpha.min(facing), 0.0, false);
+            let billboard = sprite(
+                &overflow.sprite,
+                transmission * overflow.alpha.min(facing),
+                0.0,
+                false,
+            );
             self.push(gpu, view, &overflow.sprite.texture, billboard, false)?;
         }
         let projected = view.projection * center.extend(1.0);
@@ -339,7 +354,7 @@ impl SunRenderer {
                     center: center + delta * (1.0 - flare.distance),
                     size: flare.size * flares.scale,
                     angle: 0.0,
-                    color: scaled(flare.color, flares.alpha),
+                    color: scaled(flare.color, transmission * flares.alpha),
                     uv: atlas_uv(flare.tile, flares.grid),
                     horizon: false,
                 };

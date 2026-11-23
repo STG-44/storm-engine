@@ -426,9 +426,11 @@ On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
 enters `InitInterface`. It creates `scrshoter`, selects a weather preset and
 creates `sea` and `ShipLights` inside `CreateSea` in `sea_ai/AISea.c`. The
 pinned run also creates `Weather`, blends the fog and sun colors, and
-completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment` and
-`WhrCreateAstronomyEnvironment`. Startup stops at the missing `Sky` class
-in `WhrCreateSkyEnvironment`. The original source files were unchanged.
+completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
+`WhrCreateAstronomyEnvironment` and `WhrCreateSkyEnvironment`. The script
+VM now supplies the original `Cos` builtin for the weather's particle wind.
+Startup reaches `CreateShipEnvironment` and stops at the missing `Sail`
+class in `CreateRiggingEnvironment`. The original source files were unchanged.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM
@@ -458,8 +460,8 @@ atlas textures at `isDone`. Execute updates their fade values and Realize uses
 the direction supplied by `Weather`. The window and PNG renderer draw the
 depth-tested sun or moon disc, clip the disc and halo to the sea horizon, and
 blend the glare and lens flares additively. The flare and glare visibility
-use the current camera and open-water fade values. Cloud opacity, sail and
-terrain traces, and the sun-road reflection still need their original passes.
+use the current camera and open-water fade values. Sail and terrain traces
+and the sun-road reflection still need their original passes.
 
 `Astronomy` reads the packed HIC catalog and spectral colors and loads the
 original star and planet textures. It derives the vertex data from the
@@ -469,8 +471,17 @@ the fade bucket changes, and keeps the original fixed planet placements and
 camera-relative sprites. The GPU scales the star point sprites by distance
 and uses the camera field of view to interpolate the magnitude limit.
 The extracted catalog contains 114,257 stars and renders in the isolated
-window and PNG fixture. The original menu scripts leave the entity outside
-the frame layers because the sky pass invokes its Realize stage.
+window and PNG fixture. The Sky stage invokes its Realize step when the
+active sky schedule blends two weather slots.
+
+`Sky` reads the five original TX faces for each active entry of the script
+sky schedule. Realize advances rotation and picks the adjacent sets using
+the Weather hour. The renderer draws the blended background, composites
+celestial sprites with the two textures' cloud alpha, and samples the same
+transmittance for solar glare. The sky stage evaluates `WhrCalcFogColor`
+at the 513 original hemisphere vertices after `isDone` or `TimeUpdate`.
+The configured sea leaves the background pass visible above the horizon.
+The original environment-map reflection remains pending.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
 window and PNG renderer. The thumbnail uses the original 128 × 128 integer
