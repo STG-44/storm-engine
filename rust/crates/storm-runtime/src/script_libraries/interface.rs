@@ -61,6 +61,10 @@ impl LanguageService {
         Ok(language)
     }
 
+    pub(crate) fn name(&self) -> Result<String> {
+        Ok(self.get()?.name.clone())
+    }
+
     fn set(&self, name: &str) -> Result<()> {
         let previous = self.get()?;
         if previous.name.eq_ignore_ascii_case(name) {
@@ -379,7 +383,7 @@ pub(crate) fn functions(
             "languagegetlanguage",
             NativeFunction::new(move |args| {
                 ensure!(args.is_empty(), "LanguageGetLanguage expects no arguments");
-                Ok(Value::String(current.get()?.name.clone()))
+                Ok(Value::String(current.name()?))
             }),
         ),
         (

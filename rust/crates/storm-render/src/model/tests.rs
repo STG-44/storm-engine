@@ -1017,3 +1017,31 @@ fn staged_sea_camera_uses_native_view_and_same_gpu_eye_and_lod_eye() {
         assert!(m.transform_point3(Vec3::from_array(eye)).length() < 0.001);
     }
 }
+
+#[test]
+fn authored_camera_picks_the_menu_triangle_with_the_render_projection() -> Result<()> {
+    let mut asset = ModelAsset::sail_demo()?;
+    let mesh = &mut asset.meshes[0];
+    let mut vertex = mesh.vertices[0];
+    mesh.vertices = [[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.0, 0.5, 0.0]]
+        .into_iter()
+        .map(|position| {
+            vertex.position = position;
+            vertex
+        })
+        .collect();
+    mesh.indices = vec![0, 1, 2];
+    asset.meshes.truncate(1);
+    let locator = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0)).to_cols_array();
+    let camera = OrbitCamera::from_native_locator(locator, 1.287, [0.115, 8000.0])?;
+    let matrix = Mat4::IDENTITY.to_cols_array();
+    assert_eq!(camera.native_pose().unwrap().0, [0.0, 0.0, -2.1]);
+    for size in [[800, 600], [1920, 1080]] {
+        let center = size.map(|side| f64::from(side) / 2.0);
+        assert!(camera.hits_menu_model(size, center, matrix, &asset)?);
+        assert!(!camera.hits_menu_model(size, [0.0, 0.0], matrix, &asset)?);
+        let distant = Mat4::from_translation(Vec3::new(0.0, 0.0, 400.0)).to_cols_array();
+        assert!(!camera.hits_menu_model(size, center, distant, &asset)?);
+    }
+    Ok(())
+}

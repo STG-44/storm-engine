@@ -5,10 +5,12 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "getengineversion" => (0, Type::Int),
         "strlen" => (1, Type::Int),
+        "strcut" => (3, Type::String),
         "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
         "and" | "or" | "shl" | "shr" => (2, Type::Int),
         "sin" | "cos" | "sqrt" => (1, Type::Float),
+        "pow" => (2, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
         "getarraysize" => (1, Type::Int),
@@ -46,6 +48,23 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
         }
         return Ok(Value::Int(packed));
     }
+    if name == "pow" {
+        let number = |arg: &Value| -> Result<f64> {
+            let converted = if let Value::Reference(reference) = arg {
+                reference.convert(Type::Float)?
+            } else {
+                arg.resolved()?.convert(Type::Float)?
+            };
+            let Value::Float(value) = converted else {
+                unreachable!()
+            };
+            Ok(f64::from(value))
+        };
+        // The native stack converts the exponent before the base.
+        let exponent = number(&arguments[1])?;
+        let base = number(&arguments[0])?;
+        return Ok(Value::Float(base.powf(exponent) as f32));
+    }
     let value = arguments[0].resolved();
     if name == "checkattribute" && (value.is_err() || matches!(value, Ok(Value::AReference(None))))
     {
@@ -78,6 +97,22 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
     }
     if name == "strlen" {
         return Ok(Value::Int(value.text()?.len() as i32));
+    }
+    if name == "strcut" {
+        let (Value::Int(start), Value::Int(end)) =
+            (arguments[1].resolved()?, arguments[2].resolved()?)
+        else {
+            anyhow::bail!("StrCut requires integer byte offsets");
+        };
+        // Native StrCut includes its final byte and returns empty for invalid
+        // ranges. Cuts that would split UTF-8 cannot form a script string.
+        let text = value.text().ok();
+        let cut = text.and_then(|text| {
+            let start = usize::try_from(start).ok()?;
+            let end = usize::try_from(end).ok()?;
+            text.get(start..=end)
+        });
+        return Ok(Value::String(cut.unwrap_or_default().to_owned()));
     }
     if name == "findsubstr" {
         let source = value.text()?;

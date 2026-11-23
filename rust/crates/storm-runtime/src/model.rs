@@ -19,7 +19,7 @@ pub use render::{AtmosphereDraws, ModelScenes};
 pub const LOAD_GEOMETRY: i32 = 20500;
 pub const SET_POSITION: i32 = 20506;
 pub const SET_TEXTURE_PATH: i32 = 20509;
-const IDENTITY: [f32; 16] = [
+pub(crate) const IDENTITY: [f32; 16] = [
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
 ];
 const MAX_DRAWS: usize = 256;
@@ -27,6 +27,7 @@ const MAX_DRAWS: usize = 256;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DrawPart {
     Body,
+    MenuItem(u8, bool),
     Sails,
     Ropes,
     Flags,
@@ -144,6 +145,22 @@ impl Models {
             rig: None,
             part: DrawPart::Body,
         }))
+    }
+
+    pub(crate) fn load_geometry(
+        &self,
+        name: &str,
+        prefix: &str,
+    ) -> Result<(PathBuf, Rc<ModelAsset>)> {
+        let path = self.0.game.resolve(&format!("RESOURCE/MODELS/{name}.gm"))?;
+        let paths = self
+            .0
+            .texture_paths
+            .try_borrow()
+            .context("reentrant renderer texture paths")?;
+        let asset = ModelAsset::load_geometry_with_paths(&path, self.0.game.root(), prefix, &paths)
+            .with_context(|| format!("load native MODELR geometry {name}"))?;
+        Ok((path, Rc::new(asset)))
     }
 
     pub(crate) fn load_sails(
@@ -268,32 +285,13 @@ impl Entity for Actor {
         match message.long()? {
             LOAD_GEOMETRY => {
                 let name = message.string()?;
-                // GEOMETRY::CreateGeometry always appends .gm.
-                let path = self
-                    .shared
-                    .0
-                    .game
-                    .resolve(&format!("RESOURCE/MODELS/{name}.gm"))?;
                 let prefix = self
                     .shared
                     .0
                     .texture_path
                     .try_borrow()
-                    .context("reentrant texture path")?
-                    .clone();
-                let paths = self
-                    .shared
-                    .0
-                    .texture_paths
-                    .try_borrow()
-                    .context("reentrant renderer texture paths")?;
-                let asset = ModelAsset::load_geometry_with_paths(
-                    &path,
-                    self.shared.0.game.root(),
-                    &prefix,
-                    &paths,
-                )
-                .with_context(|| format!("load native MODELR geometry {name}"))?;
+                    .context("reentrant texture path")?;
+                let (path, asset) = self.shared.load_geometry(name, &prefix)?;
                 let mut state = self
                     .state
                     .try_borrow_mut()
@@ -302,7 +300,7 @@ impl Entity for Actor {
                     .revision
                     .checked_add(1)
                     .context("model revision overflow")?;
-                state.geometry = Some(Rc::new(asset));
+                state.geometry = Some(asset);
                 state.source = Some(path);
                 state.revision = revision;
                 Ok(1)

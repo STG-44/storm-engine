@@ -16,6 +16,7 @@ pub struct ModelScenes {
     scenes: Vec<ModelScene>,
     active: usize,
     camera: OrbitCamera,
+    authored_camera: Option<OrbitCamera>,
     framed: bool,
     format: wgpu::TextureFormat,
     ocean: Option<OceanRenderer>,
@@ -75,6 +76,7 @@ impl ModelScenes {
             scenes: Vec::new(),
             active: 0,
             camera: OrbitCamera::from_bounds([0.0; 3].into(), 1.0),
+            authored_camera: None,
             framed: false,
             format,
             ocean: None,
@@ -89,7 +91,10 @@ impl ModelScenes {
         self.scenes.len()
     }
     pub fn camera(&self) -> &OrbitCamera {
-        &self.camera
+        self.authored_camera.as_ref().unwrap_or(&self.camera)
+    }
+    pub fn set_authored_camera(&mut self, camera: Option<OrbitCamera>) {
+        self.authored_camera = camera;
     }
     pub fn set_camera(&mut self, camera: OrbitCamera) {
         self.camera = camera;
@@ -116,7 +121,11 @@ impl ModelScenes {
         // scenes. Device loss/OOM are outside this checked setup boundary.
         for draw in draws {
             if !self.owners.iter().any(|owner| owner.matches(draw)) {
-                let mut scene = ModelScene::new(gpu, self.format, &draw.asset)?;
+                let mut scene = if matches!(draw.part, DrawPart::MenuItem(..)) {
+                    ModelScene::menu(gpu, self.format, &draw.asset)?
+                } else {
+                    ModelScene::new(gpu, self.format, &draw.asset)?
+                };
                 scene.set_native_model_matrix(Some(draw.matrix))?;
                 replacements.insert(draw_key(draw), scene);
             }
@@ -152,18 +161,19 @@ impl ModelScenes {
         let live = live.iter().map(|id| id.raw()).collect::<BTreeSet<_>>();
         for (key, (owner, scene)) in previous {
             // The underlying model can stay live after its SAIL group is retired.
-            if owner.part == DrawPart::Body
-                && live.contains(&owner.id)
-                && !ids.contains(&key)
-                && scenes.len() < MAX_CONFIGURED_SCENES
-            {
+            let keep = match owner.part {
+                DrawPart::Body => live.contains(&owner.id),
+                DrawPart::MenuItem(..) => owner.asset.strong_count() > 0,
+                _ => false,
+            };
+            if keep && !ids.contains(&key) && scenes.len() < MAX_CONFIGURED_SCENES {
                 owners.push(owner);
                 scenes.push(scene);
             }
         }
         self.scenes = scenes;
         self.owners = owners;
-        if !self.framed && !draws.is_empty() {
+        if !self.framed && self.authored_camera.is_none() && !draws.is_empty() {
             let mut bounds: Option<([f32; 3], [f32; 3])> = None;
             for draw in draws {
                 let matrix = native_model_matrix(draw.matrix)?;
@@ -216,7 +226,7 @@ impl ModelScenes {
             width,
             height,
             seconds,
-            &self.camera,
+            self.authored_camera.as_ref().unwrap_or(&self.camera),
             SailWind {
                 speed: 0.0,
                 ..Default::default()
@@ -294,17 +304,19 @@ impl ModelScenes {
             sky,
         }: AtmosphereDraws<'_>,
     ) -> Result<()> {
-        let water_view = sea.filter(|_| !self.framed).map(|surface| {
-            // The model-independent orbit keeps the eye above the wave envelope
-            // until an actual scene selects its camera.
-            let wave_height = surface
-                .parameters
-                .amplitude
-                .iter()
-                .map(|v| v.abs())
-                .sum::<f32>();
-            OrbitCamera::from_bounds([0.0, wave_height, 0.0].into(), wave_height.max(1.0) * 4.0)
-        });
+        let water_view = sea
+            .filter(|_| !self.framed && self.authored_camera.is_none())
+            .map(|surface| {
+                // The model-independent orbit keeps the eye above the wave envelope
+                // until an actual scene selects its camera.
+                let wave_height = surface
+                    .parameters
+                    .amplitude
+                    .iter()
+                    .map(|v| v.abs())
+                    .sum::<f32>();
+                OrbitCamera::from_bounds([0.0, wave_height, 0.0].into(), wave_height.max(1.0) * 4.0)
+            });
         let ocean = sea.map(|surface| {
             (
                 self.ocean
@@ -354,7 +366,10 @@ impl ModelScenes {
             target,
             size,
             seconds,
-            water_view.as_ref().unwrap_or(&self.camera),
+            self.authored_camera
+                .as_ref()
+                .or(water_view.as_ref())
+                .unwrap_or(&self.camera),
             ocean,
             Atmosphere {
                 coast_foam,
@@ -373,7 +388,7 @@ impl ModelScenes {
         storm_render::render_models_offscreen(
             gpu,
             &mut self.scenes[..self.active],
-            &self.camera,
+            self.authored_camera.as_ref().unwrap_or(&self.camera),
             width,
             height,
             seconds,

@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
-use storm_render::model::{CelestialDraw, CoastFoamDraw, RainDraw, SkyDraw, SunDraw};
+use storm_render::model::{CelestialDraw, CoastFoamDraw, OrbitCamera, RainDraw, SkyDraw, SunDraw};
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -18,6 +18,7 @@ use storm_runtime::{
 
 pub(crate) struct SceneFrame<'a> {
     pub draws: &'a [Draw],
+    pub camera: Option<OrbitCamera>,
     pub live: &'a [EntityId],
     pub seconds: f32,
     pub pictures: Option<Rc<LoadingPictures>>,
@@ -113,6 +114,7 @@ impl SceneRenderer {
             // The display ramp is applied after the original capture.
             correction: None,
             sea: host.sea_draw(),
+            camera: host.authored_camera(),
             coast_foam: host.coast_foam_draws(),
             rain: host.rain_draws(),
             sun: host.sun_draws(),
@@ -136,6 +138,7 @@ impl SceneRenderer {
         [width, height]: [u32; 2],
         frame: &SceneFrame<'_>,
     ) -> Result<()> {
+        self.models.set_authored_camera(frame.camera.clone());
         self.models.prepare(gpu, frame.draws, frame.live)?;
         if let Some(pictures) = &frame.pictures {
             self.prepare_loading(gpu, Some(pictures.clone()))?;

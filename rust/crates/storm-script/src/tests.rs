@@ -38,6 +38,23 @@ fn script_string_tests_use_byte_offsets_and_only_fold_ascii() -> Result<()> {
 }
 
 #[test]
+fn strcut_keeps_inclusive_byte_offsets_and_empty_invalid_ranges() -> Result<()> {
+    for (expression, expected) in [
+        (r#"strcut("Long Name",5,8)"#, "Name"),
+        (r#"strcut("яAB",0,1)"#, "я"),
+        (r#"strcut("яAB",2,2)"#, "A"),
+        (r#"strcut("яAB",1,2)"#, ""),
+        (r#"strcut("abc",2,1)"#, ""),
+        (r#"strcut("abc",0,3)"#, ""),
+        (r#"strcut("",0,0)"#, ""),
+        (r#"strcut("abc",-1,1)"#, ""),
+    ] {
+        assert_eq!(eval("string", expression)?, Value::String(expected.into()));
+    }
+    Ok(())
+}
+
+#[test]
 fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
     let program = Program::compile(
         "float Wave(int n){return sin(n);} float Wind(float n){return cos(n);} int IntegerRoot(){return sqrt(12);} float Root(float n){return sqrt(n);}
@@ -48,6 +65,9 @@ fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
         program.call("Wind", &[Value::Float(0.0)], &mut (), limits)?,
         Value::Float(1.0)
     );
+    assert_eq!(eval("float", "pow(10.0, -2)")?, Value::Float(0.01));
+    assert_eq!(eval("float", r#"pow("2.5", 2)"#)?, Value::Float(6.25));
+    assert_eq!(eval("float", "pow(-2.0, 3)")?, Value::Float(-8.0));
     assert_eq!(eval("float", "cos(1)")?, Value::Float(1.0_f32.cos()));
     assert_eq!(
         program.call("Wave", &[Value::Int(0)], &mut (), limits)?,

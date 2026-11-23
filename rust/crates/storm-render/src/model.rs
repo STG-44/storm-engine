@@ -162,6 +162,7 @@ impl ModelPose {
 
 #[derive(Clone)]
 pub struct OrbitCamera {
+    authored: Option<AuthoredCamera>,
     native_sail_math: bool,
     native_sea_view: bool,
     pub target: Vec3,
@@ -170,12 +171,22 @@ pub struct OrbitCamera {
     pub distance: f32,
     pub radius: f32,
 }
+#[derive(Clone)]
+struct AuthoredCamera {
+    position: [f32; 3],
+    angles: [f32; 3],
+    view: [f32; 16],
+    horizontal_fov: f32,
+    clip: [f32; 2],
+}
+
 impl OrbitCamera {
     pub fn new(asset: &ModelAsset) -> Self {
         Self::from_bounds(asset.center, asset.radius)
     }
     pub fn from_bounds(center: Vec3, radius: f32) -> Self {
         Self {
+            authored: None,
             native_sail_math: false,
             native_sea_view: false,
             target: center,
@@ -185,6 +196,94 @@ impl OrbitCamera {
             radius,
         }
     }
+    /// InterfaceBackScene uses a GM locator, offset back by 0.1 native units.
+    pub fn from_native_locator(
+        matrix: [f32; 16],
+        horizontal_fov: f32,
+        clip: [f32; 2],
+    ) -> Result<Self> {
+        native_model_matrix(matrix)?;
+        ensure!(
+            horizontal_fov > 0.0
+                && horizontal_fov < std::f32::consts::PI
+                && clip[0] > 0.0
+                && clip[1].is_finite()
+                && clip[0] < clip[1],
+            "invalid authored camera lens"
+        );
+        let forward = Vec3::from_slice(&matrix[8..11]);
+        let position = Vec3::from_slice(&matrix[12..15]) - 0.1 * forward;
+        let angles = if forward.y.abs() < 1.0 {
+            [
+                (-forward.y).asin(),
+                forward.x.atan2(forward.z),
+                matrix[1].atan2(matrix[5]),
+            ]
+        } else {
+            let sign = -forward.y.signum();
+            [
+                sign * std::f32::consts::FRAC_PI_2,
+                0.0,
+                sign * matrix[2].atan2(matrix[0]),
+            ]
+        };
+        let [pitch, yaw, roll] = angles;
+        let rotation = Mat4::from_euler(glam::EulerRot::YXZ, yaw, pitch, roll);
+        let mut world = rotation.to_cols_array();
+        world[12..15].copy_from_slice(&position.to_array());
+        let view = storm_sim::sea::camera::transpose(world)?;
+        let reflected = |v: Vec3| Vec3::new(v.x, v.y, -v.z);
+        let mut camera = Self::from_bounds(reflected(position + rotation.z_axis.truncate()), 1.0);
+        camera.authored = Some(AuthoredCamera {
+            position: position.to_array(),
+            angles,
+            view,
+            horizontal_fov,
+            clip,
+        });
+        Ok(camera)
+    }
+
+    pub fn native_pose(&self) -> Option<([f32; 3], [f32; 3])> {
+        self.authored
+            .as_ref()
+            .map(|camera| (camera.position, camera.angles))
+    }
+
+    /// Hit the original menu model with the 300-unit camera-space pointer ray.
+    pub fn hits_menu_model(
+        &self,
+        viewport: [u32; 2],
+        pointer: [f64; 2],
+        matrix: [f32; 16],
+        asset: &ModelAsset,
+    ) -> Result<bool> {
+        let [width, height] = viewport;
+        let [x, y] = pointer;
+        if !(0.0..f64::from(width)).contains(&x) || !(0.0..f64::from(height)).contains(&y) {
+            return Ok(false);
+        }
+        let view = self.uniform(width, height, 0.0)?;
+        let inverse = Mat4::from_cols_array_2d(&view.inverse_view_projection);
+        let transform = native_model_matrix(matrix)?.inverse();
+        let eye = self.eye()?;
+        let point = inverse.project_point3(Vec3::new(
+            2.0 * x as f32 / width as f32 - 1.0,
+            1.0 - 2.0 * y as f32 / height as f32,
+            0.0,
+        ));
+        let direction = (point - eye) / self.authored.as_ref().map_or(1.0, |camera| camera.clip[0]);
+        let origin = transform.transform_point3(eye);
+        let direction = transform.transform_vector3(direction * 300.0);
+        Ok(asset.meshes.iter().any(|mesh| {
+            mesh.indices.chunks_exact(3).any(|triangle| {
+                let [a, b, c] = [triangle[0], triangle[1], triangle[2]]
+                    .map(|index| Vec3::from_array(mesh.vertices[index as usize].position));
+                menu_triangle_hit(origin, direction, a, b, c)
+            })
+        }))
+    }
+
     /// Centre-screen swept test shot; the camera and target are world positions.
     pub fn shot_segment(&self) -> (Vec3, Vec3) {
         let direction = Vec3::new(
@@ -216,6 +315,9 @@ impl OrbitCamera {
     }
     /// Native view derived from the exact orbit used by the staged GPU view.
     pub fn sea_view(&self) -> Result<storm_sim::sea::camera::Matrix> {
+        if let Some(camera) = &self.authored {
+            return Ok(camera.view);
+        }
         let eye = self.eye()?;
         Ok(storm_sim::sea::camera::build_view(
             [eye.x, eye.y, -eye.z],
@@ -225,6 +327,10 @@ impl OrbitCamera {
         .0)
     }
     fn eye(&self) -> Result<Vec3> {
+        if let Some(camera) = &self.authored {
+            let [x, y, z] = camera.position;
+            return Ok(Vec3::new(x, y, -z));
+        }
         ensure!(
             self.target.is_finite()
                 && self.yaw.is_finite()
@@ -278,7 +384,9 @@ impl OrbitCamera {
             "invalid orbit camera"
         );
         let mut eye = self.eye()?;
-        let view = if self.native_sea_view {
+        let view = if let Some(camera) = &self.authored {
+            Mat4::from_cols_array(&storm_sim::sea::camera::reflect_view(camera.view))
+        } else if self.native_sea_view {
             let native = self.sea_view()?;
             let p = storm_sim::sea::camera::Camera::from_view(native)?.eye;
             eye = Vec3::new(p[0], p[1], -p[2]);
@@ -286,12 +394,22 @@ impl OrbitCamera {
         } else {
             glam::camera::rh::view::look_at_mat4(eye, self.target, Vec3::Y)
         };
-        let projection = glam::camera::rh::proj::directx::perspective(
-            storm_sim::sail_lod::VERTICAL_FOV,
-            width as f32 / height as f32,
-            (self.radius * 0.002).max(0.01),
-            self.radius * 100.0,
+        let aspect = width as f32 / height as f32;
+        let (fov, near, far) = self.authored.as_ref().map_or(
+            (
+                storm_sim::sail_lod::VERTICAL_FOV,
+                (self.radius * 0.002).max(0.01),
+                self.radius * 100.0,
+            ),
+            |camera| {
+                (
+                    2.0 * ((camera.horizontal_fov / 2.0).tan() / aspect).atan(),
+                    camera.clip[0],
+                    camera.clip[1],
+                )
+            },
         );
+        let projection = glam::camera::rh::proj::directx::perspective(fov, aspect, near, far);
         let matrix = projection * view;
         ensure!(
             matrix.is_finite() && matrix.inverse().is_finite(),
@@ -304,6 +422,22 @@ impl OrbitCamera {
             light: [-0.45, 0.8, 0.4, self.radius],
         })
     }
+}
+
+fn menu_triangle_hit(origin: Vec3, ray: Vec3, a: Vec3, b: Vec3, c: Vec3) -> bool {
+    let edge = b - a;
+    let other = c - a;
+    let cross = ray.cross(other);
+    let det = edge.dot(cross);
+    if det.abs() <= 1e-7 {
+        return false;
+    }
+    let d = origin - a;
+    let u = d.dot(cross) / det;
+    let cross = d.cross(edge);
+    let v = ray.dot(cross) / det;
+    let t = other.dot(cross) / det;
+    u >= 0.0 && v >= 0.0 && u + v <= 1.0 && (0.0..=1.0).contains(&t)
 }
 
 #[repr(C)]
@@ -546,6 +680,19 @@ fn model_camera_group(
 
 impl ModelScene {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat, asset: &ModelAsset) -> Result<Self> {
+        Self::with_material(gpu, format, asset, false)
+    }
+
+    pub fn menu(gpu: &Gpu, format: wgpu::TextureFormat, asset: &ModelAsset) -> Result<Self> {
+        Self::with_material(gpu, format, asset, true)
+    }
+
+    fn with_material(
+        gpu: &Gpu,
+        format: wgpu::TextureFormat,
+        asset: &ModelAsset,
+        menu: bool,
+    ) -> Result<Self> {
         asset.ship_state.validate(&asset.ship)?;
         sail_damage::validate_holes(
             &asset.ship_state,
@@ -770,7 +917,7 @@ impl ModelScene {
         let depth = Some(opaque_depth());
         let target = Some(wgpu::ColorTargetState {
             format,
-            blend: None,
+            blend: menu.then_some(wgpu::BlendState::ALPHA_BLENDING),
             write_mask: wgpu::ColorWrites::ALL,
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -803,7 +950,11 @@ impl ModelScene {
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: Some("fragment_main"),
+                entry_point: Some(if menu {
+                    "menu_fragment"
+                } else {
+                    "fragment_main"
+                }),
                 compilation_options: Default::default(),
                 targets: std::slice::from_ref(&target),
             }),

@@ -284,6 +284,7 @@ impl Application<'_> {
                     fades: fades.as_deref().unwrap_or_default(),
                     correction: self.engine.host.color_correction(),
                     sea: self.engine.host.sea_draw(),
+                    camera: self.engine.host.authored_camera(),
                     coast_foam: self.engine.host.coast_foam_draws(),
                     rain: self.engine.host.rain_draws(),
                     sun: self.engine.host.sun_draws(),
@@ -353,6 +354,7 @@ impl ApplicationHandler for Application<'_> {
     fn suspended(&mut self, _: &ActiveEventLoop) {
         // Keep the Engine/CPU world; surface/device resources rebuild on resume.
         self.engine.control_input(ControlInput::FocusLost);
+        self.engine.host.set_interface_pointer(None);
         self.surface = None;
     }
     fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
@@ -387,6 +389,7 @@ impl ApplicationHandler for Application<'_> {
                     surface.window.request_redraw();
                 } else {
                     self.engine.control_input(ControlInput::FocusLost);
+                    self.engine.host.set_interface_pointer(None);
                 }
                 Ok(())
             }
@@ -394,6 +397,16 @@ impl ApplicationHandler for Application<'_> {
                 if let Some(input) = input::keyboard(event) {
                     self.engine.control_input(input);
                 }
+                Ok(())
+            }
+            WindowEvent::CursorMoved { position, .. } if self.focused => {
+                self.engine
+                    .host
+                    .set_interface_pointer(Some([position.x, position.y]));
+                Ok(())
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.engine.host.set_interface_pointer(None);
                 Ok(())
             }
             WindowEvent::MouseInput { state, button, .. } if self.focused => {

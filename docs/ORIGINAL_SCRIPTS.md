@@ -148,6 +148,12 @@ when called. Standalone calls check their argument count during compilation.
 Expression calls to defined script functions with parameters defer the arity
 check to frame entry, matching the source acceptance of the original compiler.
 
+`StrCut` uses inclusive byte offsets for the original character name lists.
+Invalid ranges return an empty string. A range that splits a UTF-8
+character also returns empty so the VM keeps valid text. `Pow` converts
+both operands to floats before exponentiation, including the integer
+precision argument in the original interface's `FloatToString`.
+
 Configured startup connects `script_libriary_test` to the original range,
 clamp and degree-conversion operations. The portable performance counter
 uses monotonic nanoseconds and retains the original low-32-bit wrapping
@@ -431,9 +437,14 @@ completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
 VM now supplies the original `Cos` builtin for the weather's particle wind.
 Startup completes `CreateRiggingEnvironment`, creating `Sail`, `Rope`,
 `Flag`, `Vant`, `VantL` and `VantZ` and assigning their layers. It also
-loads the `MainMenu` coastal foam profile and schedules `CoastFoam`. The next
-missing class is `InterfaceBackScene` in `interface/mainmenu.c:241`. The probe
-uses the original source files as supplied.
+loads the `MainMenu` coastal foam profile and schedules `CoastFoam`.
+`CreateBackEnvironment` now sets the original background geometry, camera
+and menu models through `InterfaceBackScene` before calling
+`MainMenu_CreateShip`. With a clear weather preset, it generates the menu
+character and reaches the missing configured `ship` class at
+`interface/mainmenu.c:343`. A randomly selected thunderstorm can stop
+earlier at the missing `Lightning` class in `weather/whrlightning.c:34`.
+Both probes use the original source files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -482,6 +493,18 @@ against the configured render camera before wave sampling. Animation advances
 in Realize even outside that view until the native camera is shared with the
 simulation. The coast editor, open-water `Sea2_Foam` and `ShipTracks` wake
 draws remain pending.
+
+`InterfaceBackScene` loads the background GM, its locator companion and
+the active and passive GM menu items with their original language texture
+paths. Its authored camera sets the shared view and projection for the
+background, sea, sky and coastal foam. The window uses the same projection
+to test pointer rays against menu triangles. Script controls move selection
+and post `backgroundcommand` with the selected item's event name. Ship
+placement reads a locator's position and yaw when the locator exists.
+Light sources, animated props and the optional static-model messages remain
+pending. A separate capture exercises the original background and all six
+menu items through the configured renderer before the complete start-up
+sequence can show the menu.
 
 The Barkentine capture sets `MaxSeaHeight` after both wave amplitudes to
 apply them, as in the original weather scripts. It uses the captured

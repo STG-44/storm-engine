@@ -179,6 +179,42 @@ impl Engine {
             self.host
                 .entities
                 .process_entity_stage(id, Stage::Execute, delta_ms)?;
+            if let Some(scenes) = &self.host.back_scenes
+                && let Some(notices) = scenes.execute(id, &self.host.controls)?
+            {
+                for command in notices.commands {
+                    self.runtime.post_native_event(
+                        "backgroundcommand",
+                        1,
+                        Message::new("s", vec![MessageValue::String(command)])?,
+                    )?;
+                }
+                if let Some((position, angles)) = notices.camera {
+                    let mut message = Message::new(
+                        "ffffff",
+                        position
+                            .into_iter()
+                            .chain(angles)
+                            .map(MessageValue::Float)
+                            .collect(),
+                    )?;
+                    // SetCamera with an explicit FOV calls the two-argument form first.
+                    for _ in 0..2 {
+                        message.move_to_start();
+                        self.runtime.emit(
+                            "CameraPosAng",
+                            &mut message,
+                            &mut self.host,
+                            self.limits,
+                        )?;
+                    }
+                }
+                if notices.selection_changed {
+                    let mut message = Message::new("l", vec![MessageValue::Long(2)])?;
+                    self.runtime
+                        .emit("ISound", &mut message, &mut self.host, self.limits)?;
+                }
+            }
             if let Some(hour) = self
                 .host
                 .weather

@@ -93,3 +93,12 @@ fn shade(input:Output,texel:vec4<f32>,alpha:f32)->vec4<f32> {
     let texel=textureSample(surface,surface_sampler,input.uv);
     return vec4(texel.rgb*input.color.rgb,texel.a*input.color.a);
 }
+
+
+@fragment fn menu_fragment(input: Output) -> @location(0) vec4<f32> {
+    let texel = textureSample(surface, surface_sampler, input.uv);
+    if texel.a < 1.0 / 255.0 {
+        discard;
+    }
+    return texel;
+}

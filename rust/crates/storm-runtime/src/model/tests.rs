@@ -1019,3 +1019,121 @@ fn native_stage_errors_reach_the_engine_owner_without_running_later_stages() -> 
     assert!(engine.host.entities.all_ids().is_empty());
     Ok(())
 }
+
+#[test]
+fn configured_back_scene_places_models_and_dispatches_the_selected_command() -> Result<()> {
+    use crate::{ControlInput, ScriptEncoding, Startup};
+
+    let files = fixture()?;
+    let root = files.0.join("RESOURCE");
+    let texture_prefix = root.join("Textures/MainMenu");
+    let body = std::fs::read(root.join("MODELS/root_yard.gm"))?;
+    for texture in storm_formats::geometry::Geometry::read(&body)?.textures {
+        let name = if texture.ends_with(".tx") {
+            texture
+        } else {
+            format!("{texture}.tx")
+        };
+        let name = name.replace('\\', "/");
+        let destination = texture_prefix.join(&name);
+        std::fs::create_dir_all(destination.parent().unwrap())?;
+        std::fs::copy(root.join("Textures").join(&name), destination)?;
+    }
+    std::fs::write(
+        root.join("MODELS/root_locators.gm"),
+        with_labels(
+            &body,
+            &[
+                ("locators", "CAMERA", [0.0, 1.0, -5.0]),
+                ("locators", "first", [-1.0, 0.0, 0.0]),
+                ("locators", "second", [1.0, 0.0, 0.0]),
+                ("locators", "ship", [5.0, 0.0, -2.0]),
+            ],
+        ),
+    )?;
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"
+        object scene, menu, ship;
+        string command;
+        int cameraCalls;
+        #event_handler("CameraPosAng","Camera");
+        #event_handler("backgroundcommand","Command");
+        #event_handler("state","State");
+        #event_handler("selected","Selected");
+        #event_handler("erase","Erase");
+
+        void Main() {
+            CreateEntity(&scene,"InterfaceBackScene");
+            LayerAddObject(0,&scene,-1);
+            LayerAddObject(1,&scene,1000);
+            SendMessage(&scene,"ls",0,"root");
+            SendMessage(&scene,"ls",1,"camera");
+            SendMessage(&scene,"lsa",2,"Ship",&ship);
+            menu.first.locname = "first";
+            menu.first.sel = "root_yard";
+            menu.first.norm = "root_yard";
+            menu.first.event = "New";
+            menu.second.locname = "second";
+            menu.second.sel = "root_yard";
+            menu.second.norm = "root_yard";
+            menu.second.event = "Exit";
+            SendMessage(&scene,"lla",3,0,&menu);
+            MapControl(CreateControl("IDown"),40);
+            MapControl(CreateControl("IAction"),13);
+        }
+        void Camera() { cameraCalls++; }
+        void Command() { command = GetEventData(); }
+        string State() { return command + ":" + cameraCalls + ":" + sti(ship.Ship.Pos.x); }
+        int Selected() { return sti(SendMessage(&scene,"l",5)); }
+        void Erase() { DeleteClass(&scene); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    engine.frame(0)?;
+    let camera = engine.host.authored_camera().context("menu camera")?;
+    assert_eq!(camera.native_pose(), Some(([0.0, 1.0, -5.1], [0.0; 3])));
+    let draws = models.draws()?;
+    assert_eq!(draws.len(), 3);
+    assert_eq!(draws[1].part, DrawPart::MenuItem(0, true));
+    assert_eq!(draws[2].part, DrawPart::MenuItem(1, false));
+    assert_eq!(&draws[2].matrix[12..15], &[1.0, 0.0, 0.0]);
+
+    engine.control_input(ControlInput::Button {
+        code: 40,
+        pressed: true,
+    });
+    engine.frame(1)?;
+    engine.frame(1)?;
+    assert_eq!(models.draws()?[2].part, DrawPart::MenuItem(1, true));
+    let mut event = Message::new("", vec![])?;
+    assert_eq!(
+        engine.emit_event("selected", &mut event)?,
+        Some(storm_script::Value::Int(1))
+    );
+    engine.control_input(ControlInput::Button {
+        code: 13,
+        pressed: true,
+    });
+    engine.frame(1)?;
+    engine.frame(1)?;
+    assert_eq!(
+        engine.emit_event("state", &mut event)?,
+        Some(storm_script::Value::String(":10:5".into())),
+    );
+    engine.frame(1)?;
+    assert_eq!(
+        engine.emit_event("state", &mut event)?,
+        Some(storm_script::Value::String("Exit:12:5".into())),
+    );
+    engine.emit_event("erase", &mut event)?;
+    engine.frame(1)?;
+    assert!(engine.host.authored_camera().is_none());
+    assert!(models.draws()?.is_empty());
+    Ok(())
+}

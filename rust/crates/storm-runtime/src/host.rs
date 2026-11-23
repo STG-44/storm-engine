@@ -43,6 +43,7 @@ pub struct NativeHost {
     pub(crate) random: Rc<RefCell<crate::random::Random>>,
     pub(crate) controls: crate::controls::Controls,
     pub(crate) interfaces: Option<Interfaces>,
+    pub(crate) back_scenes: Option<crate::back_scene::BackScenes>,
     pub(crate) coast_foams: Option<crate::coast_foam::CoastFoams>,
     pub(crate) seas: Option<crate::sea::Seas>,
     pub(crate) ship_lights: Option<crate::ship_lights::ShipLights>,
@@ -91,6 +92,7 @@ impl NativeHost {
             random: Rc::new(RefCell::new(crate::random::Random::new(seed))),
             controls: crate::controls::Controls::default(),
             interfaces: None,
+            back_scenes: None,
             seas: None,
             coast_foams: None,
             ship_lights: None,
@@ -140,6 +142,17 @@ impl NativeHost {
         if let Some(interfaces) = &self.interfaces {
             interfaces.set_window(width, height);
         }
+        if let Some(scenes) = &self.back_scenes {
+            scenes.set_viewport([width, height]);
+        }
+    }
+    pub fn set_interface_pointer(&mut self, pointer: Option<[f64; 2]>) {
+        if let Some(scenes) = &self.back_scenes {
+            scenes.set_pointer(pointer);
+        }
+    }
+    pub fn authored_camera(&self) -> Option<storm_render::model::OrbitCamera> {
+        self.back_scenes.as_ref()?.camera(&self.entities)
     }
     pub fn glow_parameters(&self) -> GlowParameters {
         self.glow_parameters.get()

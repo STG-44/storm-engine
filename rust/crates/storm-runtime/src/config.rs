@@ -162,6 +162,7 @@ impl Startup {
         crate::interface::Interfaces::register(&mut host, game.clone())?;
         let language = crate::script_libraries::interface::LanguageService::new(game.clone());
         language.register(&mut host)?;
+        crate::back_scene::BackScenes::register(&mut host, game.clone(), language.clone())?;
         host.interface_language = Some(language);
         let sound = crate::sound::Sound::register(&mut host, game.clone())?;
         host.configure_script_source(source, game.clone());
