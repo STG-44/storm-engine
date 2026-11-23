@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use storm_render::{
     Frame, Gpu,
     model::{
-        AstronomyRenderer, Atmosphere, CelestialDraw, MAX_CONFIGURED_SCENES, ModelScene,
-        OceanRenderer, OrbitCamera, RainDraw, RainRenderer, SailWind, SkyDraw, SkyRenderer,
-        SunDraw, SunRenderer, native_model_matrix,
+        AstronomyRenderer, Atmosphere, CelestialDraw, CoastFoamDraw, CoastFoamRenderer,
+        MAX_CONFIGURED_SCENES, ModelScene, OceanRenderer, OrbitCamera, RainDraw, RainRenderer,
+        SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer, native_model_matrix,
     },
 };
 
@@ -19,6 +19,7 @@ pub struct ModelScenes {
     framed: bool,
     format: wgpu::TextureFormat,
     ocean: Option<OceanRenderer>,
+    coast_foam: Option<CoastFoamRenderer>,
     rain: Option<RainRenderer>,
     sun: Option<SunRenderer>,
     astronomy: Option<AstronomyRenderer>,
@@ -26,6 +27,7 @@ pub struct ModelScenes {
 }
 #[derive(Default)]
 pub struct AtmosphereDraws<'a> {
+    pub coast_foam: &'a [CoastFoamDraw],
     pub rain: &'a [RainDraw],
     pub sun: &'a [SunDraw],
     pub astronomy: &'a [CelestialDraw],
@@ -76,6 +78,7 @@ impl ModelScenes {
             framed: false,
             format,
             ocean: None,
+            coast_foam: None,
             rain: None,
             sun: None,
             astronomy: None,
@@ -284,6 +287,7 @@ impl ModelScenes {
         seconds: f32,
         sea: Option<&crate::sea::Surface>,
         AtmosphereDraws {
+            coast_foam,
             rain,
             sun,
             astronomy,
@@ -306,6 +310,13 @@ impl ModelScenes {
                 self.ocean
                     .get_or_insert_with(|| OceanRenderer::new(gpu, self.format)),
                 surface,
+            )
+        });
+        let coast_foam = (ocean.is_some() && !coast_foam.is_empty()).then(|| {
+            (
+                self.coast_foam
+                    .get_or_insert_with(|| CoastFoamRenderer::new(gpu, self.format)),
+                coast_foam,
             )
         });
         let rain = (!rain.is_empty()).then(|| {
@@ -346,6 +357,7 @@ impl ModelScenes {
             water_view.as_ref().unwrap_or(&self.camera),
             ocean,
             Atmosphere {
+                coast_foam,
                 rain,
                 sun,
                 astronomy,

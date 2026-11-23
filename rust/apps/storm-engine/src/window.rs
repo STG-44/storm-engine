@@ -284,6 +284,7 @@ impl Application<'_> {
                     fades: fades.as_deref().unwrap_or_default(),
                     correction: self.engine.host.color_correction(),
                     sea: self.engine.host.sea_draw(),
+                    coast_foam: self.engine.host.coast_foam_draws(),
                     rain: self.engine.host.rain_draws(),
                     sun: self.engine.host.sun_draws(),
                     astronomy: self.engine.host.astronomy_draws(),

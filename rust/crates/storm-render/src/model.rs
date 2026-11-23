@@ -8,6 +8,8 @@ mod managed_particles;
 mod native_sea;
 mod ocean;
 pub use ocean::OceanRenderer;
+mod coast_foam;
+pub use coast_foam::{CoastFoamDraw, CoastFoamRenderer};
 mod rain;
 pub use rain::{RainBlock, RainDraw, RainRenderer};
 mod sky;
@@ -446,6 +448,7 @@ enum Water<'a> {
 
 #[derive(Default)]
 pub struct Atmosphere<'a> {
+    pub coast_foam: Option<(&'a mut CoastFoamRenderer, &'a [CoastFoamDraw])>,
     pub rain: Option<(&'a mut RainRenderer, &'a [RainDraw])>,
     pub sun: Option<(&'a mut SunRenderer, &'a [SunDraw])>,
     pub astronomy: Option<(&'a mut AstronomyRenderer, &'a [CelestialDraw])>,
@@ -1205,6 +1208,7 @@ impl ModelScene {
         wind: SailWind,
         mut water: Water<'_>,
         Atmosphere {
+            coast_foam,
             mut rain,
             mut sun,
             mut astronomy,
@@ -1261,6 +1265,7 @@ impl ModelScene {
         }
         let painted_sky = sky.as_ref().is_some_and(|(_, draw)| draw.has_textures());
         let sea_horizon = painted_sky && matches!(&water, Water::Configured(..));
+        let mut coast_foam = coast_foam.filter(|_| matches!(&water, Water::Configured(..)));
         if let Water::Configured(renderer, surface) = &mut water {
             renderer.prepare(
                 gpu,
@@ -1271,6 +1276,16 @@ impl ModelScene {
                 scenes.is_empty(),
                 sea_horizon,
             )?;
+            if let Some((renderer, draws)) = &mut coast_foam {
+                renderer.prepare(
+                    gpu,
+                    [width, height],
+                    seconds,
+                    camera,
+                    draws,
+                    (*surface).clone(),
+                )?;
+            }
         }
         let atmosphere_depth = scenes.is_empty() && matches!(&water, Water::None);
         if let Some((renderer, draws)) = &mut rain {
@@ -1375,6 +1390,9 @@ impl ModelScene {
         for particles in [false, true] {
             for scene in scenes.iter() {
                 scene.encode_meshes(&mut pass, seconds, particles);
+            }
+            if !particles && let Some((renderer, _)) = &coast_foam {
+                renderer.encode(&mut pass);
             }
             if !particles && !painted_sky && sky.as_ref().is_none_or(|(_, draw)| draw.celestial) {
                 if let Some((renderer, _)) = &astronomy {

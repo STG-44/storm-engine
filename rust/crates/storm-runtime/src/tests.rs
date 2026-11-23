@@ -633,11 +633,25 @@ fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers()
         }
         std::fs::write(waves.join(format!("sea{index:04}.tga")), &tga)?;
     }
+    let coast = temp.0.join("RESOURCE/Foam/Locations");
+    let textures = temp.0.join("RESOURCE/Textures/Weather/CoastFoam");
+    std::fs::create_dir_all(&coast)?;
+    std::fs::create_dir_all(&textures)?;
+    std::fs::write(
+        coast.join("Harbor.ini"),
+        "NumFoams=1\nFoamDivides=4\n[Foam_0]\nType=1\nkey_0=0,0,0,3\nkey_1=6,0,6,3\n",
+    )?;
+    let mut tex = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    tex.extend([255, 255, 255, 128]);
+    std::fs::write(textures.join("Foam.tga.tx"), tex)?;
     std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
     std::fs::write(
         temp.0.join("main.c"),
         r#"
-        object water;
+        object water, coast, missing;
         #event_handler("freeze","FreezeSea");
         #event_handler("refresh","RefreshSea");
         #event_handler("stop","StopSea");
@@ -651,6 +665,13 @@ fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers()
             water.MaxSeaHeight=4.0;
             water.Sea2.AnimSpeed1=4.0;
             water.Sea2.AnimSpeed2=2.0;
+            coast.id="harbor";
+            coast.Edit=false;
+            CreateEntity(&coast,"CoastFoam");
+            LayerAddObject(1,&coast,65531);
+            missing.id="empty";
+            CreateEntity(&missing,"CoastFoam");
+            LayerAddObject(1,&missing,65531);
         }
         void FreezeSea() { LayerFreeze(1,true); }
         void RefreshSea() { water.isDone.refresh = ""; }
@@ -669,6 +690,15 @@ fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers()
         .first_id("sea")
         .expect("registered SEA");
     let start = engine.host.sea_draw().expect("first SEA draw");
+    assert_eq!(engine.host.entities.ids("CoastFoam").len(), 2);
+    let draws = engine.host.coast_foam_draws();
+    assert_eq!(draws.len(), 1);
+    assert_eq!(draws[0].strip.layout().origin, [0.0, 3.0]);
+    assert_eq!(draws[0].height, 0.2);
+    assert_eq!(
+        draws[0].texture.mips[0].rgba.as_slice(),
+        &[255, 255, 255, 128]
+    );
     assert_eq!(start.parameters.amplitude, [3.0, 1.0]);
     assert_eq!(start.animation.frame, [0.0, 10.0]);
     assert!((start.sample(12.0, -53.0)?.height - 30.0 / 255.0).abs() < 1e-7);
@@ -682,6 +712,7 @@ fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers()
         engine.emit_event(name, &mut event)?;
         engine.frame(250)?;
         assert!(engine.host.sea_draw().is_none());
+        assert!(engine.host.coast_foam_draws().is_empty());
         assert_eq!(
             engine.host.sea_surface(id).unwrap().animation.frame,
             [1.0, 10.5]
@@ -695,10 +726,12 @@ fn configured_sea_reads_all_frames_and_obeys_script_weather_and_realize_layers()
     engine.emit_event("resume", &mut event)?;
     engine.frame(250)?;
     assert_eq!(engine.host.sea_draw().unwrap().animation.frame, [2.0, 11.0]);
+    assert_eq!(engine.host.coast_foam_draws().len(), 1);
     engine.emit_event("erase", &mut event)?;
     engine.frame(250)?;
     assert!(engine.host.sea_surface(id).is_none());
     assert!(engine.host.sea_draw().is_none());
+    assert!(engine.host.coast_foam_draws().is_empty());
     Ok(())
 }
 

@@ -430,9 +430,10 @@ completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
 `WhrCreateAstronomyEnvironment` and `WhrCreateSkyEnvironment`. The script
 VM now supplies the original `Cos` builtin for the weather's particle wind.
 Startup completes `CreateRiggingEnvironment`, creating `Sail`, `Rope`,
-`Flag`, `Vant`, `VantL` and `VantZ` and assigning their layers. It then stops
-at the missing `CoastFoam` class in `sea_ai/CoastFoam.c:7`. The probe uses the
-original source files as supplied.
+`Flag`, `Vant`, `VantL` and `VantZ` and assigning their layers. It also
+loads the `MainMenu` coastal foam profile and schedules `CoastFoam`. The next
+missing class is `InterfaceBackScene` in `interface/mainmenu.c:241`. The probe
+uses the original source files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -471,6 +472,16 @@ test. Shrouds can be removed by model group or by a checked mast-node name.
 The loader accepts multi-digit locator numbers such as `vanx10` in the
 Battleship model. Independent moving mast anchors and automatic detachment
 from the native SHIP damage path remain pending.
+
+`CoastFoam` loads the location's original INI and textures. It subdivides
+authored endpoint pairs into eight-row strips and retains both the staggered
+row motion and the one- or two-pulse coast animation. Visible strips sample
+the current SEA surface and draw the original texture with its wave-height
+offset and doubled alpha modulation. Distance and side-frustum culling run
+against the configured render camera before wave sampling. Animation advances
+in Realize even outside that view until the native camera is shared with the
+simulation. The coast editor, open-water `Sea2_Foam` and `ShipTracks` wake
+draws remain pending.
 
 The Barkentine capture sets `MaxSeaHeight` after both wave amplitudes to
 apply them, as in the original weather scripts. It uses the captured

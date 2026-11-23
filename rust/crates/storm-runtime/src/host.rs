@@ -43,6 +43,7 @@ pub struct NativeHost {
     pub(crate) random: Rc<RefCell<crate::random::Random>>,
     pub(crate) controls: crate::controls::Controls,
     pub(crate) interfaces: Option<Interfaces>,
+    pub(crate) coast_foams: Option<crate::coast_foam::CoastFoams>,
     pub(crate) seas: Option<crate::sea::Seas>,
     pub(crate) ship_lights: Option<crate::ship_lights::ShipLights>,
     pub(crate) weather: Option<crate::weather::Weather>,
@@ -91,6 +92,7 @@ impl NativeHost {
             controls: crate::controls::Controls::default(),
             interfaces: None,
             seas: None,
+            coast_foams: None,
             ship_lights: None,
             weather: None,
             flags: None,
@@ -155,6 +157,11 @@ impl NativeHost {
     }
     pub fn screenshot_image(&self, handle: i32) -> Option<Rc<storm_formats::texture::Mip>> {
         self.interfaces.as_ref()?.screenshot_image(handle)
+    }
+    pub fn coast_foam_draws(&self) -> Vec<storm_render::model::CoastFoamDraw> {
+        self.coast_foams
+            .as_ref()
+            .map_or_else(Vec::new, |foams| foams.draws())
     }
     pub fn sea_draw(&self) -> Option<crate::sea::Surface> {
         self.seas.as_ref()?.draw()

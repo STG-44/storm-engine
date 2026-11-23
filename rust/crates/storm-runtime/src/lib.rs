@@ -2,6 +2,7 @@
 //! This initial runtime slice does not yet run complete original game programs.
 mod astronomy;
 pub mod clock;
+mod coast_foam;
 mod config;
 mod controls;
 mod filesystem;

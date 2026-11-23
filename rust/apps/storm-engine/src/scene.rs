@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
-use storm_render::model::{CelestialDraw, RainDraw, SkyDraw, SunDraw};
+use storm_render::model::{CelestialDraw, CoastFoamDraw, RainDraw, SkyDraw, SunDraw};
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -24,6 +24,7 @@ pub(crate) struct SceneFrame<'a> {
     pub fades: &'a [FadeDraw],
     pub correction: Option<ColorCorrection>,
     pub sea: Option<storm_runtime::sea::Surface>,
+    pub coast_foam: Vec<CoastFoamDraw>,
     pub rain: Vec<RainDraw>,
     pub sun: Vec<SunDraw>,
     pub astronomy: Vec<CelestialDraw>,
@@ -112,6 +113,7 @@ impl SceneRenderer {
             // The display ramp is applied after the original capture.
             correction: None,
             sea: host.sea_draw(),
+            coast_foam: host.coast_foam_draws(),
             rain: host.rain_draws(),
             sun: host.sun_draws(),
             astronomy: host.astronomy_draws(),
@@ -164,6 +166,7 @@ impl SceneRenderer {
                         frame.seconds,
                         frame.sea.as_ref(),
                         AtmosphereDraws {
+                            coast_foam: &frame.coast_foam,
                             rain: &frame.rain,
                             sun: &frame.sun,
                             astronomy: &frame.astronomy,

@@ -393,6 +393,9 @@ impl Engine {
         if let Some(seas) = &self.host.seas {
             seas.begin_frame();
         }
+        if let Some(foams) = &self.host.coast_foams {
+            foams.begin_frame();
+        }
         if let Some(rain) = &self.host.rain {
             rain.clear_draws();
         }
@@ -477,6 +480,9 @@ impl Engine {
         }
         if let Some(seas) = &self.host.seas {
             seas.begin_frame();
+        }
+        if let Some(foams) = &self.host.coast_foams {
+            foams.begin_frame();
         }
         if let Some(rain) = &self.host.rain {
             rain.clear_draws();
