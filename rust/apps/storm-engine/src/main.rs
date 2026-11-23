@@ -39,7 +39,7 @@ impl Backend {
     }
 }
 #[derive(Parser)]
-#[command(about = "Storm runtime: configured source, native window and static model rendering")]
+#[command(about = "Storm runtime: configured source, native window and model rendering")]
 struct Arguments {
     /// Installed game directory containing engine.ini and original PROGRAM.
     #[arg(long)]
@@ -213,7 +213,7 @@ fn main() -> Result<()> {
             )?;
             frame.save_png(&path)?;
             eprintln!(
-                "Rendered {} script-created static models{}{} to {}",
+                "Rendered {} script-created model draws{}{} to {}",
                 draws.len(),
                 if progress.is_none() && scene.sea.is_some() {
                     " and the sea"

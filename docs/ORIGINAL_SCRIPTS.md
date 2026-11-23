@@ -194,9 +194,9 @@ remain pending.
 `script_rigging_files` exposes attribute templates with decimal numeric
 formats for UI strings and the original sail power loss calculation with
 the initial 1.0 hole dependence.
-`ShipSailState` returns the original integer zero before a native SAIL entity
-exists. Live SAIL state, configured dependence and script-driven changes to
-sail hole masks still need the native SAIL service.
+`ShipSailState` retains the startup fallback. Connecting it to live ship
+characters, their sail hole masks and the configured hole dependence remains
+part of the SHIP integration.
 
 `LoadSegment` links source from the configured program directory into the
 running script. A segment can use existing globals, defines and functions,
@@ -429,8 +429,21 @@ pinned run also creates `Weather`, blends the fog and sun colors, and
 completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
 `WhrCreateAstronomyEnvironment` and `WhrCreateSkyEnvironment`. The script
 VM now supplies the original `Cos` builtin for the weather's particle wind.
-Startup reaches `CreateShipEnvironment` and stops at the missing `Sail`
-class in `CreateRiggingEnvironment`. The original source files were unchanged.
+In `CreateRiggingEnvironment`, startup creates `Sail`, assigns its layers and
+sets `MinSpeed`. It then stops at the missing `Rope` class on
+`sea_ai/AIShip.c:40`. The probe uses the original source files as supplied.
+
+`Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
+message groups the loaded MODELR hierarchy's GM sail locators, including
+`sail0` depth limits, and creates a separate cloth draw beside the static
+hull and spars. Execute advances the wind and rolling calculations for all
+three sail sets. Realize uses the full or rolled grid and the original
+common canvas. The speed and capacity messages support checked float
+outputs. Removing an attachment or changing its model revision retires its
+cloth. This path currently uses fixed yards, the near grid for deployed
+cloth and the default canvas. Rope constraints, per-ship textures and
+emblems, damage, detached sails, camera LOD and the native SHIP caller
+remain pending.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM

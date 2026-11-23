@@ -33,6 +33,7 @@ const MAX_NATIVE_FUNCTIONS: usize = 256;
 pub struct NativeHost {
     world: World,
     pub entities: EntityManager,
+    pub(crate) models: Option<crate::model::Models>,
     functions: BTreeMap<String, NativeFunction>,
     libraries: BTreeMap<String, LibraryInitializer>,
     loaded_libraries: BTreeSet<String>,
@@ -75,6 +76,7 @@ impl NativeHost {
         Ok(Self {
             world: World::default(),
             entities,
+            models: None,
             functions: BTreeMap::new(),
             libraries: BTreeMap::new(),
             loaded_libraries: BTreeSet::new(),

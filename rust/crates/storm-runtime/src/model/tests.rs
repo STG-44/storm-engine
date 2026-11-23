@@ -25,6 +25,16 @@ fn set(bytes: &mut [u8], i: usize, n: usize) {
 // Native static models must ignore incomplete cloth locators, while the preview
 // continues to diagnose them. Geometry and material records stay original.
 fn labelled(source: &[u8]) -> Vec<u8> {
+    with_labels(
+        source,
+        &[
+            ("geometry", "yard", [2.0, 0.0, 0.0]),
+            ("sailt1", "sail1", [0.0, 0.0, 0.0]),
+        ],
+    )
+}
+
+fn with_labels(source: &[u8], extra: &[(&str, &str, [f32; 3])]) -> Vec<u8> {
     let mut header = source[..72].to_vec();
     let names_end = 72 + word(source, 2);
     let table_end = names_end + word(source, 3) * 4;
@@ -34,10 +44,7 @@ fn labelled(source: &[u8]) -> Vec<u8> {
     let mut names = source[72..names_end].to_vec();
     let mut offsets = Vec::new();
     let mut labels = Vec::new();
-    for (group, name, position) in [
-        ("geometry", "yard", [2.0, 0.0, 0.0]),
-        ("sailt1", "sail1", [0.0, 0.0, 0.0]),
-    ] {
+    for &(group, name, position) in extra {
         let group_id = names.len();
         names.extend_from_slice(group.as_bytes());
         names.push(0);
@@ -57,8 +64,8 @@ fn labelled(source: &[u8]) -> Vec<u8> {
         labels.extend(label);
     }
     set(&mut header, 2, names.len());
-    set(&mut header, 3, word(source, 3) + 4);
-    set(&mut header, 7, word(source, 7) + 2);
+    set(&mut header, 3, word(source, 3) + extra.len() * 2);
+    set(&mut header, 7, word(source, 7) + extra.len());
     [
         header,
         names,
@@ -109,6 +116,159 @@ fn fixture() -> Result<Files> {
         }
     }
     Ok(files)
+}
+
+#[test]
+fn configured_sails_attach_animate_change_sets_and_leave_the_model_intact() -> Result<()> {
+    let files = fixture()?;
+    let root = files.0.join("RESOURCE");
+    let body = std::fs::read(root.join("MODELS/root_yard.gm"))?;
+    std::fs::write(
+        root.join("MODELS/ship.gm"),
+        with_labels(&body, &[("geometry", "spars", [0.0, 6.0, 0.0])]),
+    )?;
+    std::fs::write(
+        root.join("MODELS/ship_spars.gm"),
+        with_labels(
+            &body,
+            &[
+                ("sailt1", "sail1", [0.0, 0.0, 0.0]),
+                ("sailt1", "sail2", [4.0, -2.0, 0.0]),
+                ("sailt1", "sail3", [0.0, -3.0, 0.0]),
+                ("sailn2", "sail1", [0.0, 0.0, 0.0]),
+                ("sailn2", "sail2", [4.0, 0.0, 0.0]),
+                ("sailn2", "sail3", [4.0, -3.0, 0.0]),
+                ("sailn2", "sail4", [0.0, -3.0, 0.0]),
+                ("sailn2", "sail0", [2.0, -1.5, 0.4]),
+            ],
+        ),
+    )?;
+    std::fs::create_dir(root.join("INI"))?;
+    std::fs::write(
+        root.join("INI/rigging.ini"),
+        "[SAILS]\nWINDVECTOR_QNT = 200\nROLLINGSPEED = 0.01\n",
+    )?;
+    std::fs::create_dir(root.join("Textures/Ships"))?;
+    let mut canvas = [0u32, 1, 1, 1, 21, 4]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    canvas.extend([240, 240, 240, 255]);
+    std::fs::write(root.join("Textures/Ships/parus_common.tga.tx"), canvas)?;
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"
+        object ship, cloth, missing, weather;
+        float maximum, speed, fallback;
+        void Main() {
+            CreateEntity(&weather,"Weather");
+            weather.wind.angle=1.0;
+            weather.wind.speed=10.0;
+            CreateEntity(&ship,"MODELR");
+            CreateEntity(&missing,"MODELR");
+            CreateEntity(&cloth,"Sail");
+            cloth.MinSpeed=0.05;
+            SendMessage(ship,"ls",20500,"ship");
+            SendMessage(cloth,"liil",40000,ship,ship,1);
+            LayerAddObject(0,cloth,0);
+            LayerAddObject(1,ship,0);
+            LayerAddObject(1,cloth,1);
+            SetEventHandler("request","Request",0);
+            SetEventHandler("remove","Remove",0);
+            SetEventHandler("maximum","MaxSpeed",0);
+            SetEventHandler("fallback","FallbackSpeed",0);
+        }
+        void Request() {
+            float value=GetEventData();
+            SendMessage(cloth,"lief",40002,ship,&speed,value);
+            SendMessage(cloth,"lie",40024,ship,&maximum);
+            SendMessage(cloth,"lief",40002,missing,&fallback,1.0);
+        }
+        void Remove(){ SendMessage(cloth,"li",40030,ship); }
+        float MaxSpeed(){ return maximum; }
+        float FallbackSpeed(){ return fallback; }
+        "#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine =
+        crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    let step = |engine: &mut Engine, delta| -> Result<Arc<NativeRigFrame>> {
+        engine.frame(delta)?;
+        let draws = models.take_draws()?;
+        let [body, cloth] = draws.as_slice() else {
+            bail!("expected separate body and cloth draws");
+        };
+        assert_eq!(body.entity, cloth.entity);
+        assert_eq!(body.asset.sails, 0);
+        assert_eq!(cloth.asset.sails, 2);
+        assert_eq!(cloth.asset.meshes.len(), 2);
+        assert!(cloth.asset.meshes.iter().all(|mesh| mesh.sail.is_some()));
+        assert_eq!(
+            cloth.asset.meshes[0]
+                .sail
+                .as_ref()
+                .unwrap()
+                .native_limit_point(),
+            Some([2.0, -1.5, 0.4])
+        );
+        cloth.rig.clone().context("missing cloth frame")
+    };
+    let full = step(&mut engine, 16)?;
+    assert!(full.sails.values().all(|&value| value == 1.0));
+    assert_eq!(
+        full.cloth.values().map(Vec::len).collect::<Vec<_>>(),
+        [221, 153]
+    );
+    let next = step(&mut engine, 16)?;
+    assert_ne!(next.cloth, full.cloth);
+
+    let request = |engine: &mut Engine, value| {
+        engine.emit_event(
+            "request",
+            &mut Message::new("f", vec![Field::Float(value)])?,
+        )
+    };
+    let event = |engine: &mut Engine, name| engine.emit_event(name, &mut Message::new("", vec![])?);
+    request(&mut engine, 0.5)?;
+    let folding = step(&mut engine, 50)?;
+    assert_eq!(
+        folding.sails.values().copied().collect::<Vec<_>>(),
+        [0.5, 1.0]
+    );
+    let partial = step(&mut engine, 100)?;
+    assert_eq!(
+        partial.sails.values().copied().collect::<Vec<_>>(),
+        [0.0, 1.0]
+    );
+    assert_ne!(partial.cloth_indices[&0], full.cloth_indices[&0]);
+    assert_eq!(partial.cloth_indices[&1], full.cloth_indices[&1]);
+    assert!(matches!(
+        event(&mut engine, "maximum")?,
+        Some(storm_script::Value::Float(1.0))
+    ));
+    assert!(matches!(
+        event(&mut engine, "fallback")?,
+        Some(storm_script::Value::Float(0.05))
+    ));
+
+    request(&mut engine, 0.0)?;
+    let furled = step(&mut engine, 110)?;
+    assert!(furled.sails.values().all(|&value| value == 0.0));
+    request(&mut engine, 1.0)?;
+    step(&mut engine, 110)?;
+    let reopened = step(&mut engine, 16)?;
+    assert!(reopened.sails.values().all(|&value| value == 1.0));
+
+    event(&mut engine, "remove")?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    assert_eq!(draws.len(), 1);
+    assert!(draws[0].rig.is_none());
+    engine.shutdown()
 }
 const PROGRAM: &str = r#"
 object a,b;int frames;

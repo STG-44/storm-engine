@@ -177,7 +177,27 @@ pub fn preview_parameters(
     holes: i32,
     hole_flex: f32,
 ) -> Result<Parameters> {
+    sample_parameters(kind, h, turning, holes, hole_flex, None, || 0.5)
+}
+
+/// SetSail depths from the model's sail0 label or the CRT random stream.
+pub fn sample_parameters(
+    kind: Kind,
+    h: [V; 4],
+    turning: bool,
+    holes: i32,
+    hole_flex: f32,
+    limit: Option<V>,
+    mut sample: impl FnMut() -> f32,
+) -> Result<Parameters> {
     let (width, height) = dimensions(kind, h)?;
+    let dot = |a: V, b: V| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let distance = limit.map(|point| {
+        let normal = normalized(cross(sub(h[0], h[1]), sub(h[2], h[1])));
+        // The scalar offset is broadcast before CVECTOR's overloaded | (dot).
+        let offset = -dot(normal, h[1]);
+        dot(point, normal.map(|component| component + offset))
+    });
     let mut p = Parameters {
         holes,
         hole_flex,
@@ -185,25 +205,38 @@ pub fn preview_parameters(
     };
     match kind {
         Kind::Triangle => {
-            p.deep_z = 0.04 + 0.01 * 0.5 * height;
+            p.deep_z = distance.map_or_else(|| 0.04 + 0.01 * sample() * height, |d| 0.5 * d);
             p.deep_h = p.deep_z;
             p.deep_vh = if turning {
                 0.0
             } else {
-                0.005 + 0.005 * 0.5 * width
+                0.005 + 0.005 * sample() * width
             };
         }
-        Kind::Trapezoid => {
-            p.deep_z = 0.01 + 0.01 * 0.5 * height;
-            p.deep_h = 0.01 + 0.01 * 0.5 * width;
-        }
         _ => {
-            p.deep_z = (0.06 + 0.02 * 0.5) * height;
-            p.deep_h = (0.06 + 0.02 * 0.5) * width * 0.6;
-            p.deep_vh = p.deep_z * 0.1;
-            p.deep_vz = p.deep_z * 0.1;
+            if let Some(distance) = distance {
+                let size = width + height + 0.01;
+                p.deep_h = width / size * distance;
+                p.deep_z = distance * (height / size);
+            } else if kind == Kind::Trapezoid {
+                p.deep_z = 0.01 + 0.01 * sample() * height;
+                p.deep_h = 0.01 + 0.01 * sample() * width;
+            } else {
+                p.deep_z = (0.06 + 0.02 * sample()) * height;
+                p.deep_h = (0.06 + 0.02 * sample()) * width * 0.6;
+            }
+            if kind != Kind::Trapezoid {
+                p.deep_vh = p.deep_z * 0.1;
+                p.deep_vz = p.deep_z * 0.1;
+            }
         }
     }
+    ensure!(
+        [p.deep_z, p.deep_h, p.deep_vh, p.deep_vz]
+            .into_iter()
+            .all(f32::is_finite),
+        "non-finite sail depths"
+    );
     Ok(p)
 }
 

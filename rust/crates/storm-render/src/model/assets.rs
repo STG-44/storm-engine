@@ -1,6 +1,6 @@
 use super::{
-    ModelVertex, RigMesh, RiggingConfig, RiggingStats, SailPatch, SailShape, SailWind, rigging,
-    sails,
+    ModelVertex, RigMesh, RiggingConfig, RiggingStats, SailDamageSettings, SailPatch, SailShape,
+    SailWind, rigging, sails,
 };
 use crate::texture_paths::TexturePaths;
 use anyhow::{Context, Result, bail, ensure};
@@ -451,7 +451,7 @@ impl ModelAsset {
     }
 
     pub fn load(path: &Path, options: &LoadOptions) -> Result<Self> {
-        Self::load_impl(path, options, true, None)
+        Self::load_impl(path, options, true, None, None)
     }
     /// Static native model hierarchy without preview sails, rigging, crew or
     /// effects. Texture names use GEOMETRY's literal shared prefix, without
@@ -475,13 +475,42 @@ impl ModelAsset {
             crew: Some(0),
             ..Default::default()
         };
-        Self::load_impl(path, &options, false, Some((prefix, texture_paths.clone())))
+        Self::load_impl(
+            path,
+            &options,
+            false,
+            Some((prefix, texture_paths.clone())),
+            None,
+        )
     }
+
+    /// The native SAIL service owns a separate draw of cloth from the MODELR hierarchy.
+    pub fn load_sails(
+        path: &Path,
+        game: &Path,
+        texture_paths: &TexturePaths,
+        damage: SailDamageSettings,
+    ) -> Result<Self> {
+        let options = LoadOptions {
+            game_dir: Some(game.to_owned()),
+            crew: Some(0),
+            ..Default::default()
+        };
+        Self::load_impl(
+            path,
+            &options,
+            false,
+            Some((String::new(), texture_paths.clone())),
+            Some(damage),
+        )
+    }
+
     fn load_impl(
         path: &Path,
         options: &LoadOptions,
         preview: bool,
         native: Option<(String, TexturePaths)>,
+        sail_overlay: Option<SailDamageSettings>,
     ) -> Result<Self> {
         ensure!(
             (options.particle_profiles.is_empty() && options.particle_project.is_none())
@@ -540,6 +569,7 @@ impl ModelAsset {
             active: BTreeSet::new(),
             single: options.single_mesh,
             preview,
+            sail_overlay,
             rigging: rigging::Collector::default(),
             render_bytes: 4,
         };
@@ -573,10 +603,13 @@ impl ModelAsset {
                 }
             }
         }
-        ensure!(
-            !builder.asset.meshes.is_empty(),
-            "model contains no visible static geometry"
-        );
+        if builder.asset.meshes.is_empty() {
+            ensure!(
+                sail_overlay.is_some(),
+                "model contains no visible static geometry"
+            );
+            return Ok(builder.asset);
+        }
         let mut min = Vec3::splat(f32::INFINITY);
         let mut max = Vec3::splat(f32::NEG_INFINITY);
         for vertex in builder.asset.meshes.iter().flat_map(|m| &m.vertices) {
@@ -608,6 +641,7 @@ struct Builder {
     active: BTreeSet<PathBuf>,
     single: bool,
     preview: bool,
+    sail_overlay: Option<SailDamageSettings>,
     render_bytes: usize,
     rigging: rigging::Collector,
 }
@@ -763,9 +797,12 @@ impl Builder {
         }
         ensure!(self.asset.ship.fires.len() <= 256, "too many fire locators");
         self.asset.geometry_files += 1;
-        self.rigging.add(&model.labels, world, node);
+        if self.preview {
+            self.rigging.add(&model.labels, world, node);
+        }
         let normals = world.inverse().transpose();
-        for object in &model.objects {
+        let include_body = self.sail_overlay.is_none();
+        for object in model.objects.iter().filter(|_| include_body) {
             if object.flags & 1 == 0 || object.triangle_count == 0 {
                 continue;
             }
@@ -811,11 +848,16 @@ impl Builder {
             });
         }
         if !self.single {
-            if self.preview {
-                for patch in sails::from_labels(&model.labels, world, node, parent)
+            if self.preview || self.sail_overlay.is_some() {
+                for mut patch in sails::from_labels(&model.labels, world, node, parent)
                     .with_context(|| format!("sails in {}", path.display()))?
                 {
-                    let texture = self.texture("parus_common.tga")?;
+                    let texture = if let Some(damage) = self.sail_overlay {
+                        patch.damage_settings = damage;
+                        self.texture("ships/parus_common.tga")?
+                    } else {
+                        self.texture("parus_common.tga")?
+                    };
                     let mesh = Mesh::sail(patch, texture)?;
                     self.reserve(
                         mesh.vertices.len() * std::mem::size_of::<ModelVertex>()

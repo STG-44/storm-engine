@@ -63,6 +63,7 @@ impl Fixture {
         }
         Builder {
             preview: true,
+            sail_overlay: None,
             asset,
             files: Some(TextureFiles {
                 native: None,

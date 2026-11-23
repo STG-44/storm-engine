@@ -1207,10 +1207,12 @@ impl ModelScene {
             mut sky,
         }: Atmosphere<'_>,
     ) -> Result<()> {
-        ensure!(
-            (!matches!(&water, Water::Fleet) || !scenes.is_empty()) && scenes.len() <= 16,
-            "fleet scene count must be 1..=16"
-        );
+        let valid_count = if matches!(&water, Water::Fleet) {
+            (1..=16).contains(&scenes.len())
+        } else {
+            scenes.len() <= 32
+        };
+        ensure!(valid_count, "model scene count exceeds renderer capacity");
         if scenes.is_empty()
             && matches!(&water, Water::None)
             && rain.is_none()

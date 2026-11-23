@@ -35,6 +35,7 @@ struct Owner {
     id: u64,
     revision: u64,
     asset: std::rc::Weak<ModelAsset>,
+    cloth: bool,
 }
 impl Owner {
     fn for_draw(draw: &Draw) -> Self {
@@ -42,16 +43,23 @@ impl Owner {
             id: draw.entity.raw(),
             revision: draw.revision,
             asset: Rc::downgrade(&draw.asset),
+            cloth: draw.rig.is_some(),
         }
     }
     fn matches(&self, draw: &Draw) -> bool {
-        self.id == draw.entity.raw()
+        self.key() == draw_key(draw)
             && self.revision == draw.revision
             && self
                 .asset
                 .upgrade()
                 .is_some_and(|asset| Rc::ptr_eq(&asset, &draw.asset))
     }
+    fn key(&self) -> (u64, bool) {
+        (self.id, self.cloth)
+    }
+}
+fn draw_key(draw: &Draw) -> (u64, bool) {
+    (draw.entity.raw(), draw.rig.is_some())
 }
 impl Default for ModelScenes {
     fn default() -> Self {
@@ -85,16 +93,17 @@ impl ModelScenes {
         self.framed = true;
     }
     pub fn prepare(&mut self, gpu: &Gpu, draws: &[Draw], live: &[EntityId]) -> Result<()> {
+        let cloth_draws = draws.iter().filter(|draw| draw.rig.is_some()).count();
         ensure!(
-            draws.len() <= 16,
-            "runtime renderer supports at most 16 static model draws"
+            draws.len() - cloth_draws <= 16 && cloth_draws <= 16,
+            "runtime renderer supports at most 16 models and 16 cloth attachments"
         );
         let mut ids = BTreeSet::new();
         let mut replacements = BTreeMap::new();
         for draw in draws {
             ensure!(
-                ids.insert(draw.entity.raw()),
-                "repeated model draw owners require per-draw uniform storage"
+                ids.insert(draw_key(draw)),
+                "repeated model draw of the same part requires per-draw uniforms"
             );
             native_model_matrix(draw.matrix)?;
         }
@@ -104,34 +113,42 @@ impl ModelScenes {
             if !self.owners.iter().any(|owner| owner.matches(draw)) {
                 let mut scene = ModelScene::new(gpu, self.format, &draw.asset)?;
                 scene.set_native_model_matrix(Some(draw.matrix))?;
-                replacements.insert(draw.entity.raw(), scene);
+                replacements.insert(draw_key(draw), scene);
             }
         }
         let mut previous = std::mem::take(&mut self.owners)
             .into_iter()
             .zip(std::mem::take(&mut self.scenes))
-            .map(|(owner, scene)| (owner.id, (owner, scene)))
+            .map(|(owner, scene)| (owner.key(), (owner, scene)))
             .collect::<BTreeMap<_, _>>();
         let mut scenes = Vec::new();
         let mut owners = Vec::new();
         for draw in draws {
-            let mut scene = if let Some(scene) = replacements.remove(&draw.entity.raw()) {
+            let mut scene = if let Some(scene) = replacements.remove(&draw_key(draw)) {
                 scene
             } else {
                 previous
-                    .remove(&draw.entity.raw())
+                    .remove(&draw_key(draw))
                     .context("missing retained GPU model")?
                     .1
             };
             scene.set_native_model_matrix(Some(draw.matrix))?;
             scene.set_ambient_light(draw.ambient_light);
+            if let Some(rig) = &draw.rig {
+                scene.set_ship_state(storm_render::model::ShipState {
+                    native_rig: Some(rig.clone()),
+                    ..Default::default()
+                })?;
+            }
             scenes.push(scene);
             owners.push(Owner::for_draw(draw));
         }
         self.active = scenes.len();
         let live = live.iter().map(|id| id.raw()).collect::<BTreeSet<_>>();
-        for (id, (owner, scene)) in previous {
-            if live.contains(&id) && !ids.contains(&id) && scenes.len() < 16 {
+        for (key, (owner, scene)) in previous {
+            // The underlying model can stay live after its SAIL group is retired.
+            if !owner.cloth && live.contains(&owner.id) && !ids.contains(&key) && scenes.len() < 32
+            {
                 owners.push(owner);
                 scenes.push(scene);
             }

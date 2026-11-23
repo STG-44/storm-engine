@@ -12,6 +12,7 @@ mod locator;
 mod particles;
 mod rain;
 mod random;
+mod sail;
 mod script_libraries;
 pub mod sea;
 mod shared_headers;

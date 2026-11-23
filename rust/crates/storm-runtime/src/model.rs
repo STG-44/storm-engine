@@ -4,10 +4,15 @@ use anyhow::{Context, Result, bail, ensure};
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
+    path::PathBuf,
     rc::Rc,
+    sync::Arc,
 };
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, Message, Stage};
-use storm_render::{model::ModelAsset, texture_paths::TexturePaths};
+use storm_render::{
+    model::{ModelAsset, NativeRigFrame, SailDamageSettings},
+    texture_paths::TexturePaths,
+};
 mod render;
 pub use render::{AtmosphereDraws, ModelScenes};
 
@@ -27,9 +32,11 @@ pub struct Draw {
     /// Original CMatrix bytes; renderer coordinate conversion is separate.
     pub matrix: [f32; 16],
     pub ambient_light: Option<[u8; 3]>,
+    pub rig: Option<Arc<NativeRigFrame>>,
 }
 struct State {
     geometry: Option<Rc<ModelAsset>>,
+    source: Option<PathBuf>,
     matrix: [f32; 16],
     revision: u64,
 }
@@ -37,6 +44,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             geometry: None,
+            source: None,
             matrix: IDENTITY,
             revision: 0,
         }
@@ -74,6 +82,7 @@ impl Models {
             }))
         })?;
         ensure!(added, "MODELR is already registered");
+        host.models = Some(models.clone());
         Ok(models)
     }
     pub fn live_ids(&self) -> Result<Vec<EntityId>> {
@@ -122,7 +131,48 @@ impl Models {
             asset: asset.clone(),
             matrix: state.matrix,
             ambient_light: self.0.ambient_light.get(),
+            rig: None,
         }))
+    }
+
+    pub(crate) fn load_sails(
+        &self,
+        entity: EntityId,
+        damage: SailDamageSettings,
+    ) -> Result<(u64, Rc<ModelAsset>)> {
+        let (source, revision) = {
+            let models = self.0.models.borrow();
+            let state = models
+                .get(&entity.raw())
+                .context("sail group requires a MODELR entity")?
+                .borrow();
+            (
+                state
+                    .source
+                    .clone()
+                    .context("sail group MODELR has no loaded geometry")?,
+                state.revision,
+            )
+        };
+        let asset = ModelAsset::load_sails(
+            &source,
+            self.0.game.root(),
+            &self.0.texture_paths.borrow(),
+            damage,
+        )
+        .with_context(|| format!("load cloth from {}", source.display()))?;
+        Ok((revision, Rc::new(asset)))
+    }
+
+    pub(crate) fn queue_draw(&self, draw: Draw) -> Result<()> {
+        let mut draws = self
+            .0
+            .draws
+            .try_borrow_mut()
+            .context("reentrant model draw queue")?;
+        ensure!(draws.len() < MAX_DRAWS, "native model draw budget");
+        draws.push(draw);
+        Ok(())
     }
 }
 impl Service for Models {
@@ -201,6 +251,7 @@ impl Entity for Actor {
                     .checked_add(1)
                     .context("model revision overflow")?;
                 state.geometry = Some(Rc::new(asset));
+                state.source = Some(path);
                 state.revision = revision;
                 Ok(1)
             }
@@ -244,14 +295,7 @@ impl Entity for Actor {
         if stage == Stage::Realize
             && let Some(draw) = self.shared.loaded(self.id)?
         {
-            let mut draws = self
-                .shared
-                .0
-                .draws
-                .try_borrow_mut()
-                .context("reentrant model draw queue")?;
-            ensure!(draws.len() < MAX_DRAWS, "native model draw budget");
-            draws.push(draw);
+            self.shared.queue_draw(draw)?;
         }
         Ok(())
     }

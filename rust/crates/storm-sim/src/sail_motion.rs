@@ -84,7 +84,6 @@ impl SailMotion {
             return Ok(());
         }
         let mut next = self.clone();
-        next.rolling = false;
         if !up {
             let step = if next.old_wind_angle < 0.0 {
                 forced_step
@@ -102,17 +101,31 @@ impl SailMotion {
             node.rotate_y(step * next.orientation());
             node.set_position(position);
         }
-        if let Some(t) = &mut next.transition {
+        next.start_rolling(up);
+        *self = next;
+        Ok(())
+    }
+
+    /// Set the cloth transition when the host supplies fixed yard transforms.
+    pub fn set_rolling_fixed_yard(&mut self, up: bool) -> Result<()> {
+        self.validate()?;
+        if !self.transition.map_or(up == self.rolling, |t| t.up == up) {
+            self.start_rolling(up);
+        }
+        Ok(())
+    }
+
+    fn start_rolling(&mut self, up: bool) {
+        self.rolling = false;
+        if let Some(t) = &mut self.transition {
             t.up = up;
         } else {
-            next.transition = Some(Rolling {
-                geometry: next.geometry,
+            self.transition = Some(Rolling {
+                geometry: self.geometry,
                 delta: if up { 1.0 } else { 0.0 },
                 up,
             });
         }
-        *self = next;
-        Ok(())
     }
     pub fn advance(&mut self, delta_ms: u32, rate: f32) -> Result<()> {
         self.validate()?;

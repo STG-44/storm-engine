@@ -64,6 +64,7 @@ pub struct SailPatch {
     drive_maximum: f32,
     drive_axes: [[f32; 3]; 3],
     drive_points: [[f32; 3]; 4],
+    limit_point: Option<[f32; 3]>,
     native_frame: [f32; 16],
 }
 
@@ -139,6 +140,7 @@ impl SailPatch {
             drive_maximum,
             drive_axes: [Vec3::X.to_array(), Vec3::Y.to_array(), Vec3::Z.to_array()],
             drive_points: points.map(|p| p.to_array()),
+            limit_point: None,
             native_frame: Mat4::IDENTITY.to_cols_array(),
         })
     }
@@ -149,6 +151,9 @@ impl SailPatch {
     /// Original local hard-point order for the motion provider.
     pub fn native_points(&self) -> [[f32; 3]; 4] {
         self.drive_points
+    }
+    pub fn native_limit_point(&self) -> Option<[f32; 3]> {
+        self.limit_point
     }
     /// Native fixed-grid construction. Depths use explicit half samples from
     /// SetSail's no-limit-point expressions; RNG and original waves are pending.
@@ -505,8 +510,14 @@ pub(super) fn from_labels(
     parent: &str,
 ) -> Result<Vec<SailPatch>> {
     let mut groups = BTreeMap::<&str, [Option<Vec3>; 4]>::new();
+    let mut limits = BTreeMap::new();
     for label in labels {
         if !label.group.starts_with("sail") {
+            continue;
+        }
+        let point = Mat4::from_cols_array(&label.matrix).w_axis.truncate();
+        if label.name == "sail0" {
+            limits.insert(label.group.as_str(), point.to_array());
             continue;
         }
         let Some(index) = ["sail1", "sail2", "sail3", "sail4"]
@@ -514,7 +525,7 @@ pub(super) fn from_labels(
             .position(|&s| s == label.name)
         else {
             continue;
-        }; // Rope and sail0 limit locators are not cloth corners.
+        }; // Rope locators are not cloth corners.
         let corners = groups.entry(&label.group).or_insert([None; 4]);
         ensure!(
             corners[index].is_none(),
@@ -522,7 +533,7 @@ pub(super) fn from_labels(
             label.group,
             label.name
         );
-        corners[index] = Some(Mat4::from_cols_array(&label.matrix).w_axis.truncate());
+        corners[index] = Some(point);
     }
     groups
         .into_iter()
@@ -553,6 +564,7 @@ pub(super) fn from_labels(
             patch.weight = weight;
             patch.drive_maximum = local.drive_maximum;
             patch.drive_points = local.drive_points;
+            patch.limit_point = limits.get(group).copied();
             patch.native_frame = world.to_cols_array();
             patch.drive_axes = [
                 world.x_axis.truncate().to_array(),
