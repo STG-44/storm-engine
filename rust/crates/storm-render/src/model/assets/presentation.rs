@@ -200,6 +200,7 @@ impl ModelAsset {
             single: false,
             rigging: collector,
             render_bytes: 0,
+            native_bounds: [Vec3::ZERO; 2],
         };
         builder.add_rig_mesh(RigMesh::Ropes(ropes), 1)?;
         fn box_data(center: Vec3, size: Vec3) -> (Vec<ModelVertex>, Vec<u32>) {

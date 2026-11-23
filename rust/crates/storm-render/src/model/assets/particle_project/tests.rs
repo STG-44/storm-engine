@@ -76,6 +76,7 @@ impl Fixture {
             single: false,
             rigging: rigging::Collector::default(),
             render_bytes: 0,
+            native_bounds: [Vec3::ZERO; 2],
         }
     }
 }

@@ -167,6 +167,11 @@ impl World {
         self.prepare(0, 0)?;
         Ok(action(&self.0.attributes.borrow()))
     }
+    /// Run a native frame callback with the same checked attribute budget as messages.
+    pub fn update<T>(&self, action: impl FnOnce(&mut AttributeStore) -> Result<T>) -> Result<T> {
+        self.initialize(None, |store, _| action(store))
+    }
+
     pub fn live_nodes(&self) -> Result<usize> {
         self.read(|s| s.len())
     }

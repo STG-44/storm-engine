@@ -107,6 +107,29 @@ pub(crate) fn call(
             if let Some(event) = execution.host.take_entity_event(id) {
                 program.dispatch(event, execution, depth + 1)?;
             }
+            if execution
+                .host
+                .entity_message_has_callbacks(id, &prepared.message)
+            {
+                let callbacks = (|| -> Result<()> {
+                    for _ in 0..16 {
+                        let step = execution.world.update(|store| {
+                            execution.host.next_entity_message_callback(id, store)
+                        })?;
+                        let Some((event, message)) = step else {
+                            return Ok(());
+                        };
+                        program
+                            .dispatch_message(event, Some(message), execution, depth + 1)
+                            .with_context(|| format!("entity message callback {event}"))?;
+                    }
+                    bail!("entity message callback budget")
+                })();
+                if let Err(error) = callbacks {
+                    execution.host.abort_entity_message_callbacks(id)?;
+                    return Err(error);
+                }
+            }
             for (event, delay) in execution.host.take_entity_posts(id) {
                 execution.events.post(event, delay, None)?;
             }

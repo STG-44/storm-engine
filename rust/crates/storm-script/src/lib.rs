@@ -94,6 +94,24 @@ pub trait Host {
     ) -> Result<u64> {
         bail!("entity messages are not bound by this host")
     }
+    /// A native message may resume after a script callback releases the world.
+    fn entity_message_has_callbacks(
+        &self,
+        _entity: EntityId,
+        _message: &storm_core::Message,
+    ) -> bool {
+        false
+    }
+    fn next_entity_message_callback(
+        &mut self,
+        _entity: EntityId,
+        _store: &mut AttributeStore,
+    ) -> Result<Option<(&'static str, storm_core::Message)>> {
+        Ok(None)
+    }
+    fn abort_entity_message_callbacks(&mut self, _entity: EntityId) -> Result<()> {
+        Ok(())
+    }
     /// A synchronous, payload-free event raised by the preceding entity message.
     fn take_entity_event(&mut self, _entity: EntityId) -> Option<&'static str> {
         None

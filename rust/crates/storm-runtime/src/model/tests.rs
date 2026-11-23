@@ -1137,3 +1137,113 @@ fn configured_back_scene_places_models_and_dispatches_the_selected_command() -> 
     assert!(models.draws()?.is_empty());
     Ok(())
 }
+
+#[test]
+fn configured_ship_mounts_after_nested_script_callbacks_and_executes_on_sea() -> Result<()> {
+    use crate::{ScriptEncoding, Startup};
+    use storm_core::LayerType;
+    use storm_sim::sea::{CELLS, FRAMES};
+
+    let files = fixture()?;
+    let models_dir = files.0.join("RESOURCE/MODELS/Ships/TestBoat");
+    std::fs::create_dir_all(&models_dir)?;
+    std::fs::copy(
+        files.0.join("RESOURCE/MODELS/root_yard.gm"),
+        models_dir.join("TestBoat.gm"),
+    )?;
+    let waves = files.0.join("RESOURCE/Sea");
+    std::fs::create_dir_all(&waves)?;
+    let mut tga = vec![0; 18 + CELLS * 4];
+    tga[2] = 2;
+    tga[12] = 128;
+    tga[14] = 128;
+    tga[16] = 32;
+    for pixel in tga[18..].chunks_exact_mut(4) {
+        pixel.copy_from_slice(&[160, 175, 250, 255]);
+    }
+    for index in 0..FRAMES {
+        std::fs::write(waves.join(format!("sea{index:04}.tga")), &tga)?;
+    }
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"
+        object water, ship, design;
+        string callbacks;
+        float requested;
+        #event_handler("Ship_StartLoad","StartShip");
+        #event_handler("SeaGetLayers","Layers");
+        #event_handler("ShpCreate","CreatedShip");
+        #event_handler("Ship_EndLoad","FinishShip");
+        #event_handler("status","Status");
+        #event_handler("position","Position");
+        #event_handler("erase","Erase");
+
+        void Main() {
+            CreateEntity(&water,"Sea");
+            LayerAddObject(1,&water,65530);
+            water.Sea2.Amp1=1.0;
+            water.Sea2.Amp2=0.0;
+            water.MaxSeaHeight=1.0;
+            design.Name="TestBoat";
+            design.WaterLine=0.4;
+            design.InertiaAccelerationZ=1.0;
+            design.InertiaBrakingZ=0.2;
+            ship.index=17;
+            ship.Ship.Pos.x=5.0;
+            ship.Ship.Pos.z=12.0;
+            ship.Ship.Ang.y=0.0;
+            ship.Ship.Immersion=0.1;
+            ship.Ship.Speed.z=2.0;
+            CreateEntity(&ship,"SHIP");
+            SendMessage(&ship,"laa",50300,&ship,&design);
+            SendMessage(&ship,"le",50325,&requested);
+            SendMessage(&ship,"llffffff",50308,0,0.0,0.0,2.0,0.0,0.0,0.0);
+        }
+        void StartShip() { aref ch=GetEventData(); callbacks="start"+sti(ch.index); }
+        void Layers() {
+            aref e=GetEventData();
+            callbacks=callbacks+":layers";
+            SendMessage(e,"lll",51015,2,3);
+        }
+        void CreatedShip() { int i=GetEventData(); callbacks=callbacks+":create"+i; }
+        void FinishShip() { callbacks=callbacks+":end"; }
+        string Status() { return callbacks+":"+sti(requested); }
+        float Position() { return stf(ship.Ship.Pos.z); }
+        void Erase() { DeleteClass(&ship); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::with_random_seed(7)?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    engine.frame(0)?;
+    let ship = engine.host.entities.first_id("SHIP").unwrap();
+    assert_eq!(engine.host.entities.layer_ids(LayerType::Execute), [ship]);
+    let [model] = models.live_ids()?.try_into().unwrap();
+    let mut event = Message::new("", vec![])?;
+    assert_eq!(
+        engine.emit_event("status", &mut event)?,
+        Some(storm_script::Value::String(
+            "start17:layers:create17:end:1".into()
+        )),
+    );
+    let first = models.draws()?;
+    assert_eq!(first.len(), 1);
+    assert_eq!([first[0].matrix[12], first[0].matrix[14]], [5.0, 12.0]);
+    assert!((first[0].matrix[13] - (160.0 / 255.0 - 0.5)).abs() < 1e-6);
+    engine.frame(100)?;
+    let Some(storm_script::Value::Float(z)) = engine.emit_event("position", &mut event)? else {
+        panic!("missing world ship position");
+    };
+    assert!(z > 12.0);
+    assert_eq!(models.draws()?[0].matrix[14], 12.0);
+    engine.frame(100)?;
+    assert!(models.draws()?[0].matrix[14] > 12.0);
+    engine.emit_event("erase", &mut event)?;
+    engine.frame(0)?;
+    assert!(!engine.host.entities.is_valid(model));
+    assert!(models.live_ids()?.is_empty() && models.draws()?.is_empty());
+    Ok(())
+}

@@ -147,6 +147,21 @@ impl Models {
         }))
     }
 
+    pub(crate) fn set_matrix(&self, entity: EntityId, matrix: [f32; 16]) -> Result<()> {
+        storm_render::model::native_model_matrix(matrix)?;
+        let models = self
+            .0
+            .models
+            .try_borrow()
+            .context("reentrant model registry")?;
+        let state = models.get(&entity.raw()).context("missing model owner")?;
+        state
+            .try_borrow_mut()
+            .context("reentrant model state")?
+            .matrix = matrix;
+        Ok(())
+    }
+
     pub(crate) fn load_geometry(
         &self,
         name: &str,

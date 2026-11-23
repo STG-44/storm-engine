@@ -48,6 +48,8 @@ impl Mesh {
 pub struct ModelAsset {
     /// Original root GM bounds, before attaching masts, sails and other nodes.
     pub root_box_size: Option<[f32; 3]>,
+    /// Native SHIP box unions the translated GM node bounds.
+    pub native_box_size: Option<[f32; 3]>,
     pub sail_damage: Option<super::sail_damage::SailDamageMaterial>,
     pub ship: super::ShipAsset,
     pub ship_state: super::ShipState,
@@ -369,6 +371,7 @@ impl ModelAsset {
         Ok(Self {
             sail_damage: Some(super::sail_damage::SailDamageMaterial::fixture()),
             root_box_size: None,
+            native_box_size: None,
             ship: Default::default(),
             ship_state: Default::default(),
             meshes: vec![Mesh::sail(quad, 0)?, Mesh::sail(triangle, 0)?],
@@ -607,6 +610,7 @@ impl ModelAsset {
             asset: Self {
                 sail_damage: None,
                 root_box_size: None,
+                native_box_size: None,
                 ship: Default::default(),
                 ship_state: Default::default(),
                 meshes: Vec::new(),
@@ -625,6 +629,7 @@ impl ModelAsset {
             overlay,
             rigging: rigging::Collector::default(),
             render_bytes: 4,
+            native_bounds: [Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)],
         };
         let stem = path
             .file_stem()
@@ -639,6 +644,10 @@ impl ModelAsset {
             Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
             0,
         )?;
+        let [min, max] = builder.native_bounds;
+        let native_box = max - min;
+        ensure!(native_box.is_finite(), "native model bounds overflow");
+        builder.asset.native_box_size = Some(native_box.to_array());
         match builder.overlay.take() {
             Some(Overlay::Ropes(settings, texture)) => {
                 let (lines, stats) = builder.rigging.build_native_ropes(settings)?;
@@ -736,6 +745,7 @@ struct Builder {
     preview: bool,
     overlay: Option<Overlay>,
     render_bytes: usize,
+    native_bounds: [Vec3; 2],
     rigging: rigging::Collector,
 }
 impl Builder {
@@ -864,6 +874,11 @@ impl Builder {
         );
         let center = Vec3::from_array(model.header.bounds_center);
         let size = Vec3::from_array(model.header.bounds_size);
+        // CalcRealBoxsize applies node translation to the header box, even
+        // for nodes with a rotated basis. This space already reflects Z.
+        let translated = world.w_axis.truncate() + Vec3::new(center.x, center.y, -center.z);
+        self.native_bounds[0] = self.native_bounds[0].min(translated - size * 0.5);
+        self.native_bounds[1] = self.native_bounds[1].max(translated + size * 0.5);
         if depth == 0 {
             self.asset.root_box_size = Some(model.header.bounds_size);
         }

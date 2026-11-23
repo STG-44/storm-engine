@@ -145,6 +145,24 @@ impl Engine {
     }
     fn execute_entities(&mut self, delta_ms: u32) -> Result<()> {
         for id in self.host.entities.layer_ids(LayerType::Execute) {
+            if let Some(ships) = self.host.ships.clone()
+                && self.host.entities.is_valid(id)
+                && ships.owns(id)
+            {
+                let world = storm_script::Host::world(&self.host);
+                if let Some(mut message) =
+                    world.read(|store| ships.update_event(id, delta_ms, store))??
+                {
+                    self.runtime.emit(
+                        "Shp_UpdParams",
+                        &mut message,
+                        &mut self.host,
+                        self.limits,
+                    )?;
+                }
+                world
+                    .update(|store| ships.execute(id, delta_ms, &mut self.host.entities, store))?;
+            }
             if let Some(flags) = self.host.flags.clone() {
                 for request in flags.take_requests(id) {
                     let reply = if let Some(mut message) = request.message(&self.host.entities)? {

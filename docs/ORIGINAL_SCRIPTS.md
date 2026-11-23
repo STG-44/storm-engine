@@ -440,11 +440,13 @@ Startup completes `CreateRiggingEnvironment`, creating `Sail`, `Rope`,
 loads the `MainMenu` coastal foam profile and schedules `CoastFoam`.
 `CreateBackEnvironment` now sets the original background geometry, camera
 and menu models through `InterfaceBackScene` before calling
-`MainMenu_CreateShip`. With a clear weather preset, it generates the menu
-character and reaches the missing configured `ship` class at
-`interface/mainmenu.c:343`. A randomly selected thunderstorm can stop
-earlier at the missing `Lightning` class in `weather/whrlightning.c:34`.
-Both probes use the original source files as supplied.
+`MainMenu_CreateShip`. With an ordinary weather preset it generates the
+menu character, mounts the selected ship and completes the background
+setup. It then reaches the unported XINTERFACE dialog initializer
+(`MSG_INTERFACE_INIT`, 45010) at `interface/mainmenu.c:55`. A randomly
+selected thunderstorm can stop earlier at the missing `Lightning` class
+in `weather/whrlightning.c:34`. These probes use the original source
+files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -455,7 +457,7 @@ common canvas. The speed and capacity messages support checked float
 outputs. Removing an attachment or changing its model revision retires its
 cloth. This path currently uses fixed yards, the near grid for deployed
 cloth and the default canvas. Per-ship textures and emblems, damage,
-detached sails, camera LOD and the native SHIP caller remain pending.
+detached sails and camera LOD remain pending in this path.
 
 `Rope` reads the original `[ROPES]` settings and texture. Its attachment
 message pairs the ship's `rope`, `fal`, and `stay` locators through the
@@ -506,19 +508,27 @@ pending. A separate capture exercises the original background and all six
 menu items through the configured renderer before the complete start-up
 sequence can show the menu.
 
-The Barkentine capture sets `MaxSeaHeight` after both wave amplitudes to
-apply them, as in the original weather scripts. It uses the captured
-center-wave height and the Barkentine's original `WaterLine` in the retained
-model-root placement calculation. The configured MODELR capture uses
-that fixed pose. Continuous movement on the waves belongs to SHIP.
+The configured `SHIP` takes the character and real ship attributes from
+`MSG_SHIP_CREATE`. Script callbacks set the original texture path and sea
+layers around mounting. SHIP owns a MODELR and attaches sails, ropes, flags
+and the three shroud classes when available. It uses the native default
+stage priorities, mounts from the root GM size and publishes the combined
+node box on the character. Execute reads the sail drive, uses the preceding
+SEA wave state for the six-by-six hull samples, applies inertia and the
+original waterline and immersion, and publishes post-move position and
+speed. Realize draws the preceding simulation pose with its turn heel.
+Destruction releases the model and rigging groups. The scope covers living
+vessels. Collisions, sinking, ship-driven lights, damage, blots, tracks
+and menu cannon effects remain pending. The Barkentine capture exercises
+this configured path with original assets and wave frames.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM
 `lights` and `flares` locators on the hull, masts and yards. CPU checks cover
 transforms, brightness oscillators, the reset switch and point-light
 selection. The extracted models contain 243 locators in those groups across
-40 ship directories. The original `SHIP` owner, the corona and point-light
-draws and sun-road reflection are still pending in the configured engine.
+40 ship directories. Connecting the mounted `SHIP` owner to this service,
+drawing coronas and point lights, and sun-road reflection remain pending.
 
 `Weather` receives wind, fog, sunlight and time attributes, applies the
 ambient color on `isDone`, and publishes sun and moon positions. Its native

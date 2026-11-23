@@ -46,6 +46,7 @@ pub struct NativeHost {
     pub(crate) back_scenes: Option<crate::back_scene::BackScenes>,
     pub(crate) coast_foams: Option<crate::coast_foam::CoastFoams>,
     pub(crate) seas: Option<crate::sea::Seas>,
+    pub(crate) ships: Option<crate::ship::Ships>,
     pub(crate) ship_lights: Option<crate::ship_lights::ShipLights>,
     pub(crate) weather: Option<crate::weather::Weather>,
     pub(crate) flags: Option<crate::flag::Flags>,
@@ -95,6 +96,7 @@ impl NativeHost {
             back_scenes: None,
             seas: None,
             coast_foams: None,
+            ships: None,
             ship_lights: None,
             weather: None,
             flags: None,
@@ -475,6 +477,28 @@ impl Host for NativeHost {
     ) -> Result<u64> {
         self.entities
             .send_message_with_attributes(id, message, store)
+    }
+    fn entity_message_has_callbacks(&self, id: EntityId, message: &Message) -> bool {
+        matches!(
+            message.values().first(),
+            Some(storm_core::Value::Long(crate::ship::CREATE))
+        ) && self.ships.as_ref().is_some_and(|ships| ships.mounting(id))
+    }
+    fn next_entity_message_callback(
+        &mut self,
+        id: EntityId,
+        store: &mut AttributeStore,
+    ) -> Result<Option<(&'static str, Message)>> {
+        self.ships
+            .as_ref()
+            .context("SHIP service unavailable")?
+            .next_callback(id, &mut self.entities, store)
+    }
+    fn abort_entity_message_callbacks(&mut self, id: EntityId) -> Result<()> {
+        if let Some(ships) = &self.ships {
+            ships.abort_mount(id, &mut self.entities)?;
+        }
+        Ok(())
     }
     fn take_entity_event(&mut self, id: EntityId) -> Option<&'static str> {
         self.interfaces.as_ref()?.take_event(id)

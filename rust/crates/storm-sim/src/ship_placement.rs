@@ -12,6 +12,34 @@ pub struct RootPose {
     pub position: [f32; 3],
     pub angles: [f32; 3],
 }
+impl RootPose {
+    /// The native CMatrix applies Z, X and then Y in row-vector order.
+    pub fn matrix(self) -> [f32; 16] {
+        let [x, y, z] = self.angles;
+        let [sx, sy, sz] = [x, y, z].map(libm::sinf);
+        let [cx, cy, cz] = [x, y, z].map(libm::cosf);
+        let [px, py, pz] = self.position;
+        [
+            cz * cy + sz * sx * sy,
+            sz * cx,
+            cz * -sy + sz * sx * cy,
+            0.0,
+            -sz * cy + cz * sx * sy,
+            cz * cx,
+            -sz * -sy + cz * sx * cy,
+            0.0,
+            cx * sy,
+            -sx,
+            cx * cy,
+            0.0,
+            px,
+            py,
+            pz,
+            1.0,
+        ]
+    }
+}
+
 fn attribute(store: &AttributeStore, root: AttributeId, path: &str) -> Result<f32> {
     ensure!(
         store.get(root).is_some(),
