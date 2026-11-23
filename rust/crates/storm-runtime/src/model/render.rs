@@ -3,8 +3,8 @@ use std::collections::BTreeSet;
 use storm_render::{
     Frame, Gpu,
     model::{
-        Atmosphere, ModelScene, OceanRenderer, OrbitCamera, RainDraw, RainRenderer, SailWind,
-        SunDraw, SunRenderer, native_model_matrix,
+        AstronomyRenderer, Atmosphere, CelestialDraw, ModelScene, OceanRenderer, OrbitCamera,
+        RainDraw, RainRenderer, SailWind, SunDraw, SunRenderer, native_model_matrix,
     },
 };
 
@@ -20,6 +20,13 @@ pub struct ModelScenes {
     ocean: Option<OceanRenderer>,
     rain: Option<RainRenderer>,
     sun: Option<SunRenderer>,
+    astronomy: Option<AstronomyRenderer>,
+}
+#[derive(Default)]
+pub struct AtmosphereDraws<'a> {
+    pub rain: &'a [RainDraw],
+    pub sun: &'a [SunDraw],
+    pub astronomy: &'a [CelestialDraw],
 }
 struct Owner {
     id: u64,
@@ -60,6 +67,7 @@ impl ModelScenes {
             ocean: None,
             rain: None,
             sun: None,
+            astronomy: None,
         }
     }
     pub fn cached(&self) -> usize {
@@ -225,6 +233,36 @@ impl ModelScenes {
         rain: &[RainDraw],
         sun: &[SunDraw],
     ) -> Result<()> {
+        self.encode_configured(
+            gpu,
+            encoder,
+            target,
+            size,
+            seconds,
+            sea,
+            AtmosphereDraws {
+                rain,
+                sun,
+                ..AtmosphereDraws::default()
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_configured(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        sea: Option<&crate::sea::Surface>,
+        AtmosphereDraws {
+            rain,
+            sun,
+            astronomy,
+        }: AtmosphereDraws<'_>,
+    ) -> Result<()> {
         let water_view = sea.filter(|_| !self.framed).map(|surface| {
             // The model-independent orbit keeps the eye above the wave envelope
             // until an actual scene selects its camera.
@@ -257,6 +295,13 @@ impl ModelScenes {
                 sun,
             )
         });
+        let astronomy = (!astronomy.is_empty()).then(|| {
+            (
+                self.astronomy
+                    .get_or_insert_with(|| AstronomyRenderer::new(gpu, self.format)),
+                astronomy,
+            )
+        });
         ModelScene::draw_configured_with_atmosphere(
             &mut self.scenes[..self.active],
             gpu,
@@ -266,7 +311,11 @@ impl ModelScenes {
             seconds,
             water_view.as_ref().unwrap_or(&self.camera),
             ocean,
-            Atmosphere { rain, sun },
+            Atmosphere {
+                rain,
+                sun,
+                astronomy,
+            },
         )
     }
     pub fn offscreen(&mut self, gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Result<Frame> {

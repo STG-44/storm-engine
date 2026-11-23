@@ -487,7 +487,7 @@ mod tests {
                 None,
                 Atmosphere {
                     sun: Some((&mut renderer, std::slice::from_ref(&draw))),
-                    rain: None,
+                    ..Atmosphere::default()
                 },
             )
         })?;

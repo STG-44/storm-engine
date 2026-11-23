@@ -6,6 +6,7 @@
 //! and 2D mip pixels; animation and BSP collision remain separate work.
 
 pub mod animation;
+pub mod astronomy;
 pub mod geometry;
 pub mod particle_project;
 pub mod particles;

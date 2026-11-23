@@ -9,7 +9,7 @@ use std::{
 use storm_core::{Entity, EntityDestroy, EntityId, EntityInit, Message, Stage};
 use storm_render::{model::ModelAsset, texture_paths::TexturePaths};
 mod render;
-pub use render::ModelScenes;
+pub use render::{AtmosphereDraws, ModelScenes};
 
 pub const LOAD_GEOMETRY: i32 = 20500;
 pub const SET_POSITION: i32 = 20506;

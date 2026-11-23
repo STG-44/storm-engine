@@ -2,7 +2,7 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
-use storm_render::model::{RainDraw, SunDraw};
+use storm_render::model::{CelestialDraw, RainDraw, SunDraw};
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -13,7 +13,7 @@ use storm_render::{
 use storm_runtime::{
     NativeHost,
     interface::LoadingProgress,
-    model::{Draw, ModelScenes, Models},
+    model::{AtmosphereDraws, Draw, ModelScenes, Models},
 };
 
 pub(crate) struct SceneFrame<'a> {
@@ -26,6 +26,7 @@ pub(crate) struct SceneFrame<'a> {
     pub sea: Option<storm_runtime::sea::Surface>,
     pub rain: Vec<RainDraw>,
     pub sun: Vec<SunDraw>,
+    pub astronomy: Vec<CelestialDraw>,
 }
 
 pub(crate) struct SceneRenderer {
@@ -112,6 +113,7 @@ impl SceneRenderer {
             sea: host.sea_draw(),
             rain: host.rain_draws(),
             sun: host.sun_draws(),
+            astronomy: host.astronomy_draws(),
         };
         storm_render::render_offscreen_with(gpu, SIDE, SIDE, seconds, |encoder, target| {
             self.encode(gpu, encoder, Some(&source), [width, height], &frame)?;
@@ -146,16 +148,23 @@ impl SceneRenderer {
             [width, height],
             frame.fades,
             |encoder, view| {
-                if frame.sea.is_some() || !frame.rain.is_empty() || !frame.sun.is_empty() {
-                    self.models.encode_atmosphere(
+                if frame.sea.is_some()
+                    || !frame.rain.is_empty()
+                    || !frame.sun.is_empty()
+                    || !frame.astronomy.is_empty()
+                {
+                    self.models.encode_configured(
                         gpu,
                         encoder,
                         view,
                         [width, height],
                         frame.seconds,
                         frame.sea.as_ref(),
-                        &frame.rain,
-                        &frame.sun,
+                        AtmosphereDraws {
+                            rain: &frame.rain,
+                            sun: &frame.sun,
+                            astronomy: &frame.astronomy,
+                        },
                     )?;
                 } else {
                     self.models

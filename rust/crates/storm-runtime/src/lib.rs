@@ -1,5 +1,6 @@
 //! Shared engine startup and script/entity frame ownership.
 //! This initial runtime slice does not yet run complete original game programs.
+mod astronomy;
 pub mod clock;
 mod config;
 mod controls;

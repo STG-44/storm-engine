@@ -335,6 +335,9 @@ impl Engine {
         if let Some(sun) = &self.host.sun_glow {
             sun.clear_draws();
         }
+        if let Some(astronomy) = &self.host.astronomy {
+            astronomy.begin_frame();
+        }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
                 && let Some(Value::Object(render)) =
@@ -413,6 +416,9 @@ impl Engine {
         }
         if let Some(sun) = &self.host.sun_glow {
             sun.clear_draws();
+        }
+        if let Some(astronomy) = &self.host.astronomy {
+            astronomy.begin_frame();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {

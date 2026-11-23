@@ -47,6 +47,7 @@ pub struct NativeHost {
     pub(crate) weather: Option<crate::weather::Weather>,
     pub(crate) rain: Option<crate::rain::Rain>,
     pub(crate) sun_glow: Option<crate::sun_glow::SunGlow>,
+    pub(crate) astronomy: Option<crate::astronomy::Astronomy>,
     pub(crate) interface_language: Option<crate::script_libraries::interface::LanguageService>,
     pub(crate) texture_paths: Rc<RefCell<TexturePaths>>,
     pub(crate) time_scale: Rc<Cell<f32>>,
@@ -90,6 +91,7 @@ impl NativeHost {
             weather: None,
             rain: None,
             sun_glow: None,
+            astronomy: None,
             interface_language: None,
             texture_paths: Rc::new(RefCell::new(TexturePaths::default())),
             time_scale: Rc::new(Cell::new(1.0)),
@@ -160,6 +162,11 @@ impl NativeHost {
         self.sun_glow
             .as_ref()
             .map_or_else(Vec::new, |sun| sun.draws())
+    }
+    pub fn astronomy_draws(&self) -> Vec<storm_render::model::CelestialDraw> {
+        self.astronomy
+            .as_ref()
+            .map_or_else(Vec::new, |astronomy| astronomy.draws())
     }
     pub fn sea_surface(&self, id: EntityId) -> Option<crate::sea::Surface> {
         self.entities.is_valid(id).then_some(())?;

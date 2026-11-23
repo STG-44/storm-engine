@@ -78,6 +78,108 @@ fn configured_weather_applies_settings_and_emits_native_midnight_updates() -> Re
 }
 
 #[test]
+fn configured_astronomy_stages_the_catalog_and_planets_with_weather_fades() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("RESOURCE/Textures/Weather/Astronomy");
+    std::fs::create_dir_all(textures.join("Planets"))?;
+    let mut texture = [0u32, 1, 1, 1, 21, 4].map(u32::to_le_bytes).concat();
+    texture.extend([255; 4]);
+    std::fs::write(textures.join("Stars.tga.tx"), &texture)?;
+    std::fs::write(textures.join("Planets/Jupiter.tga.tx"), &texture)?;
+    let mut catalog = 2u32.to_le_bytes().to_vec();
+    for [ra, dec, magnitude] in [[std::f32::consts::FRAC_PI_2, 0.0, 1.0], [-1.0, 0.0, 2.0]] {
+        for field in [ra, dec, magnitude] {
+            catalog.extend(field.to_le_bytes());
+        }
+        catalog.extend(*b"g2");
+    }
+    std::fs::write(temp.0.join("RESOURCE/HIC.dat"), catalog)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object night, astronomy;
+        #event_handler("fade", "StartFade");
+        #event_handler("morning", "Morning");
+        #event_handler("night", "Night");
+        #event_handler("delete", "RemoveAstronomy");
+        void Main() {
+            CreateEntity(&night, "WEATHER");
+            night.Time.Time=20.0;
+            CreateEntity(&astronomy, "Astronomy");
+            LayerAddObject(1, &astronomy, 5);
+            astronomy.TimeScale=1.0;
+            astronomy.Stars.Enable=true;
+            astronomy.Stars.Catalog="hic.dat";
+            astronomy.Stars.Texture="weather\\astronomy\\stars.tga";
+            astronomy.Stars.Spectr.G=argb(0,255,220,100);
+            astronomy.Stars.TelescopeMagnitude=10.0;
+            astronomy.Planets.Planet.Jupiter.Distance=5.20441;
+            astronomy.Planets.Planet.Jupiter.Diameter=143760.0;
+            astronomy.Planets.Planet.Jupiter.Scale=4.0;
+            astronomy.isDone=true;
+        }
+        void StartFade() {
+            astronomy.Stars.FadeStartTime=20.0;
+            astronomy.Stars.FadeTime=-2.0;
+            astronomy.Planets.FadeStartTime=20.0;
+            astronomy.Planets.FadeTime=-2.0;
+            astronomy.TimeUpdate=1;
+            night.Time.Time=21.0;
+        }
+        void Morning() { night.Time.Time=22.0; }
+        void Night() {
+            astronomy.Stars.Radius=3000.0;
+            astronomy.Stars.FadeStartTime=-1.0;
+            astronomy.Planets.FadeStartTime=-1.0;
+            astronomy.TimeUpdate=1;
+        }
+        void RemoveAstronomy() { DeleteClass(&astronomy); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(
+        &game,
+        ScriptEncoding::Utf8,
+        NativeHost::with_random_seed(31)?,
+    )?;
+    engine.frame(0)?;
+    let first = engine.host.astronomy_draws();
+    assert_eq!(first.len(), 2);
+    assert_eq!(first[0].magnitudes, Some([10.0, 8.5]));
+    assert_eq!(first[0].sprites.len(), 1);
+    assert_eq!(first[1].magnitudes, None);
+    assert_eq!(first[1].sprites.len(), 1);
+    engine.frame(50)?;
+    let stable = engine.host.astronomy_draws();
+    for (before, after) in first.iter().zip(&stable) {
+        assert!(std::rc::Rc::ptr_eq(&before.sprites, &after.sprites));
+    }
+
+    let mut event = Message::new("", Vec::new())?;
+    engine.emit_event("fade", &mut event)?;
+    engine.frame(16)?;
+    let fading = engine.host.astronomy_draws();
+    assert_eq!(fading.len(), 2);
+    for (before, after) in first.iter().zip(&fading) {
+        assert_ne!(before.sprites, after.sprites);
+    }
+    engine.emit_event("morning", &mut event)?;
+    engine.frame(16)?;
+    assert!(engine.host.astronomy_draws().is_empty());
+    engine.emit_event("night", &mut event)?;
+    engine.frame(16)?;
+    let next = engine.host.astronomy_draws();
+    assert_eq!(next.len(), 2);
+    assert_ne!(first[0].sprites, next[0].sprites);
+    assert_eq!(first[1].sprites, next[1].sprites);
+    engine.emit_event("delete", &mut event)?;
+    engine.frame(16)?;
+    assert!(engine.host.astronomy_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_sun_glow_loads_original_texture_requests_and_switches_to_the_moon() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("RESOURCE/Textures/Weather");
