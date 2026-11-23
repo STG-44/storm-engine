@@ -429,9 +429,9 @@ pinned run also creates `Weather`, blends the fog and sun colors, and
 completes `WhrCreateRainEnvironment`, `WhrCreateSunGlowEnvironment`,
 `WhrCreateAstronomyEnvironment` and `WhrCreateSkyEnvironment`. The script
 VM now supplies the original `Cos` builtin for the weather's particle wind.
-In `CreateRiggingEnvironment`, startup creates `Sail` and `Rope` and assigns
-their layers. It then stops at the missing `Flag` class on
-`sea_ai/AIShip.c:44`. The probe uses the original source files as supplied.
+In `CreateRiggingEnvironment`, startup creates `Sail`, `Rope` and `Flag`
+and assigns their layers. It then stops at the missing `Vant` class on
+`sea_ai/AIShip.c:49`. The probe uses the original source files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -453,6 +453,21 @@ published by the attached and rolled sail calculations. Individual ropes
 and whole groups can be removed without retiring the model or cloth.
 The constraint that uses rope lengths to limit yard rotation and the
 distinct shroud entities remain pending.
+
+`Flag` loads the original `[FLAGS]` atlas and attaches ordinary and special
+flags to the GM locators of ship or town models. On the first scheduled
+Execute, it requests each atlas cell from the original `GetRiggingData`
+handler. The VM reads the character's attribute reference from the native
+message. Single columns, column/row pairs and the hide response are
+supported. Realize draws a separate model part using the existing
+wind-driven flag mesh. The original flag-wave integrator, live atlas
+replacement and transfer to detached mast models remain pending.
+
+The Barkentine capture sets `MaxSeaHeight` after both wave amplitudes to
+apply them, as in the original weather scripts. It uses the captured
+center-wave height and the Barkentine's original `WaterLine` in the retained
+model-root placement calculation. The configured MODELR capture uses
+that fixed pose. Continuous movement on the waves belongs to SHIP.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM

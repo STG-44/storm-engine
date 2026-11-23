@@ -154,7 +154,6 @@ impl Collector {
         let mut ropes = BTreeMap::<(String, u32), [Option<&PlacedLabel>; 2]>::new();
         let mut shrouds = BTreeMap::<(String, u32), [Option<Vec3>; 3]>::new();
         let mut shroud_nodes = BTreeMap::new();
-        let mut flags = BTreeMap::<(String, String), [Option<Vec3>; 4]>::new();
         let mut duplicate_points = 0;
         for l in &self.labels {
             for prefix in ["rope", "fal", "stay"] {
@@ -197,23 +196,12 @@ impl Collector {
                     }
                 }
             }
-            if (l.group.starts_with("flag") || l.group.starts_with("sflag"))
-                && matches!(l.name.as_bytes(), [b'f', b'1'..=b'4'])
-            {
-                let index = (l.name.as_bytes()[1] - b'1') as usize;
-                let entry = flags
-                    .entry((l.node.clone(), l.group.clone()))
-                    .or_insert([None; 4]);
-                duplicate_points += usize::from(entry[index].is_some());
-                entry[index] = Some(l.position);
-            }
         }
         let mut stats = RiggingStats {
             duplicate_points,
             ..Default::default()
         };
         let mut lines = Vec::new();
-        let mut cloth = Vec::new();
         for ((kind, id), ends) in ropes {
             let [Some(a), Some(b)] = ends else {
                 stats.unmatched_ropes += 1;
@@ -295,12 +283,40 @@ impl Collector {
             }
             ensure!(lines.len() <= 20_000, "too many rigging lines");
         }
+        let (cloth, flags) = self.build_flags(config.flag_columns, config.flag_rows)?;
+        stats.flags = flags.flags;
+        stats.incomplete_flags = flags.incomplete_flags;
+        stats.duplicate_points += flags.duplicate_points;
+        Ok((lines, cloth, stats))
+    }
+
+    pub(super) fn build_flags(
+        &self,
+        columns: u32,
+        rows: u32,
+    ) -> Result<(Vec<FlagPatch>, RiggingStats)> {
+        ensure!(self.labels.len() <= 50_000, "too many rigging locators");
+        let mut flags = BTreeMap::<(String, String), [Option<Vec3>; 4]>::new();
+        let mut stats = RiggingStats::default();
+        for label in &self.labels {
+            if (label.group.starts_with("flag") || label.group.starts_with("sflag"))
+                && matches!(label.name.as_bytes(), [b'f', b'1'..=b'4'])
+            {
+                let index = (label.name.as_bytes()[1] - b'1') as usize;
+                let entry = flags
+                    .entry((label.node.clone(), label.group.clone()))
+                    .or_insert([None; 4]);
+                stats.duplicate_points +=
+                    usize::from(entry[index].replace(label.position).is_some());
+            }
+        }
+        let mut cloth = Vec::new();
         for ((node, group), points) in flags {
             ensure!(cloth.len() < 512, "too many flags");
             if let [Some(a), Some(b), Some(c), d] = points {
                 // FLAG::SetAdd attaches quad f1/f4; f2/f3 are the free edge.
                 let (bottom, tip, lower) = d.map_or((c, b, None), |d| (d, b, Some(c)));
-                match FlagPatch::new(a, bottom, tip, lower, config.flag_columns, config.flag_rows) {
+                match FlagPatch::new(a, bottom, tip, lower, columns, rows) {
                     Ok(mut flag) => {
                         flag.origin = Some(FlagOrigin {
                             node,
@@ -316,7 +332,7 @@ impl Collector {
                 stats.incomplete_flags += 1;
             }
         }
-        Ok((lines, cloth, stats))
+        Ok((cloth, stats))
     }
 }
 
@@ -542,6 +558,14 @@ impl FlagPatch {
     }
     pub fn texture(&self) -> FlagTexture {
         self.texture
+    }
+    pub fn is_triangle(&self) -> bool {
+        self.lower.is_none()
+    }
+    pub fn set_texture(&mut self, texture: FlagTexture) -> Result<()> {
+        self.check_texture(texture)?;
+        self.texture = texture;
+        Ok(())
     }
     pub fn atlas_size(&self) -> [u32; 2] {
         [self.columns, self.rows]

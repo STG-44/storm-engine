@@ -94,9 +94,14 @@ impl ModelScenes {
     }
     pub fn prepare(&mut self, gpu: &Gpu, draws: &[Draw], live: &[EntityId]) -> Result<()> {
         ensure!(
-            [DrawPart::Body, DrawPart::Sails, DrawPart::Ropes]
-                .into_iter()
-                .all(|part| draws.iter().filter(|draw| draw.part == part).count() <= 16),
+            [
+                DrawPart::Body,
+                DrawPart::Sails,
+                DrawPart::Ropes,
+                DrawPart::Flags
+            ]
+            .into_iter()
+            .all(|part| draws.iter().filter(|draw| draw.part == part).count() <= 16),
             "runtime renderer supports at most 16 active draws for each model part"
         );
         let mut ids = BTreeSet::new();
@@ -151,7 +156,7 @@ impl ModelScenes {
             if owner.part == DrawPart::Body
                 && live.contains(&owner.id)
                 && !ids.contains(&key)
-                && scenes.len() < 48
+                && scenes.len() < 64
             {
                 owners.push(owner);
                 scenes.push(scene);

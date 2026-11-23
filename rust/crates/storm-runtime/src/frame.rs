@@ -145,6 +145,21 @@ impl Engine {
     }
     fn execute_entities(&mut self, delta_ms: u32) -> Result<()> {
         for id in self.host.entities.layer_ids(LayerType::Execute) {
+            if let Some(flags) = self.host.flags.clone() {
+                for request in flags.take_requests(id) {
+                    let reply = if let Some(mut message) = request.message(&self.host.entities)? {
+                        self.runtime.emit(
+                            "GetRiggingData",
+                            &mut message,
+                            &mut self.host,
+                            self.limits,
+                        )?
+                    } else {
+                        None
+                    };
+                    flags.apply_reply(request, reply)?;
+                }
+            }
             if self.host.controls.activated("BIFastCommand") {
                 let action = self
                     .host

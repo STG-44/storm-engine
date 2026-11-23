@@ -1212,7 +1212,7 @@ impl ModelScene {
         let valid_count = if matches!(&water, Water::Fleet) {
             (1..=16).contains(&scenes.len())
         } else {
-            scenes.len() <= 48
+            scenes.len() <= 64
         };
         ensure!(valid_count, "model scene count exceeds renderer capacity");
         if scenes.is_empty()
@@ -1465,6 +1465,12 @@ impl ModelScene {
         let base = self.pose_matrix()?;
         let [eye_x, eye_y, eye_z, _] = uniform.eye_time;
         let camera_eye = Vec3::new(eye_x, eye_y, eye_z);
+        let wind = self
+            .ship_state
+            .native_rig
+            .as_ref()
+            .and_then(|frame| frame.flag_wind)
+            .unwrap_or(wind);
         wind.validate()?;
         // Cloth currently accepts horizontal wind only: project the inverse rigid
         // rotation into local XZ, including pitch/roll, rather than subtracting yaw.
@@ -1635,8 +1641,17 @@ impl ModelScene {
             self.depth = depth_view(&gpu.device, width, height);
             self.size = (width, height);
         }
-        for mesh in &mut self.meshes {
+        for (index, mesh) in self.meshes.iter_mut().enumerate() {
             if let Some((rigging, vertices)) = &mut mesh.rigging {
+                if let RigMesh::Flag(flag) = rigging
+                    && let Some(texture) = self
+                        .ship_state
+                        .native_rig
+                        .as_ref()
+                        .and_then(|r| r.flags.get(&index))
+                {
+                    flag.set_texture(*texture)?;
+                }
                 mesh.rigging_culled = matches!(rigging, RigMesh::NativeRopes(lines)
                     if lines.first().is_some_and(|line| !line.geometry.visible_from(distance_squared, storm_sim::sail_lod::VERTICAL_FOV)));
                 if mesh.rigging_culled {

@@ -524,6 +524,20 @@ impl ModelAsset {
         )
     }
 
+    pub fn load_flags(path: &Path, grid: [u32; 2], texture: Rc<Texture>) -> Result<Self> {
+        let options = LoadOptions {
+            untextured: true,
+            ..Default::default()
+        };
+        Self::load_impl(
+            path,
+            &options,
+            false,
+            None,
+            Some(Overlay::Flags(grid, texture)),
+        )
+    }
+
     fn load_impl(
         path: &Path,
         options: &LoadOptions,
@@ -606,14 +620,27 @@ impl ModelAsset {
             Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0)),
             0,
         )?;
-        if let Some(Overlay::Ropes(settings, texture)) = builder.overlay.take() {
-            let (lines, stats) = builder.rigging.build_native_ropes(settings)?;
-            builder.asset.rigging_stats = stats;
-            if !lines.is_empty() {
-                builder.reserve(texture.mips.iter().map(|m| m.rgba.len()).sum())?;
-                builder.asset.textures.push((*texture).clone());
-                builder.add_rig_mesh(RigMesh::NativeRopes(lines), 1)?;
+        match builder.overlay.take() {
+            Some(Overlay::Ropes(settings, texture)) => {
+                let (lines, stats) = builder.rigging.build_native_ropes(settings)?;
+                builder.asset.rigging_stats = stats;
+                if !lines.is_empty() {
+                    let texture = builder.add_overlay_texture(&texture)?;
+                    builder.add_rig_mesh(RigMesh::NativeRopes(lines), texture)?;
+                }
             }
+            Some(Overlay::Flags([columns, rows], texture)) => {
+                let (flags, stats) = builder.rigging.build_flags(columns, rows)?;
+                builder.asset.rigging_stats = stats;
+                if !flags.is_empty() {
+                    let index = builder.add_overlay_texture(&texture)?;
+                    for mut flag in flags {
+                        flag.set_texture_size(texture.header.width, texture.header.height)?;
+                        builder.add_rig_mesh(RigMesh::Flag(flag), index)?;
+                    }
+                }
+            }
+            _ => {}
         }
         if !options.single_mesh && preview {
             builder.add_rigging()?;
@@ -663,6 +690,7 @@ impl ModelAsset {
 enum Overlay {
     Sails(SailDamageSettings),
     Ropes(storm_sim::rope::Settings, Rc<Texture>),
+    Flags([u32; 2], Rc<Texture>),
 }
 
 struct Builder {
@@ -736,6 +764,12 @@ impl Builder {
             rigging: Some(rigging),
         });
         Ok(())
+    }
+    fn add_overlay_texture(&mut self, texture: &Texture) -> Result<usize> {
+        self.reserve(texture.mips.iter().map(|m| m.rgba.len()).sum())?;
+        let index = self.asset.textures.len();
+        self.asset.textures.push(texture.clone());
+        Ok(index)
     }
     fn reserve(&mut self, bytes: usize) -> Result<()> {
         self.render_bytes = self
@@ -828,7 +862,7 @@ impl Builder {
         }
         ensure!(self.asset.ship.fires.len() <= 256, "too many fire locators");
         self.asset.geometry_files += 1;
-        if self.preview || matches!(self.overlay, Some(Overlay::Ropes(..))) {
+        if self.preview || matches!(self.overlay, Some(Overlay::Ropes(..) | Overlay::Flags(..))) {
             self.rigging.add(&model.labels, world, node);
         }
         let normals = world.inverse().transpose();

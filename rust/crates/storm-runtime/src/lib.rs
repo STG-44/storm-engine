@@ -5,6 +5,7 @@ pub mod clock;
 mod config;
 mod controls;
 mod filesystem;
+mod flag;
 mod frame;
 mod host;
 pub mod interface;

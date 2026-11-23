@@ -332,6 +332,126 @@ void Tick(){frames++;
  if(frames==4)LayerFreeze(1,1);
 }
 "#;
+
+#[test]
+fn configured_ship_and_town_flags_use_script_atlas_replies() -> Result<()> {
+    let files = fixture()?;
+    let root = files.0.join("RESOURCE");
+    let body = std::fs::read(root.join("MODELS/root_yard.gm"))?;
+    std::fs::write(
+        root.join("MODELS/flagship.gm"),
+        with_labels(
+            &body,
+            &[
+                ("flag1", "f1", [0.0, 5.0, 0.0]),
+                ("flag1", "f2", [2.0, 5.0, 0.0]),
+                ("flag1", "f3", [2.0, 4.0, 0.0]),
+                ("flag1", "f4", [0.0, 4.0, 0.0]),
+                ("sflag2", "f1", [0.0, 6.0, 0.0]),
+                ("sflag2", "f2", [2.0, 5.5, 0.0]),
+                ("sflag2", "f3", [0.0, 5.0, 0.0]),
+            ],
+        ),
+    )?;
+    std::fs::create_dir(root.join("INI"))?;
+    std::fs::write(
+        root.join("INI/rigging.ini"),
+        "[FLAGS]\nTextureName=atlas.tga\nTextureCountColumn=4\nTextureCountRow=8\n",
+    )?;
+    let mut atlas = [0u32, 4, 8, 1, 21, 128]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    atlas.extend([255; 128]);
+    std::fs::write(root.join("Textures/atlas.tga.tx"), atlas)?;
+    std::fs::write(files.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        files.0.join("main.c"),
+        r#"
+        object ship, town, flag, weather;
+        int cell[2], townColumn, shipCalls, townCalls;
+        void Main() {
+            CreateEntity(&weather,"Weather");
+            weather.wind.angle=1.0;
+            weather.wind.speed=9.0;
+            CreateEntity(&ship,"MODELR");
+            CreateEntity(&town,"MODELR");
+            CreateEntity(&flag,"Flag");
+            ship.index=19;
+            SendMessage(ship,"ls",20500,"flagship");
+            SendMessage(town,"ls",20500,"flagship");
+            SetEventHandler("GetRiggingData","SelectFlag",0);
+            SetEventHandler("remove_flags","RemoveFlags",0);
+            SetEventHandler("calls","Calls",0);
+            SendMessage(flag,"lili",40200,ship,2,ship);
+            SendMessage(flag,"lil",40202,town,3);
+            LayerAddObject(0,flag,0);
+            LayerAddObject(1,ship,0);
+            LayerAddObject(1,town,1);
+            LayerAddObject(1,flag,2);
+        }
+        ref SelectFlag() {
+            string request=GetEventData();
+            int triangle=GetEventData(), nation=GetEventData(), special=GetEventData();
+            if(request=="GetShipFlagTexNum") {
+                aref character=GetEventData();
+                shipCalls=shipCalls+1;
+                cell[0]=nation;
+                cell[1]=makeint(character.index)-17;
+                if(special==1 && triangle==1){cell[1]=-1;}
+                return &cell;
+            }
+            townCalls=townCalls+1;
+            townColumn=nation;
+            return &townColumn;
+        }
+        int Calls(){ return shipCalls*10+townCalls; }
+        void RemoveFlags(){ SendMessage(flag,"li",40201,ship); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&files.0)?;
+    let mut host = NativeHost::new()?;
+    let models = Models::register(&mut host, game.clone())?;
+    let mut engine =
+        crate::Startup::load(&game)?.engine(&game, crate::ScriptEncoding::Utf8, host)?;
+    engine.register_service(models.clone())?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    let flags = draws
+        .iter()
+        .filter(|draw| draw.part == DrawPart::Flags)
+        .collect::<Vec<_>>();
+    let cell = |column, row| storm_sim::FlagTexture::Cell(storm_sim::FlagCell { column, row });
+    assert_eq!(flags.len(), 2);
+    assert_eq!(flags[0].asset.rigging_stats.flags, 2);
+    let ship = flags[0].rig.as_ref().unwrap();
+    assert_eq!(ship.flags[&0], cell(2, 2));
+    assert_eq!(ship.flags[&1], storm_sim::FlagTexture::Hidden);
+    assert_eq!(ship.flag_wind.unwrap().speed, 9.0);
+    assert!(
+        flags[1]
+            .rig
+            .as_ref()
+            .unwrap()
+            .flags
+            .values()
+            .all(|&t| t == cell(3, 0))
+    );
+    assert!(matches!(
+        engine.emit_event("calls", &mut Message::new("", vec![])?)?,
+        Some(storm_script::Value::Int(22))
+    ));
+    engine.emit_event("remove_flags", &mut Message::new("", vec![])?)?;
+    engine.frame(16)?;
+    let draws = models.take_draws()?;
+    assert_eq!(draws.len(), 3);
+    assert!(matches!(
+        engine.emit_event("calls", &mut Message::new("", vec![])?)?,
+        Some(storm_script::Value::Int(22))
+    ));
+    engine.shutdown()
+}
+
 #[test]
 fn configured_renderer_shares_texture_paths_and_keeps_reference_counted_slots() -> Result<()> {
     let files = fixture()?;

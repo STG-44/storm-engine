@@ -521,6 +521,13 @@ impl Program {
                     {
                         'l' => Value::Int(message.long()?),
                         'f' => Value::Float(message.float()?),
+                        'a' => {
+                            let attributes = message.attribute()?;
+                            Value::AReference(Some(execution.world.entity_reference(
+                                storm_core::EntityId::INVALID,
+                                Some(attributes),
+                            )?))
+                        }
                         'i' => {
                             let entity = message.entity()?;
                             let binding = execution.host.entity_attribute_root(entity);
