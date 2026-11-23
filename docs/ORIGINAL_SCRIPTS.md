@@ -426,8 +426,9 @@ On frame 10, `LaunchMainMenu` loads the original `interface/mainmenu.c` and
 enters `InitInterface`. It creates `scrshoter`, selects a weather preset and
 creates `sea` and `ShipLights` inside `CreateSea` in `sea_ai/AISea.c`. The
 pinned run also creates `Weather`, blends the fog and sun colors, and
-reaches `WhrCreateRainEnvironment`. Startup stops when the script creates
-the missing `rain` entity. The original source files were unchanged.
+completes `WhrCreateRainEnvironment`. Startup stops at the missing
+`SunGlow` entity in `WhrCreateSunGlowEnvironment`, before
+`WhrCreateSkyEnvironment`. The original source files were unchanged.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM
@@ -442,7 +443,15 @@ ambient color on `isDone`, and publishes sun and moon positions. Its native
 Execute stage advances time and dispatches the floating-point
 `WeatherTimeUpdate` event at the original cadence. The script VM implements
 the signed integer masking and shifting used to blend packed colors.
-Rendering weather effects still requires the rain, sky and atmosphere passes.
+
+`rain` generates the original four staggered blocks from the script
+attributes, using the shared CRT random stream and the wind from `Weather`.
+Each block drifts, recycles and fades on Realize, and the visibility
+message pauses its animation. The renderer reuses the line geometry for
+all four blocks, including the 50,000-drop storm presets, and blends it
+additively against the scene depth in the window and PNG renderer. The
+vertical band currently follows the fallback orbit camera. Collision and
+sea splashes, rainbow, sky and sun effects still require their own passes.
 
 `scrshoter` captures the current scene at its Realize layer in the desktop
 window and PNG renderer. The thumbnail uses the original 128 × 128 integer

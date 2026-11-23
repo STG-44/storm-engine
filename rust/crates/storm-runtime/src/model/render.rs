@@ -2,7 +2,10 @@ use super::*;
 use std::collections::BTreeSet;
 use storm_render::{
     Frame, Gpu,
-    model::{ModelScene, OceanRenderer, OrbitCamera, SailWind, native_model_matrix},
+    model::{
+        ModelScene, OceanRenderer, OrbitCamera, RainDraw, RainRenderer, SailWind,
+        native_model_matrix,
+    },
 };
 
 /// GPU scenes follow the registry's draw order and asset revision. This bounded
@@ -15,6 +18,7 @@ pub struct ModelScenes {
     framed: bool,
     format: wgpu::TextureFormat,
     ocean: Option<OceanRenderer>,
+    rain: Option<RainRenderer>,
 }
 struct Owner {
     id: u64,
@@ -53,6 +57,7 @@ impl ModelScenes {
             framed: false,
             format,
             ocean: None,
+            rain: None,
         }
     }
     pub fn cached(&self) -> usize {
@@ -189,7 +194,21 @@ impl ModelScenes {
         seconds: f32,
         surface: &crate::sea::Surface,
     ) -> Result<()> {
-        let water_view = (!self.framed).then(|| {
+        self.encode_weather(gpu, encoder, target, size, seconds, Some(surface), &[])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_weather(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        sea: Option<&crate::sea::Surface>,
+        rain: &[RainDraw],
+    ) -> Result<()> {
+        let water_view = sea.filter(|_| !self.framed).map(|surface| {
             // The model-independent orbit keeps the eye above the wave envelope
             // until an actual scene selects its camera.
             let wave_height = surface
@@ -200,10 +219,21 @@ impl ModelScenes {
                 .sum::<f32>();
             OrbitCamera::from_bounds([0.0, wave_height, 0.0].into(), wave_height.max(1.0) * 4.0)
         });
-        let ocean = self
-            .ocean
-            .get_or_insert_with(|| OceanRenderer::new(gpu, self.format));
-        ModelScene::draw_models_with_sea(
+        let ocean = sea.map(|surface| {
+            (
+                self.ocean
+                    .get_or_insert_with(|| OceanRenderer::new(gpu, self.format)),
+                surface,
+            )
+        });
+        let rain = (!rain.is_empty()).then(|| {
+            (
+                self.rain
+                    .get_or_insert_with(|| RainRenderer::new(gpu, self.format)),
+                rain,
+            )
+        });
+        ModelScene::draw_configured(
             &mut self.scenes[..self.active],
             gpu,
             encoder,
@@ -212,7 +242,7 @@ impl ModelScenes {
             seconds,
             water_view.as_ref().unwrap_or(&self.camera),
             ocean,
-            surface,
+            rain,
         )
     }
     pub fn offscreen(&mut self, gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Result<Frame> {

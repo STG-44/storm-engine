@@ -159,6 +159,7 @@ fn main() -> Result<()> {
                                 fades,
                                 correction: engine.host.color_correction(),
                                 sea: engine.host.sea_draw(),
+                                rain: engine.host.rain_draws(),
                             },
                         )?;
                     }
@@ -182,6 +183,7 @@ fn main() -> Result<()> {
                 fades: fades.as_deref().unwrap_or_default(),
                 correction: engine.host.color_correction(),
                 sea: engine.host.sea_draw(),
+                rain: engine.host.rain_draws(),
             };
             let frame = storm_render::render_offscreen_with(
                 &gpu,

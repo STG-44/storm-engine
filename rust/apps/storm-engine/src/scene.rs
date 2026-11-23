@@ -2,6 +2,7 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
+use storm_render::model::RainDraw;
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -23,6 +24,7 @@ pub(crate) struct SceneFrame<'a> {
     pub fades: &'a [FadeDraw],
     pub correction: Option<ColorCorrection>,
     pub sea: Option<storm_runtime::sea::Surface>,
+    pub rain: Vec<RainDraw>,
 }
 
 pub(crate) struct SceneRenderer {
@@ -107,6 +109,7 @@ impl SceneRenderer {
             // The display ramp is applied after the original capture.
             correction: None,
             sea: host.sea_draw(),
+            rain: host.rain_draws(),
         };
         storm_render::render_offscreen_with(gpu, SIDE, SIDE, seconds, |encoder, target| {
             self.encode(gpu, encoder, Some(&source), [width, height], &frame)?;
@@ -141,14 +144,15 @@ impl SceneRenderer {
             [width, height],
             frame.fades,
             |encoder, view| {
-                if let Some(sea) = &frame.sea {
-                    self.models.encode_with_sea(
+                if frame.sea.is_some() || !frame.rain.is_empty() {
+                    self.models.encode_weather(
                         gpu,
                         encoder,
                         view,
                         [width, height],
                         frame.seconds,
-                        sea,
+                        frame.sea.as_ref(),
+                        &frame.rain,
                     )?;
                 } else {
                     self.models

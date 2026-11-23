@@ -78,6 +78,93 @@ fn configured_weather_applies_settings_and_emits_native_midnight_updates() -> Re
 }
 
 #[test]
+fn configured_rain_generates_and_animates_streaks_only_while_visible() -> Result<()> {
+    let temp = Temporary::new()?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object atmosphere, rain;
+        #event_handler("hide", "HideRain");
+        #event_handler("show", "ShowRain");
+        #event_handler("storm", "StartStorm");
+        #event_handler("clear", "ClearRain");
+        void Main() {
+            CreateEntity(&atmosphere, "Weather");
+            atmosphere.Wind.Angle = 0.0;
+            atmosphere.Wind.Speed = 18.0;
+            CreateEntity(&rain, "rain");
+            LayerAddObject(1, &rain, 10);
+            rain.NumDrops = 2;
+            rain.Color = argb(0,50,70,90);
+            rain.DropLength = 1.0;
+            rain.Height = 3.0;
+            rain.Radius = 5.0;
+            rain.Speed = 6.0;
+            rain.TimeBlend = 100;
+            rain.MaxBlend = 50;
+            rain.isDone = "";
+        }
+        void HideRain() { SendMessage(&rain,"ll",1,0); }
+        void ShowRain() { SendMessage(&rain,"ll",1,1); }
+        void StartStorm() { rain.NumDrops = 50000; rain.isDone = ""; }
+        void ClearRain() { rain.Clear = ""; rain.isDone = ""; }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(0)?;
+    let initial = engine.host.rain_draws().remove(0);
+    assert_eq!(initial.starts.len(), 2);
+    assert_eq!(initial.length, 1.0);
+    assert_eq!(initial.rgb, [50, 70, 90]);
+    assert_eq!(
+        initial.blocks.map(|block| block.origin[1]),
+        [0.0, 3.0, 1.5, 4.5]
+    );
+    assert!(
+        initial
+            .blocks
+            .iter()
+            .all(|block| block.alpha == 50 && block.tilt == 1.0)
+    );
+    assert!((initial.blocks[0].origin[2] + 32.4).abs() < 1e-5);
+    for &[x, y, z] in initial.starts.iter() {
+        assert!((1.5..=6.5).contains(&x.hypot(z)));
+        assert!((-3.0..=3.0).contains(&y));
+    }
+
+    engine.frame(60)?;
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("hide", &mut event)?;
+    engine.frame(250)?;
+    assert!(engine.host.rain_draws().is_empty());
+    engine.emit_event("show", &mut event)?;
+    engine.frame(0)?;
+    let resumed = engine.host.rain_draws().remove(0);
+    assert!(Arc::ptr_eq(&initial.starts, &resumed.starts));
+    assert!((resumed.blocks[0].origin[1] + 1.2).abs() < 1e-5);
+    assert!((resumed.blocks[0].origin[2] + 31.2).abs() < 1e-5);
+
+    engine.frame(120)?;
+    engine.frame(0)?;
+    let recycled = engine.host.rain_draws().remove(0);
+    assert_eq!(recycled.blocks[0].alpha, 0);
+    assert!((recycled.blocks[0].origin[1] - 1.4).abs() < 1e-5);
+    assert!((recycled.blocks[0].origin[2] + 32.4).abs() < 1e-5);
+    engine.emit_event("storm", &mut event)?;
+    engine.frame(0)?;
+    let storm = engine.host.rain_draws().remove(0);
+    assert_eq!(storm.starts.len(), 50_000);
+    assert!(!Arc::ptr_eq(&storm.starts, &resumed.starts));
+    engine.emit_event("clear", &mut event)?;
+    engine.frame(0)?;
+    assert!(engine.host.rain_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_ship_lights_load_script_catalog_and_follow_native_masts_and_yards() -> Result<()> {
     use crate::ship_lights::ShipLightPose;
     use std::collections::BTreeMap;

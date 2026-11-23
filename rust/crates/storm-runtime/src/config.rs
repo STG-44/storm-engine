@@ -148,6 +148,7 @@ impl Startup {
         crate::sea::Seas::register(&mut host, game.clone())?;
         crate::ship_lights::ShipLights::register(&mut host, game.clone())?;
         crate::weather::Weather::register(&mut host)?;
+        crate::rain::Rain::register(&mut host)?;
         crate::teleport::register(&mut host, game.clone())?;
         storm_script::Host::world(&host).use_game_limits();
         crate::interface::Interfaces::register(&mut host, game.clone())?;

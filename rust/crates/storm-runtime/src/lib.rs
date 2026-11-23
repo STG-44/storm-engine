@@ -9,6 +9,7 @@ mod host;
 pub mod interface;
 mod locator;
 mod particles;
+mod rain;
 mod random;
 mod script_libraries;
 pub mod sea;

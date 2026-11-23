@@ -329,6 +329,9 @@ impl Engine {
         if let Some(seas) = &self.host.seas {
             seas.begin_frame();
         }
+        if let Some(rain) = &self.host.rain {
+            rain.clear_draws();
+        }
         if self.phase == Phase::Ready {
             if self.host.interfaces.is_some()
                 && let Some(Value::Object(render)) =
@@ -401,6 +404,9 @@ impl Engine {
         }
         if let Some(seas) = &self.host.seas {
             seas.begin_frame();
+        }
+        if let Some(rain) = &self.host.rain {
+            rain.clear_draws();
         }
         let cleanup = self.host.entities.new_lifecycle();
         let cleanup = cleanup.and_then(|()| {
