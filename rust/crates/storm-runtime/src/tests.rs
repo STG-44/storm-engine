@@ -3828,3 +3828,168 @@ fn configured_dialog_draws_ordered_pictures_and_titles_through_window_state() ->
     assert!(engine.host.interface_draws().is_empty());
     Ok(())
 }
+
+#[test]
+fn dialog_buttons_dispatch_to_the_frontmost_unlocked_node() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::Picture;
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI/INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::create_dir_all(&textures)?;
+    let mut texture = [0u32, 2, 2, 1, 21, 16].map(u32::to_le_bytes).concat();
+    texture.extend([255; 16]);
+    std::fs::write(textures.join("icons.tga.tx"), texture)?;
+    std::fs::write(
+        ini.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("pictures.ini"),
+        "[Icons]\nsTextureName=icons.tga\nwTextureWidth=2\nwTextureHeight=2\npicture=Symbol,0,0,2,2\n",
+    )?;
+    std::fs::write(
+        ini.join("defaultnode.ini"),
+        r#"
+        [BUTTON]
+        position=0,0,80,80
+        group=Icons
+        picture=Symbol
+        shadowColor=0,0,0,0
+        pressPictureOffset=4,5
+        pressDelay=4
+    "#,
+    )?;
+    std::fs::write(
+        ini.join("buttons.ini"),
+        r#"
+        [MAIN]
+        item=100,BUTTON,Top
+        item=80,BUTTON,Bottom
+        item=WINDOW,Panel
+        start=Top
+        [Top]
+        command=click,event:Click
+        command=activate,event:Click,select:Bottom
+        [Bottom]
+        command=click,event:Click
+        UseActionByDeclick=1
+        [Panel]
+        nodelist=Top,Bottom
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "script_interface_functions"
+        native void XI_WindowDisable(string name, bool disable);
+        object ui;
+        bool reloadOnSound;
+        #event_handler("ArmReload","ArmReload");
+        #event_handler("ievnt_command","Command");
+        #event_handler("ISound","Sound");
+        #event_handler("Click","Click");
+        #event_handler("Lock","Lock");
+        #event_handler("Unlock","Unlock");
+        #event_handler("Current","Current");
+        #event_handler("DisableTop","DisableTop");
+        void Main() {
+            MapControl(CreateControl("ILClick"),1);
+            MapControl(CreateControl("IAction"),32);
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(4,&ui,0);
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\buttons.ini");
+        }
+        void ArmReload() { reloadOnSound = true; }
+        void Sound() {
+            Trace("sound="+GetEventData());
+            if (reloadOnSound)
+                SendMessage(&ui,"ls",45010,"resource\ini\interfaces\buttons.ini");
+        }
+        void Command() {
+            string action=GetEventData();
+            string node=GetEventData();
+            Trace(action+":"+node);
+        }
+        void Click() {
+            int code=GetEventData();
+            string node=GetEventData();
+            Trace("named="+code+":"+node);
+        }
+        void Lock() { XI_WindowDisable("Panel",true); }
+        void Unlock() { XI_WindowDisable("Panel",false); }
+        void DisableTop() { SendMessage(&ui,"lsl",45024,"Top",0); }
+        string Current() {
+            string node;
+            SendMessage(&ui,"le",45028,&node);
+            return node;
+        }
+    "#,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.host.set_interface_pointer(Some([190.0, 45.0]));
+    engine.frame(0)?;
+    let mut event = Message::new("", vec![])?;
+    let current = |engine: &mut Engine, event: &mut Message| engine.emit_event("Current", event);
+    assert_eq!(
+        current(&mut engine, &mut event)?,
+        Some(Value::String("Top".into()))
+    );
+    let input = |engine: &mut Engine, code, pressed| -> Result<()> {
+        engine.control_input(ControlInput::Button { code, pressed });
+        engine.frame(16)?;
+        engine.frame(16)?;
+        Ok(())
+    };
+
+    input(&mut engine, 1, true)?;
+    assert_eq!(trace.take(), ["script:sound=1", "script:click:Top"]);
+    let draws = engine.host.interface_draws();
+    let [Picture(bottom), Picture(top)] = draws.as_slice() else {
+        panic!("two button faces")
+    };
+    assert_eq!(bottom.rect, [133.0, 0.0, 213.0, 80.0]);
+    assert_eq!(top.rect, [137.0, 5.0, 217.0, 85.0]);
+    input(&mut engine, 1, false)?;
+    assert_eq!(trace.take(), ["script:named=12:Top"]);
+
+    engine.emit_event("Lock", &mut event)?;
+    input(&mut engine, 1, true)?;
+    input(&mut engine, 1, false)?;
+    assert!(trace.borrow().is_empty());
+    engine.emit_event("Unlock", &mut event)?;
+    input(&mut engine, 32, true)?;
+    assert_eq!(trace.take(), ["script:sound=1", "script:activate:Top"]);
+    input(&mut engine, 32, false)?;
+    assert_eq!(trace.take(), ["script:named=5:Top"]);
+    assert_eq!(
+        current(&mut engine, &mut event)?,
+        Some(Value::String("Bottom".into()))
+    );
+
+    engine.emit_event("DisableTop", &mut event)?;
+    input(&mut engine, 1, true)?;
+    assert!(trace.borrow().is_empty());
+    input(&mut engine, 1, false)?;
+    assert_eq!(trace.take(), ["script:sound=1", "script:click:Bottom"]);
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:named=12:Bottom"]);
+    engine.emit_event("ArmReload", &mut event)?;
+    input(&mut engine, 1, true)?;
+    assert!(trace.borrow().is_empty());
+    input(&mut engine, 1, false)?;
+    assert_eq!(trace.take(), ["script:sound=1"]);
+    engine.frame(16)?;
+    assert!(trace.borrow().is_empty());
+    assert_eq!(
+        current(&mut engine, &mut event)?,
+        Some(Value::String("Top".into()))
+    );
+
+    Ok(())
+}

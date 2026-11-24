@@ -50,6 +50,7 @@ pub struct InterfaceState {
     pub game_time: [u32; 3],
     binding: Option<AttributeId>,
     dialog: dialog::Dialog,
+    dialog_revision: u64,
     quests: QuestText,
     wheel: Option<Reference>,
 }
@@ -76,6 +77,7 @@ struct Shared {
     paths: Rc<RefCell<TexturePaths>>,
     time_scale: Rc<Cell<f32>>,
     window: Cell<Option<[u32; 2]>>,
+    pointer: Cell<Option<[f64; 2]>>,
     states: RefCell<BTreeMap<u64, InterfaceState>>,
     logs: RefCell<BTreeMap<u64, LogAndActionsState>>,
     timers: RefCell<BTreeMap<u64, BattleTimerState>>,
@@ -118,6 +120,7 @@ impl Interfaces {
             paths: host.texture_paths.clone(),
             time_scale: host.time_scale.clone(),
             window: Cell::new(None),
+            pointer: Cell::new(None),
             states: RefCell::default(),
             logs: RefCell::default(),
             timers: RefCell::default(),
@@ -170,16 +173,64 @@ impl Interfaces {
         self.state(id).is_some_and(|state| state.dialog.active)
     }
 
-    pub(crate) fn realize_dialog(&self, id: EntityId, store: &AttributeStore) {
-        if let Some(state) = self.state(id) {
+    pub(crate) fn active_dialog_revision(&self, id: EntityId) -> Option<u64> {
+        self.state(id)
+            .filter(|state| state.dialog.active)
+            .map(|state| state.dialog_revision)
+    }
+
+    pub(crate) fn realize_dialog(&self, id: EntityId, store: &AttributeStore, delta_ms: u32) {
+        if let Some(state) = self.0.states.borrow_mut().get_mut(&id.raw()) {
             self.0.draws.borrow_mut().extend(
                 state
                     .dialog
-                    .draws(store, state.binding, &state.screen)
+                    .draws(store, state.binding, &state.screen, delta_ms)
                     .into_iter()
                     .map(|draw| (id, draw)),
             );
         }
+    }
+
+    pub(crate) fn take_button_events(
+        &self,
+        id: EntityId,
+        delta_ms: u32,
+    ) -> Result<dialog::NodeEvents> {
+        let mut states = self.0.states.borrow_mut();
+        let Some(state) = states
+            .get_mut(&id.raw())
+            .filter(|state| state.dialog.active)
+        else {
+            return Ok(Vec::new());
+        };
+        state.dialog.nodes.take_button_events(delta_ms)
+    }
+
+    pub(crate) fn button_input(
+        &self,
+        id: EntityId,
+        controls: &crate::controls::Controls,
+    ) -> Result<dialog::NodeEvents> {
+        let mut states = self.0.states.borrow_mut();
+        let Some(state) = states
+            .get_mut(&id.raw())
+            .filter(|state| state.dialog.active)
+        else {
+            return Ok(Vec::new());
+        };
+        let mut point = self.0.pointer.get();
+        if let Some(point) = &mut point {
+            let viewport = self.0.viewport()?;
+            for (axis, value) in point.iter_mut().enumerate() {
+                *value = (*value * f64::from(state.screen.size[axis]) / f64::from(viewport[axis]))
+                    .trunc();
+            }
+        }
+        state.dialog.nodes.button_input(controls, point)
+    }
+
+    pub fn set_pointer(&self, point: Option<[f64; 2]>) {
+        self.0.pointer.set(point);
     }
 
     pub(crate) fn draws(&self) -> Vec<InterfaceDraw> {
@@ -455,6 +506,7 @@ impl Entity for Actor {
                 game_time,
                 binding: context.attributes,
                 dialog: dialog::Dialog::default(),
+                dialog_revision: 0,
                 quests: QuestText::default(),
                 wheel: None,
             },
@@ -518,22 +570,49 @@ impl Actor {
             .get_mut(&self.id.raw())
             .context("missing XINTERFACE state")?;
         use dialog::{
-            CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING, INIT,
-            MSG_TO_NODE, RELEASE, SET_NODE_USING,
+            CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING,
+            GET_CURRENT_NODE, GET_SELECTABLE, INIT, MSG_TO_NODE, NEW_CURRENT_NODE, RELEASE,
+            SET_NODE_USING, SET_SELECTABLE,
         };
         match code {
-            INIT => state
-                .dialog
-                .activate(&self.shared, message.string()?, &state.screen, title)?,
+            INIT => {
+                state
+                    .dialog
+                    .activate(&self.shared, message.string()?, &state.screen, title)?;
+                state.dialog_revision = state.dialog_revision.wrapping_add(1);
+            }
             SET_NODE_USING => {
                 let name = message.string()?.to_owned();
                 let show = message.long()? != 0;
                 state.dialog.nodes.set_using(&name, show);
             }
             MSG_TO_NODE => {
-                state.dialog.nodes.send(&self.shared, message)?;
+                state
+                    .dialog
+                    .nodes
+                    .send(&self.shared, &state.screen, message)?;
             }
-            RELEASE => state.dialog = dialog::Dialog::default(),
+            NEW_CURRENT_NODE => state.dialog.nodes.set_focus(message.string()?),
+            GET_CURRENT_NODE => {
+                message
+                    .script_variable()?
+                    .set(storm_core::ScriptScalar::String(
+                        state.dialog.nodes.focused_name().to_owned(),
+                    ))?;
+                return Ok(0);
+            }
+            SET_SELECTABLE => {
+                let name = message.string()?.to_owned();
+                let selectable = message.long()? != 0;
+                state.dialog.nodes.set_selectable(&name, selectable);
+            }
+            GET_SELECTABLE => {
+                return Ok(u64::from(state.dialog.nodes.selectable(message.string()?)));
+            }
+            RELEASE => {
+                state.dialog = dialog::Dialog::default();
+                state.dialog_revision = state.dialog_revision.wrapping_add(1);
+            }
             CREATE_STRING => state.dialog.create_string(&self.shared, message)?,
             ENABLE_STRING | DISABLE_STRING | DELETE_STRING | CHANGE_COLOR => {
                 state.dialog.update_string(code, message)?;

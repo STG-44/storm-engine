@@ -206,14 +206,31 @@ impl Controls {
             Some(-value)
         }
     }
+    fn named_state(&self, name: &str) -> State {
+        if self.locked {
+            return State::Inactive;
+        }
+        self.names
+            .get(&name.to_ascii_lowercase())
+            .map_or(State::Inactive, |&id| {
+                self.bindings[id].state(&self.hardware, &self.tree)
+            })
+    }
+
     pub fn activated(&self, name: &str) -> bool {
-        !self.locked
-            && self
-                .names
-                .get(&name.to_ascii_lowercase())
-                .is_some_and(|&id| {
-                    self.bindings[id].state(&self.hardware, &self.tree) == State::Activated
-                })
+        self.named_state(name) == State::Activated
+    }
+
+    pub fn released(&self, name: &str) -> bool {
+        self.named_state(name) == State::Deactivated
+    }
+
+    pub fn idle(&self, name: &str) -> bool {
+        self.named_state(name) == State::Inactive
+    }
+
+    pub fn held(&self, name: &str) -> bool {
+        matches!(self.named_state(name), State::Active | State::Activated)
     }
 
     pub fn edge(&self, id: usize) -> Option<(&'static str, &str)> {

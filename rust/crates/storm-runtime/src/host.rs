@@ -149,6 +149,9 @@ impl NativeHost {
         }
     }
     pub fn set_interface_pointer(&mut self, pointer: Option<[f64; 2]>) {
+        if let Some(interfaces) = &self.interfaces {
+            interfaces.set_pointer(pointer);
+        }
         if let Some(scenes) = &self.back_scenes {
             scenes.set_pointer(pointer);
         }

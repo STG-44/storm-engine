@@ -1,13 +1,16 @@
+mod button;
+
 use super::{Shared, color, decode, load_font, load_texture, records};
-use crate::{config::ini_integer, interface::InterfaceScreen};
+use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
 use anyhow::{Context, Result, bail, ensure};
+use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK};
 use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
 };
-use storm_core::Message;
+use storm_core::{Message, Value};
 use storm_formats::texture::Texture;
-use storm_render::interface_text::{Alignment, InterfaceDraw, PictureDraw, TextDraw};
+use storm_render::interface_text::{Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw};
 
 const DEFAULTS: &str = "RESOURCE/INI/INTERFACES/defaultnode.ini";
 const PICTURES: &str = "RESOURCE/INI/INTERFACES/pictures.ini";
@@ -22,12 +25,28 @@ pub(in crate::interface) struct Nodes {
     items: Vec<Node>,
     textures: BTreeMap<String, Weak<Texture>>,
     picture_ini: Option<String>,
+    focus: Option<usize>,
+    mouse_target: Option<usize>,
+    previous_pointer: Option<[f64; 2]>,
+    waiting_for_release: bool,
+    pending: Vec<Pending>,
 }
+
+struct Pending {
+    node: usize,
+    action: Action,
+    command: Command,
+    remaining: u32,
+}
+
+pub(in crate::interface) type NodeEvents = Vec<(String, Message)>;
 
 struct Node {
     name: String,
     priority: i32,
     visible: bool,
+    locked: bool,
+    selectable: bool,
     rect: [i32; 4],
     widget: Widget,
 }
@@ -44,6 +63,7 @@ enum Widget {
         rgba: [u8; 4],
     },
     Title(Vec<InterfaceDraw>),
+    Button(Box<Button>),
 }
 
 struct Atlas {
@@ -131,9 +151,19 @@ impl Nodes {
                 },
                 "picture" => nodes.load_picture(shared, &setting)?,
                 "title" => Widget::Title(nodes.load_title(shared, &setting, screen, rect, title)?),
+                "button" => Widget::Button(Box::new(Button::load(
+                    &mut nodes,
+                    shared,
+                    &setting,
+                    records(text, name)
+                        .filter(|(key, _)| key.eq_ignore_ascii_case("command"))
+                        .map(|(_, value)| value),
+                )?)),
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
+            let selectable =
+                matches!(&widget, Widget::Button(button) if !button.commands.is_empty());
             let priority = priority.unwrap_or(80);
             let index = nodes
                 .items
@@ -144,6 +174,8 @@ impl Nodes {
                     name: name.to_owned(),
                     priority,
                     visible: !flag(setting("bNotUse"), false),
+                    locked: false,
+                    selectable,
                     rect,
                     widget,
                 },
@@ -154,6 +186,15 @@ impl Nodes {
                 nodes.window_state(index, flag(setting("show"), true), true);
             }
         }
+        if let Some(start) = field(text, "MAIN", "start") {
+            nodes.focus = nodes.find(start).or_else(|| {
+                nodes
+                    .items
+                    .iter()
+                    .position(|node| matches!(node.widget, Widget::Button(_)))
+            });
+        }
+        nodes.waiting_for_release = true;
         Ok(nodes)
     }
 
@@ -165,8 +206,34 @@ impl Nodes {
 
     pub(in crate::interface) fn set_using(&mut self, name: &str, show: bool) {
         if let Some(index) = self.find(name) {
-            self.items[index].visible = show;
+            let node = &mut self.items[index];
+            node.visible = show;
+            if let Widget::Button(button) = &mut node.widget {
+                button.reset_press();
+            }
         }
+    }
+
+    pub(in crate::interface) fn set_focus(&mut self, name: &str) {
+        if let Some(index) = self.find(name) {
+            self.focus = Some(index);
+        }
+    }
+
+    pub(in crate::interface) fn focused_name(&self) -> &str {
+        self.focus
+            .map_or("", |index| self.items[index].name.as_str())
+    }
+
+    pub(in crate::interface) fn set_selectable(&mut self, name: &str, selectable: bool) {
+        if let Some(index) = self.find(name) {
+            self.items[index].selectable = selectable;
+        }
+    }
+
+    pub(in crate::interface) fn selectable(&self, name: &str) -> bool {
+        self.find(name)
+            .is_some_and(|index| self.items[index].selectable && self.items[index].visible)
     }
 
     pub(in crate::interface) fn window(&mut self, name: &str, value: bool, visibility: bool) {
@@ -211,10 +278,223 @@ impl Nodes {
             if let Some(child) = self.find(&name) {
                 if visibility {
                     self.items[child].visible = value;
+                } else {
+                    self.items[child].locked = !value;
                 }
                 self.window_state(child, value, visibility);
             }
         }
+    }
+
+    fn button(&self, index: usize) -> Option<&Button> {
+        let node = self.items.get(index)?;
+        if !node.visible || node.locked || !node.selectable {
+            return None;
+        }
+        match &node.widget {
+            Widget::Button(button) => Some(button),
+            _ => None,
+        }
+    }
+
+    pub(in crate::interface) fn take_button_events(&mut self, delta_ms: u32) -> Result<NodeEvents> {
+        let due = self
+            .pending
+            .extract_if(.., |pending| {
+                pending.remaining = pending.remaining.saturating_sub(delta_ms);
+                pending.remaining == 0
+            })
+            .collect::<Vec<_>>();
+        let mut events = Vec::new();
+        for Pending {
+            node,
+            action,
+            command,
+            ..
+        } in due.into_iter().rev()
+        {
+            for (action, target) in command.redirects.into_iter().rev() {
+                if let Some(index) = self.find(&target) {
+                    self.press(index, action);
+                }
+            }
+            if let Some(name) = command.focus {
+                self.set_focus(&name);
+            }
+            if let Some(event) = command.event {
+                events.push((
+                    event,
+                    Message::new(
+                        "ls",
+                        vec![
+                            Value::Long(action.0),
+                            Value::String(self.items[node].name.clone()),
+                        ],
+                    )?,
+                ));
+            }
+        }
+        Ok(events)
+    }
+
+    pub(in crate::interface) fn button_input(
+        &mut self,
+        controls: &Controls,
+        point: Option<[f64; 2]>,
+    ) -> Result<NodeEvents> {
+        // Leave the separate 3D main-menu controls in InterfaceBackScene.
+        if !self
+            .items
+            .iter()
+            .any(|node| matches!(node.widget, Widget::Button(_)))
+        {
+            return Ok(Vec::new());
+        }
+        const PRESS: [&str; 17] = [
+            "IRight",
+            "ILeft",
+            "IUp",
+            "IDown",
+            "ILShift",
+            "IRShift",
+            "IAction",
+            "ICancel",
+            "IAllCancel",
+            "ILClick",
+            "IRClick",
+            "IStartButton",
+            "IUp2",
+            "IDown2",
+            "IRight2",
+            "ILeft2",
+            "IContextHelp",
+        ];
+        if self.waiting_for_release && PRESS.iter().any(|name| !controls.idle(name)) {
+            return Ok(Vec::new());
+        }
+        self.waiting_for_release = false;
+        let hit = |matches_button: fn(&Button) -> bool| {
+            point.and_then(|[x, y]| {
+                (0..self.items.len()).rev().find(|&index| {
+                    let [left, top, right, bottom] = self.items[index].rect.map(f64::from);
+                    (left..=right).contains(&x)
+                        && (top..=bottom).contains(&y)
+                        && self.button(index).is_some_and(matches_button)
+                })
+            })
+        };
+        let hovered = hit(|button| button.select_on_hover);
+        let clicked = hit(|button| button.commands.contains_key(&CLICK.0));
+        if point != self.previous_pointer && hovered.is_some() {
+            self.focus = hovered;
+        }
+        self.previous_pointer = point;
+        if controls.activated("ILClick") {
+            self.mouse_target = clicked;
+            if let Some(index) = clicked
+                && self.button(index).is_some_and(|button| !button.on_release)
+            {
+                return self.fire(index, CLICK);
+            }
+            return Ok(Vec::new());
+        }
+        if controls.released("ILClick")
+            && let Some(index) = self.mouse_target.take()
+            && self.button(index).is_some_and(|button| button.on_release)
+        {
+            return self.fire(index, CLICK);
+        }
+        if !controls.held("ILClick") && controls.activated("IRClick") {
+            return clicked.map_or_else(|| Ok(Vec::new()), |index| self.fire(index, RIGHT_CLICK));
+        }
+        if controls.held("ILClick") || controls.held("IRClick") {
+            return Ok(Vec::new());
+        }
+        let active = |first, second| controls.activated(first) || controls.activated(second);
+        let shifted = controls.held("ILShift") || controls.held("IRShift");
+        let action = if active("ICancel", "IAllCancel") {
+            CANCEL
+        } else if active("IAction", "IStartButton") {
+            ACTIVATE
+        } else if active("IDown", "IDown2") {
+            if shifted {
+                Action(11, "speeddown")
+            } else {
+                Action(4, "downstep")
+            }
+        } else if active("IUp", "IUp2") {
+            if shifted {
+                Action(10, "speedup")
+            } else {
+                Action(3, "upstep")
+            }
+        } else if active("ILeft", "ILeft2") {
+            if shifted {
+                Action(9, "speedleft")
+            } else {
+                Action(2, "leftstep")
+            }
+        } else if active("IRight", "IRight2") {
+            if shifted {
+                Action(8, "speedright")
+            } else {
+                Action(1, "rightstep")
+            }
+        } else {
+            return Ok(Vec::new());
+        };
+        if let Some(index) = self.focus {
+            self.fire(index, action)
+        } else if action == CANCEL {
+            Ok(vec![("exitCancel".to_owned(), Message::new("", vec![])?)])
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    fn press(&mut self, index: usize, action: Action) {
+        let node = &mut self.items[index];
+        if node.visible
+            && let Widget::Button(button) = &mut node.widget
+        {
+            button.press(action, node.selectable);
+        }
+    }
+
+    fn fire(&mut self, index: usize, action: Action) -> Result<NodeEvents> {
+        let Some(command) = self
+            .button(index)
+            .and_then(|button| button.commands.get(&action.0))
+            .cloned()
+        else {
+            return Ok(Vec::new());
+        };
+        self.press(index, action);
+        self.pending.retain(|pending| pending.node != index);
+        if command.focus.is_some() || command.event.is_some() || !command.redirects.is_empty() {
+            self.pending.push(Pending {
+                node: index,
+                action,
+                remaining: command.delay,
+                command,
+            });
+        }
+        Ok(vec![
+            (
+                "ISound".to_owned(),
+                Message::new("l", vec![Value::Long(1)])?,
+            ),
+            (
+                "ievnt_command".to_owned(),
+                Message::new(
+                    "ss",
+                    vec![
+                        Value::String(action.1.to_owned()),
+                        Value::String(self.items[index].name.clone()),
+                    ],
+                )?,
+            ),
+        ])
     }
 
     fn texture(&mut self, shared: &Shared, name: &str) -> Result<Option<Rc<Texture>>> {
@@ -336,6 +616,7 @@ impl Nodes {
                         rect: [l, top as f32, r, bottom as f32],
                         uv,
                         rgba,
+                        color: PictureColor::Modulate,
                     }))
                 };
                 let transition = half.saturating_add(medium_width);
@@ -375,6 +656,7 @@ impl Nodes {
                 position: [center, top.saturating_add(offset)],
                 scale,
                 alignment: Alignment::Center,
+                shadow: true,
                 rgba: ini_color(setting("fontColor"), [255; 4])?,
             }));
         }
@@ -384,12 +666,17 @@ impl Nodes {
     pub(in crate::interface) fn send(
         &mut self,
         shared: &Shared,
+        screen: &InterfaceScreen,
         message: &mut Message,
     ) -> Result<u64> {
         let Some(index) = self.find(message.string()?) else {
             return Ok(0);
         };
         let code = message.long()?;
+        if matches!(self.items[index].widget, Widget::Button(_)) {
+            self.send_button(index, shared, screen, code, message)?;
+            return Ok(0);
+        }
         ensure!(
             matches!(self.items[index].widget, Widget::Picture { .. }),
             "unported XINTERFACE message {code} for node {:?}",
@@ -444,17 +731,78 @@ impl Nodes {
         Ok(0)
     }
 
+    fn send_button(
+        &mut self,
+        index: usize,
+        shared: &Shared,
+        screen: &InterfaceScreen,
+        code: i32,
+        message: &mut Message,
+    ) -> Result<()> {
+        let image = if code == 2 {
+            let group = message.string()?;
+            if group.is_empty() {
+                return Ok(());
+            }
+            let atlas = self.atlas(shared, group)?;
+            let uv = atlas.part(Some(message.string()?)).0;
+            Some((atlas.texture, uv))
+        } else {
+            None
+        };
+        let node = &mut self.items[index];
+        let Widget::Button(button) = &mut node.widget else {
+            unreachable!()
+        };
+        match code {
+            0 => {
+                let rect = [
+                    message.long()?,
+                    message.long()?,
+                    message.long()?,
+                    message.long()?,
+                ];
+                node.rect = absolute_rect(rect, screen, message.long()?);
+            }
+            1 => {
+                let uv = [
+                    message.float()?,
+                    message.float()?,
+                    message.float()?,
+                    message.float()?,
+                ];
+                ensure!(
+                    uv.iter().all(|value| value.is_finite()),
+                    "invalid button UV"
+                );
+                button.uv = uv;
+            }
+            2 => (button.texture, button.uv) = image.expect("button image message parsed"),
+            _ => bail!("unported XINTERFACE button message {code}"),
+        }
+        Ok(())
+    }
+
     pub(in crate::interface) fn draws(
-        &self,
+        &mut self,
         screen: &InterfaceScreen,
         foreground: bool,
+        delta_ms: u32,
         out: &mut Vec<InterfaceDraw>,
     ) {
-        for node in &self.items {
+        for (index, node) in self.items.iter_mut().enumerate() {
             if !node.visible || (node.priority > 90) != foreground {
                 continue;
             }
-            match &node.widget {
+            match &mut node.widget {
+                Widget::Button(button) => button.draw(
+                    node.rect,
+                    screen.size,
+                    self.focus == Some(index),
+                    node.selectable,
+                    delta_ms,
+                    out,
+                ),
                 Widget::Picture {
                     texture: Some(texture),
                     uv,
@@ -466,6 +814,7 @@ impl Nodes {
                         rect: node.rect.map(|n| n as f32),
                         uv: *uv,
                         rgba: *rgba,
+                        color: PictureColor::Modulate,
                     }));
                 }
                 Widget::Title(draws) => out.extend(draws.iter().cloned()),
@@ -504,7 +853,7 @@ fn ini_color(value: Option<&str>, default: [u8; 4]) -> Result<[u8; 4]> {
     Ok([r, g, b, a])
 }
 
-fn tuple<T: std::str::FromStr>(value: &str) -> Result<[T; 4]> {
+fn tuple<T: std::str::FromStr, const N: usize>(value: &str) -> Result<[T; N]> {
     value
         .split_once(';')
         .map_or(value, |(value, _)| value)
@@ -516,8 +865,12 @@ fn tuple<T: std::str::FromStr>(value: &str) -> Result<[T; 4]> {
 }
 
 fn screen_position(screen: &InterfaceScreen, setting: &Setting<'_>) -> Result<[i32; 4]> {
-    let mut rect = setting("position").map_or(Ok(screen.rect), tuple::<i32>)?;
+    let rect = setting("position").map_or(Ok(screen.rect), tuple)?;
     let mask = setting("bAbsoluteRectangle").map_or(Ok(0), ini_integer)?;
+    Ok(absolute_rect(rect, screen, mask))
+}
+
+fn absolute_rect(mut rect: [i32; 4], screen: &InterfaceScreen, mask: i32) -> [i32; 4] {
     let [left, top, right, bottom] = screen.rect;
     let [width, height] = screen.size;
     let offsets = [
@@ -537,5 +890,5 @@ fn screen_position(screen: &InterfaceScreen, setting: &Setting<'_>) -> Result<[i
     for (value, offset) in rect.iter_mut().zip(offsets) {
         *value = value.saturating_add(offset);
     }
-    Ok(rect)
+    rect
 }

@@ -463,9 +463,10 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
 compiler and VM. Loading `selectCharacter.ini` now passes `MAIN_WINDOW`,
-`MAIN_BACK` and `TITLE`. It stops at the unported `BUTTON,EXIT_BTN`.
-A separate partial-layout capture uses the original backdrop, title plate,
-localized label and Charles de Maure portrait.
+`MAIN_BACK`, `TITLE` and `BUTTON,EXIT_BTN`. It stops at the unported
+`IMAGECOLLECTION,CHARACTER_BIG_PICTURE_BORDER`. A separate partial-layout
+capture includes the original backdrop, title, portrait, exit icon and
+difficulty and setup arrows.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -549,8 +550,13 @@ positions, alignment, visibility and color. `WINDOW` applies the native
 visibility and activation messages to its groups. `PICTURE` draws a
 texture or an entry from `pictures.ini` and accepts texture, position, UV
 and tint changes. `TITLE` resolves the script's localized label and tiles
-the original three-part atlas plate. Unsupported widgets, video pictures
-and blinking pictures report explicit errors. The renderer reads the
+the original three-part atlas plate. `BUTTON` renders atlas faces, shadows
+and pressed offsets. An eligible button receives pointer or focused
+keyboard edges and emits the original `ISound`, `ievnt_command` and
+configured events. Window locks and visibility are respected. A new
+dialog drops queued actions from its predecessor. Held-input repeat and
+double-click handling remain pending. Unsupported widgets and video
+or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the
 same overlay pass.

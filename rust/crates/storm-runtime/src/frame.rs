@@ -197,6 +197,7 @@ impl Engine {
             self.host
                 .entities
                 .process_entity_stage(id, Stage::Execute, delta_ms)?;
+            self.execute_dialog(id, delta_ms)?;
             if let Some(scenes) = &self.host.back_scenes
                 && let Some(notices) = scenes.execute(id, &self.host.controls)?
             {
@@ -279,6 +280,41 @@ impl Engine {
         }
         Ok(())
     }
+    fn execute_dialog(&mut self, id: storm_core::EntityId, delta_ms: u32) -> Result<()> {
+        let Some(interfaces) = self
+            .host
+            .interfaces
+            .clone()
+            .filter(|_| self.host.entities.is_valid(id))
+        else {
+            return Ok(());
+        };
+        let Some(revision) = interfaces.active_dialog_revision(id) else {
+            return Ok(());
+        };
+        let active = |engine: &Self| {
+            engine.host.entities.is_valid(id)
+                && interfaces.active_dialog_revision(id) == Some(revision)
+        };
+        for (name, mut message) in interfaces.take_button_events(id, delta_ms)? {
+            if !active(self) {
+                return Ok(());
+            }
+            self.runtime
+                .emit(&name, &mut message, &mut self.host, self.limits)?;
+        }
+        if active(self) {
+            for (name, mut message) in interfaces.button_input(id, &self.host.controls)? {
+                if !active(self) {
+                    break;
+                }
+                self.runtime
+                    .emit(&name, &mut message, &mut self.host, self.limits)?;
+            }
+        }
+        Ok(())
+    }
+
     fn realize_entities(
         &mut self,
         delta_ms: u32,
@@ -298,7 +334,7 @@ impl Engine {
                 && interfaces.dialog_active(id)
             {
                 storm_script::Host::world(&self.host)
-                    .read(|store| interfaces.realize_dialog(id, store))?;
+                    .read(|store| interfaces.realize_dialog(id, store, delta_ms))?;
             }
             if let Some((fog, celestial)) = self
                 .host

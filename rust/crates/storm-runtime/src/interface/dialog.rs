@@ -6,6 +6,7 @@ use crate::{
     config::{ini_integer, ini_section},
 };
 use anyhow::{Context, Result, ensure};
+pub(super) use nodes::NodeEvents;
 use std::{collections::BTreeMap, rc::Rc};
 use storm_core::{AttributeId, AttributeStore, Message};
 use storm_render::interface_text::{Alignment, BitmapFont, InterfaceDraw, TextDraw};
@@ -16,6 +17,10 @@ pub(super) const CREATE_STRING: i32 = 45012;
 pub(super) const ENABLE_STRING: i32 = 45014;
 pub(super) const DISABLE_STRING: i32 = 45015;
 pub(super) const SET_NODE_USING: i32 = 45016;
+pub(super) const NEW_CURRENT_NODE: i32 = 45021;
+pub(super) const SET_SELECTABLE: i32 = 45024;
+pub(super) const GET_SELECTABLE: i32 = 45026;
+pub(super) const GET_CURRENT_NODE: i32 = 45028;
 pub(super) const MSG_TO_NODE: i32 = 45045;
 pub(super) const DELETE_STRING: i32 = 45050;
 pub(super) const CHANGE_COLOR: i32 = 45051;
@@ -122,19 +127,20 @@ impl Dialog {
     }
 
     pub(super) fn draws(
-        &self,
+        &mut self,
         store: &AttributeStore,
         root: Option<AttributeId>,
         screen: &InterfaceScreen,
+        delta_ms: u32,
     ) -> Vec<InterfaceDraw> {
         let mut draws = Vec::new();
-        self.nodes.draws(screen, false, &mut draws);
+        self.nodes.draws(screen, false, delta_ms, &mut draws);
         draws.extend(
             self.string_draws(store, root, screen)
                 .into_iter()
                 .map(InterfaceDraw::Text),
         );
-        self.nodes.draws(screen, true, &mut draws);
+        self.nodes.draws(screen, true, delta_ms, &mut draws);
         draws
     }
 
@@ -168,6 +174,7 @@ impl Dialog {
                     ],
                     scale: entry.scale,
                     alignment: entry.alignment,
+                    shadow: true,
                     rgba: entry.rgba,
                 })
             })

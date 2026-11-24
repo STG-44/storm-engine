@@ -37,7 +37,14 @@ pub struct TextDraw {
     pub position: [i32; 2],
     pub scale: f32,
     pub alignment: Alignment,
+    pub shadow: bool,
     pub rgba: [u8; 4],
+}
+
+#[derive(Clone, Copy)]
+pub enum PictureColor {
+    Modulate,
+    AlphaMask,
 }
 
 #[derive(Clone)]
@@ -48,6 +55,7 @@ pub struct PictureDraw {
     pub rect: [f32; 4],
     pub uv: [f32; 4],
     pub rgba: [u8; 4],
+    pub color: PictureColor,
 }
 
 #[derive(Clone)]
@@ -62,7 +70,7 @@ struct Instance {
     rect: [f32; 4],
     uv: [f32; 4],
     rgba: [u8; 4],
-    modulate_picture: u32,
+    color_mode: u32,
 }
 
 impl PictureDraw {
@@ -89,7 +97,10 @@ impl PictureDraw {
                 ],
                 uv: self.uv,
                 rgba: self.rgba,
-                modulate_picture: 1,
+                color_mode: match self.color {
+                    PictureColor::Modulate => 1,
+                    PictureColor::AlphaMask => 2,
+                },
             });
         }
         Ok(())
@@ -178,18 +189,19 @@ impl TextDraw {
                             (v as f32 + h as f32 - 0.5) / atlas_y,
                         ],
                         rgba,
-                        modulate_picture: 0,
+                        color_mode: 0,
                     });
                 }
                 offset += font.advance(c) * scale;
             }
         };
-        // XINTERFACE ExtPrint always requests the bitmap shadow.
-        draw(
-            out,
-            [x + font.shadow[0] as f32, y + font.shadow[1] as f32],
-            [0, 0, 0, self.rgba[3]],
-        );
+        if self.shadow {
+            draw(
+                out,
+                [x + font.shadow[0] as f32, y + font.shadow[1] as f32],
+                [0, 0, 0, self.rgba[3]],
+            );
+        }
         draw(out, [x, y], self.rgba);
         Ok(())
     }
