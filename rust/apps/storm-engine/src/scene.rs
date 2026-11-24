@@ -7,7 +7,7 @@ use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
     fade::{FadeCompositor, FadeDraw},
-    interface_text::{TextDraw, TextRenderer},
+    interface_text::{InterfaceDraw, InterfaceRenderer},
     loading::{LoadingPictures, LoadingScreen},
     screenshot::{SIDE, ScreenshotPass},
 };
@@ -23,7 +23,7 @@ pub(crate) struct SceneFrame<'a> {
     pub live: &'a [EntityId],
     pub seconds: f32,
     pub pictures: Option<Rc<LoadingPictures>>,
-    pub text: Vec<TextDraw>,
+    pub interface: Vec<InterfaceDraw>,
     pub fades: &'a [FadeDraw],
     pub correction: Option<ColorCorrection>,
     pub sea: Option<storm_runtime::sea::Surface>,
@@ -38,7 +38,7 @@ pub(crate) struct SceneRenderer {
     format: wgpu::TextureFormat,
     models: ModelScenes,
     loading: Option<(Option<Rc<LoadingPictures>>, LoadingScreen)>,
-    text: Option<TextRenderer>,
+    interface: Option<InterfaceRenderer>,
     fade: FadeCompositor,
     color: ColorPass,
     screenshot: Option<ScreenshotPass>,
@@ -50,7 +50,7 @@ impl SceneRenderer {
             format,
             models: ModelScenes::new(format),
             loading: None,
-            text: None,
+            interface: None,
             fade: FadeCompositor::new(gpu, format),
             color: ColorPass::new(format),
             screenshot: None,
@@ -119,7 +119,7 @@ impl SceneRenderer {
             correction: None,
             sea: host.sea_draw(),
             camera: host.authored_camera(),
-            text: host.interface_text_draws(),
+            interface: host.interface_draws(),
             coast_foam: host.coast_foam_draws(),
             rain: host.rain_draws(),
             sun: host.sun_draws(),
@@ -185,10 +185,10 @@ impl SceneRenderer {
                     self.models
                         .encode(gpu, encoder, view, width, height, frame.seconds)?;
                 }
-                if !frame.text.is_empty() || self.text.is_some() {
-                    self.text
-                        .get_or_insert_with(|| TextRenderer::new(gpu, self.format))
-                        .encode(gpu, encoder, view, [width, height], &frame.text)?;
+                if !frame.interface.is_empty() || self.interface.is_some() {
+                    self.interface
+                        .get_or_insert_with(|| InterfaceRenderer::new(gpu, self.format))
+                        .encode(gpu, encoder, view, [width, height], &frame.interface)?;
                 }
                 if let Some((_, screen)) = &self.loading {
                     screen.encode(gpu, encoder, view, [width, height]);

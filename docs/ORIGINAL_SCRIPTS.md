@@ -238,7 +238,8 @@ window size, loads the cursor texture, and reads the script's initial
 `GameTime` attributes. Its synchronous initialization events obtain the
 quest text files and the live script reference for the mouse wheel. The
 `obj_strservice` messages and language functions share the open catalog
-IDs and reference counts. Active dialog widgets remain pending.
+IDs and reference counts. The configured widget pass supports window
+groups, static pictures and titles.
 
 `ILogAndActions` sends the synchronous `SetWindowSize` event with the
 current window dimensions during initialization. It reads the log and
@@ -461,8 +462,10 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 `XINTERFACE`. The runtime then loaded the original `selectCharacter.c`
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
-compiler and VM. Loading `selectCharacter.ini` stops at its first widget,
-`WINDOW,MAIN_WINDOW`. Character selection is pending at that point.
+compiler and VM. Loading `selectCharacter.ini` now passes `MAIN_WINDOW`,
+`MAIN_BACK` and `TITLE`. It stops at the unported `BUTTON,EXIT_BTN`.
+A separate partial-layout capture uses the original backdrop, title plate,
+localized label and Charles de Maure portrait.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -540,13 +543,17 @@ this configured path with original assets and wave frames.
 `XINTERFACE` opens the configured dialog INI and resets the preceding
 dialog's strings. The original `mainmenu.ini` has no active nodes in its
 `[MAIN]` section because its interactive items are the GM models owned
-by `InterfaceBackScene`. Dialogs with active native widgets still need
-their widget handlers. A missing INI posts the original `exitCancel`
+by `InterfaceBackScene`. A missing INI posts the original `exitCancel`
 event. Dynamic strings retain the script's `GameInterface.strings` values,
-positions, alignment, visibility and color. The renderer reads the
-original bitmap atlas and font metrics, including PC scaling, Cyrillic
-glyphs and the native shadow. Window, frame capture and PNG output use
-the same text pass.
+positions, alignment, visibility and color. `WINDOW` applies the native
+visibility and activation messages to its groups. `PICTURE` draws a
+texture or an entry from `pictures.ini` and accepts texture, position, UV
+and tint changes. `TITLE` resolves the script's localized label and tiles
+the original three-part atlas plate. Unsupported widgets, video pictures
+and blinking pictures report explicit errors. The renderer reads the
+original bitmap fonts, including PC scaling, Cyrillic glyphs and the
+native shadow. The desktop window, frame capture and PNG output use the
+same overlay pass.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM

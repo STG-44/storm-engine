@@ -31,7 +31,7 @@ use storm_core::{
 use storm_formats::texture::Texture;
 use storm_render::{
     fade::FadeDraw,
-    interface_text::{BitmapFont, TextDraw},
+    interface_text::{BitmapFont, InterfaceDraw, TextDraw},
     loading::LoadingPictures,
     texture_paths::TexturePaths,
 };
@@ -72,7 +72,7 @@ struct Shared {
     game: GameDirectory,
     language: LanguageService,
     fonts: RefCell<BTreeMap<String, std::rc::Weak<BitmapFont>>>,
-    text: RefCell<Vec<(EntityId, TextDraw)>>,
+    draws: RefCell<Vec<(EntityId, InterfaceDraw)>>,
     paths: Rc<RefCell<TexturePaths>>,
     time_scale: Rc<Cell<f32>>,
     window: Cell<Option<[u32; 2]>>,
@@ -114,7 +114,7 @@ impl Interfaces {
             game,
             language,
             fonts: RefCell::default(),
-            text: RefCell::default(),
+            draws: RefCell::default(),
             paths: host.texture_paths.clone(),
             time_scale: host.time_scale.clone(),
             window: Cell::new(None),
@@ -170,9 +170,9 @@ impl Interfaces {
         self.state(id).is_some_and(|state| state.dialog.active)
     }
 
-    pub(crate) fn realize_text(&self, id: EntityId, store: &AttributeStore) {
+    pub(crate) fn realize_dialog(&self, id: EntityId, store: &AttributeStore) {
         if let Some(state) = self.state(id) {
-            self.0.text.borrow_mut().extend(
+            self.0.draws.borrow_mut().extend(
                 state
                     .dialog
                     .draws(store, state.binding, &state.screen)
@@ -182,13 +182,37 @@ impl Interfaces {
         }
     }
 
-    pub(crate) fn text_draws(&self) -> Vec<TextDraw> {
+    pub(crate) fn draws(&self) -> Vec<InterfaceDraw> {
         self.0
-            .text
+            .draws
             .borrow()
             .iter()
             .map(|(_, draw)| draw.clone())
             .collect()
+    }
+
+    pub(crate) fn text_draws(&self) -> Vec<TextDraw> {
+        self.0
+            .draws
+            .borrow()
+            .iter()
+            .filter_map(|(_, draw)| match draw {
+                InterfaceDraw::Text(text) => Some(text.clone()),
+                InterfaceDraw::Picture(_) => None,
+            })
+            .collect()
+    }
+
+    pub(crate) fn window_state(&self, id: EntityId, name: &str, value: bool, visibility: bool) {
+        if let Some(state) = self.0.states.borrow_mut().get_mut(&id.raw()) {
+            state.dialog.nodes.window(name, value, visibility);
+            self.0.draws.borrow_mut().retain(|(owner, _)| *owner != id);
+        }
+    }
+
+    pub(crate) fn window_active(&self, id: EntityId, name: &str) -> bool {
+        self.state(id)
+            .is_some_and(|state| state.dialog.nodes.window_active(name))
     }
 
     pub(crate) fn take_dialog_post(&self, id: EntityId) -> Option<(&'static str, i32)> {
@@ -235,7 +259,7 @@ impl Interfaces {
         self.0.screenshots.borrow().image(handle)
     }
     pub fn clear_draws(&self) {
-        self.0.text.borrow_mut().clear();
+        self.0.draws.borrow_mut().clear();
         self.0.loading_draw.replace(None);
         self.0.previous_loading_draw.replace(None);
         self.0.fade_draws.borrow_mut().clear();
@@ -243,7 +267,7 @@ impl Interfaces {
     }
 
     pub fn begin_frame(&self) {
-        self.0.text.borrow_mut().clear();
+        self.0.draws.borrow_mut().clear();
         self.0.fade_draws.borrow_mut().clear();
         self.0
             .previous_loading_draw
@@ -441,7 +465,7 @@ impl Entity for Actor {
     fn destroy(&mut self, context: &mut EntityDestroy<'_>) -> Result<()> {
         self.shared.states.borrow_mut().remove(&context.id.raw());
         self.shared
-            .text
+            .draws
             .borrow_mut()
             .retain(|(id, _)| *id != context.id);
         if self.shared.options_break.get() == Some(context.id) {
@@ -451,30 +475,7 @@ impl Entity for Actor {
     }
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
-        let code = message.long()?;
-        let mut states = self.shared.states.borrow_mut();
-        let state = states
-            .get_mut(&self.id.raw())
-            .context("missing XINTERFACE state")?;
-        use dialog::{
-            CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING, INIT,
-            RELEASE,
-        };
-        match code {
-            INIT => state.dialog.activate(&self.shared, message.string()?)?,
-            RELEASE => state.dialog = dialog::Dialog::default(),
-            CREATE_STRING => state.dialog.create_string(&self.shared, message)?,
-            ENABLE_STRING | DISABLE_STRING | DELETE_STRING | CHANGE_COLOR => {
-                state.dialog.update_string(code, message)?;
-            }
-            _ => bail!("unsupported XINTERFACE message {code}"),
-        }
-        // A later Realize publishes the replacement dialog and its strings.
-        self.shared
-            .text
-            .borrow_mut()
-            .retain(|(id, _)| *id != self.id);
-        Ok(0)
+        self.receive(message, None)
     }
 
     fn process_message_with_attributes(
@@ -491,14 +492,62 @@ impl Entity for Actor {
                 }
                 Ok(0)
             }
-            _ => {
+            code => {
+                let title = (code == dialog::INIT)
+                    .then(|| {
+                        self.shared
+                            .states
+                            .borrow()
+                            .get(&self.id.raw())
+                            .and_then(|state| state.binding)
+                    })
+                    .flatten()
+                    .and_then(|root| attributes.value(root, Some("title")));
                 message.move_to_start();
-                self.process_message(message)
+                self.receive(message, title)
             }
         }
     }
 }
 
+impl Actor {
+    fn receive(&mut self, message: &mut Message, title: Option<&str>) -> Result<u64> {
+        let code = message.long()?;
+        let mut states = self.shared.states.borrow_mut();
+        let state = states
+            .get_mut(&self.id.raw())
+            .context("missing XINTERFACE state")?;
+        use dialog::{
+            CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING, INIT,
+            MSG_TO_NODE, RELEASE, SET_NODE_USING,
+        };
+        match code {
+            INIT => state
+                .dialog
+                .activate(&self.shared, message.string()?, &state.screen, title)?,
+            SET_NODE_USING => {
+                let name = message.string()?.to_owned();
+                let show = message.long()? != 0;
+                state.dialog.nodes.set_using(&name, show);
+            }
+            MSG_TO_NODE => {
+                state.dialog.nodes.send(&self.shared, message)?;
+            }
+            RELEASE => state.dialog = dialog::Dialog::default(),
+            CREATE_STRING => state.dialog.create_string(&self.shared, message)?,
+            ENABLE_STRING | DISABLE_STRING | DELETE_STRING | CHANGE_COLOR => {
+                state.dialog.update_string(code, message)?;
+            }
+            _ => bail!("unsupported XINTERFACE message {code}"),
+        }
+        // A later Realize publishes the replacement dialog and its strings.
+        self.shared
+            .draws
+            .borrow_mut()
+            .retain(|(id, _)| *id != self.id);
+        Ok(0)
+    }
+}
 fn load_loading_picture(shared: &Shared, name: &str) -> Result<Option<Arc<Texture>>> {
     if name.is_empty() {
         return Ok(None);

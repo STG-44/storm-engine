@@ -1,4 +1,5 @@
 //! XINTERFACE dialog activation and original script-owned dynamic strings.
+mod nodes;
 use super::{InterfaceScreen, Shared, load_texture};
 use crate::{
     ScriptEncoding,
@@ -7,13 +8,15 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use std::{collections::BTreeMap, rc::Rc};
 use storm_core::{AttributeId, AttributeStore, Message};
-use storm_render::interface_text::{Alignment, BitmapFont, TextDraw};
+use storm_render::interface_text::{Alignment, BitmapFont, InterfaceDraw, TextDraw};
 
 pub(super) const INIT: i32 = 45010;
 pub(super) const RELEASE: i32 = 45011;
 pub(super) const CREATE_STRING: i32 = 45012;
 pub(super) const ENABLE_STRING: i32 = 45014;
 pub(super) const DISABLE_STRING: i32 = 45015;
+pub(super) const SET_NODE_USING: i32 = 45016;
+pub(super) const MSG_TO_NODE: i32 = 45045;
 pub(super) const DELETE_STRING: i32 = 45050;
 pub(super) const CHANGE_COLOR: i32 = 45051;
 const FONT_INI: &str = "RESOURCE/INI/fonts.ini";
@@ -25,6 +28,7 @@ pub(super) struct Dialog {
     pub(super) active: bool,
     pub(super) missing: bool,
     strings: Vec<Entry>,
+    pub(super) nodes: nodes::Nodes,
 }
 struct Entry {
     name: String,
@@ -37,19 +41,26 @@ struct Entry {
 }
 
 impl Dialog {
-    pub(super) fn activate(&mut self, shared: &Shared, path: &str) -> Result<()> {
-        let missing = if let Some(bytes) = shared.game.read_optional(path, FILE_BUDGET)? {
-            let text = decode(&bytes)?;
-            let language = shared.language.name()?;
-            check_menu_items(&text, &language)?;
-            false
-        } else {
+    pub(super) fn activate(
+        &mut self,
+        shared: &Shared,
+        path: &str,
+        screen: &InterfaceScreen,
+        title: Option<&str>,
+    ) -> Result<()> {
+        let nodes = shared
+            .game
+            .read_optional(path, FILE_BUDGET)?
+            .map(|bytes| nodes::Nodes::load(shared, &decode(&bytes)?, screen, title))
+            .transpose()?;
+        let missing = nodes.is_none();
+        if missing {
             eprintln!("Interface INI file not found: {path}");
-            true
-        };
+        }
         *self = Self {
             active: true,
             missing,
+            nodes: nodes.unwrap_or_default(),
             ..Self::default()
         };
         Ok(())
@@ -115,6 +126,23 @@ impl Dialog {
         store: &AttributeStore,
         root: Option<AttributeId>,
         screen: &InterfaceScreen,
+    ) -> Vec<InterfaceDraw> {
+        let mut draws = Vec::new();
+        self.nodes.draws(screen, false, &mut draws);
+        draws.extend(
+            self.string_draws(store, root, screen)
+                .into_iter()
+                .map(InterfaceDraw::Text),
+        );
+        self.nodes.draws(screen, true, &mut draws);
+        draws
+    }
+
+    fn string_draws(
+        &self,
+        store: &AttributeStore,
+        root: Option<AttributeId>,
+        screen: &InterfaceScreen,
     ) -> Vec<TextDraw> {
         let Some(strings) = root.and_then(|id| store.child(id, "strings")) else {
             return Vec::new();
@@ -158,7 +186,7 @@ fn decode(bytes: &[u8]) -> Result<String> {
         .or_else(|_| ScriptEncoding::Windows1251.decode(bytes))
 }
 
-fn records<'a>(text: &'a str, section: &'a str) -> impl Iterator<Item = (&'a str, &'a str)> {
+fn records<'a>(text: &'a str, section: &str) -> impl Iterator<Item = (&'a str, &'a str)> {
     let mut active = false;
     text.trim_start_matches('\u{feff}')
         .lines()
@@ -174,38 +202,6 @@ fn records<'a>(text: &'a str, section: &'a str) -> impl Iterator<Item = (&'a str
             let (key, value) = line.split_once('=').unwrap_or((line, ""));
             Some((key.trim_ascii(), value.trim_ascii()))
         })
-}
-
-fn check_menu_items(text: &str, language: &str) -> Result<()> {
-    for (key, value) in records(text, "MAIN").filter(|(key, _)| key.eq_ignore_ascii_case("item")) {
-        let mut fields = value.split(',').map(str::trim_ascii).peekable();
-        if fields
-            .peek()
-            .is_some_and(|field| ini_integer(field).is_ok_and(|value| value > 0))
-        {
-            fields.next();
-        }
-        let qualifier = fields.next().unwrap_or_default();
-        let node = match qualifier.to_ascii_lowercase().as_str() {
-            "pc" => fields.next().unwrap_or_default(),
-            "xbox" => continue,
-            "lang" => {
-                if !fields
-                    .next()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(language))
-                {
-                    continue;
-                }
-                fields.next().unwrap_or_default()
-            }
-            _ => qualifier,
-        };
-        ensure!(
-            node.is_empty(),
-            "unported XINTERFACE dialog node {node:?} ({key}={value})"
-        );
-    }
-    Ok(())
 }
 
 fn load_font(shared: &Shared, name: &str) -> Result<Option<Rc<BitmapFont>>> {
@@ -273,7 +269,7 @@ fn load_font(shared: &Shared, name: &str) -> Result<Option<Rc<BitmapFont>>> {
         "invalid bitmap font dimensions"
     );
     let font = Rc::new(BitmapFont {
-        texture,
+        texture: Rc::new(texture),
         sheet_size: [width as u32, height as u32],
         glyphs,
         height: cell_height as u32,

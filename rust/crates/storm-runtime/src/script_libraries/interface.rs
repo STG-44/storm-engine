@@ -65,6 +65,15 @@ impl LanguageService {
         Ok(self.get()?.name.clone())
     }
 
+    pub(crate) fn common_string(&self, key: &str) -> Result<String> {
+        Ok(self
+            .get()?
+            .strings
+            .get(&key.to_ascii_lowercase())
+            .cloned()
+            .unwrap_or_default())
+    }
+
     fn set(&self, name: &str) -> Result<()> {
         let previous = self.get()?;
         if previous.name.eq_ignore_ascii_case(name) {
@@ -347,7 +356,8 @@ fn ini_value<'a>(text: &'a str, section: &str, key: &str) -> Option<&'a str> {
 pub(crate) fn functions(
     service: &LanguageService,
     correction: Rc<Cell<Option<ColorCorrection>>>,
-) -> Result<[(&'static str, NativeFunction); 7]> {
+    interfaces: crate::interface::Interfaces,
+) -> Result<[(&'static str, NativeFunction); 10]> {
     service.get()?;
     let current = service.clone();
     let setter = service.clone();
@@ -356,7 +366,44 @@ pub(crate) fn functions(
     let closer = service.clone();
     let translation = service.clone();
     let game = service.0.game.clone();
+    let toggle = |visibility: bool| {
+        let interfaces = interfaces.clone();
+        NativeFunction::with_world(move |args, _, entities| {
+            let [name, value] = args else {
+                bail!("window update expects a name and a flag")
+            };
+            let Value::Int(value) = value.resolved()? else {
+                bail!("window flag must be an integer")
+            };
+            let mut value = value != 0;
+            if !visibility {
+                value = !value;
+            }
+            if let Some(id) = entities.first_id("XINTERFACE") {
+                interfaces.window_state(id, name.resolved()?.text()?, value, visibility);
+            }
+            Ok(Value::Void)
+        })
+    };
+    let show = toggle(true);
+    let disable = toggle(false);
     Ok([
+        ("xi_windowshow", show),
+        ("xi_windowdisable", disable),
+        (
+            "xi_iswindowenable",
+            NativeFunction::with_world(move |args, _, entities| {
+                let [name] = args else {
+                    bail!("XI_IsWindowEnable expects a name")
+                };
+                let name = name.resolved()?;
+                let name = name.text()?;
+                let active = entities
+                    .first_id("XINTERFACE")
+                    .is_none_or(|id| interfaces.window_active(id, name));
+                Ok(Value::Int(i32::from(active)))
+            }),
+        ),
         (
             "xi_setcolorcorrection",
             NativeFunction::new(move |args| {
@@ -407,14 +454,7 @@ pub(crate) fn functions(
                 let Value::String(key) = key.resolved()? else {
                     bail!("XI_ConvertString expects a string key");
                 };
-                Ok(Value::String(
-                    common
-                        .get()?
-                        .strings
-                        .get(&key.to_ascii_lowercase())
-                        .cloned()
-                        .unwrap_or_default(),
-                ))
+                Ok(Value::String(common.common_string(&key)?))
             }),
         ),
         (

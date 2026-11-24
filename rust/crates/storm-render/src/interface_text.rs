@@ -1,4 +1,4 @@
-//! Original bitmap-font quads shared by the configured window and PNG capture.
+//! Textured interface quads shared by the configured window and PNG capture.
 use crate::{Gpu, model::upload_texture};
 use anyhow::{Result, ensure};
 use std::{
@@ -12,7 +12,7 @@ const MAX_GLYPHS: usize = 512;
 const MAX_INSTANCES: usize = 65_536;
 
 pub struct BitmapFont {
-    pub texture: Texture,
+    pub texture: Rc<Texture>,
     pub sheet_size: [u32; 2],
     pub glyphs: BTreeMap<char, [u32; 4]>,
     pub height: u32,
@@ -40,12 +40,85 @@ pub struct TextDraw {
     pub rgba: [u8; 4],
 }
 
+#[derive(Clone)]
+pub struct PictureDraw {
+    pub texture: Rc<Texture>,
+    pub canvas: [i32; 2],
+    /// Left, top, right, bottom in the interface coordinate system.
+    pub rect: [f32; 4],
+    pub uv: [f32; 4],
+    pub rgba: [u8; 4],
+}
+
+#[derive(Clone)]
+pub enum InterfaceDraw {
+    Picture(PictureDraw),
+    Text(TextDraw),
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Instance {
     rect: [f32; 4],
     uv: [f32; 4],
     rgba: [u8; 4],
+    modulate_picture: u32,
+}
+
+impl PictureDraw {
+    fn layout(&self, out: &mut Vec<Instance>) -> Result<()> {
+        let [width, height] = self.canvas.map(|value| value as f32);
+        ensure!(
+            width > 0.0
+                && height > 0.0
+                && self
+                    .rect
+                    .iter()
+                    .chain(&self.uv)
+                    .all(|value| value.is_finite()),
+            "invalid interface picture geometry"
+        );
+        let [left, top, right, bottom] = self.rect;
+        if self.rgba[3] != 0 && left != right && top != bottom {
+            out.push(Instance {
+                rect: [
+                    left * 2.0 / width - 1.0,
+                    1.0 - top * 2.0 / height,
+                    right * 2.0 / width - 1.0,
+                    1.0 - bottom * 2.0 / height,
+                ],
+                uv: self.uv,
+                rgba: self.rgba,
+                modulate_picture: 1,
+            });
+        }
+        Ok(())
+    }
+}
+
+impl BitmapFont {
+    fn advance(&self, c: char) -> f32 {
+        self.glyphs
+            .get(&c)
+            .map_or(0.0, |glyph| (glyph[2] as f32 * self.pc_scale).trunc())
+            + self.interval as f32
+            + if c == ' ' {
+                (self.space as f32 * self.pc_scale).trunc()
+            } else {
+                0.0
+            }
+    }
+
+    /// Matches the native width used to position title plates and glyphs.
+    pub fn text_width(&self, text: &str) -> i32 {
+        symbols(text).map(|c| self.advance(c)).sum::<f32>() as i32
+    }
+}
+
+fn symbols(text: &str) -> impl Iterator<Item = char> + Clone + '_ {
+    text.chars()
+        .take(MAX_GLYPHS)
+        .filter(|&c| (c as u32) < 0x2070)
 }
 
 impl TextDraw {
@@ -69,21 +142,8 @@ impl TextDraw {
         let scale = self.scale * ratio_x;
         let y = (self.position[1] as f32 * ratio_y).trunc();
         let glyph_width = |glyph: &[u32; 4]| (glyph[2] as f32 * font.pc_scale).trunc();
-        let advance = |c: char| {
-            font.glyphs.get(&c).map_or(0.0, glyph_width)
-                + font.interval as f32
-                + if c == ' ' {
-                    (font.space as f32 * font.pc_scale).trunc()
-                } else {
-                    0.0
-                }
-        };
-        let symbols = self
-            .text
-            .chars()
-            .take(MAX_GLYPHS)
-            .filter(|&c| (c as u32) < 0x2070);
-        let width = symbols.clone().map(advance).sum::<f32>() as i32;
+        let symbols = symbols(&self.text);
+        let width = font.text_width(&self.text);
         let offset = match self.alignment {
             Alignment::Left => 0,
             Alignment::Right => width,
@@ -118,9 +178,10 @@ impl TextDraw {
                             (v as f32 + h as f32 - 0.5) / atlas_y,
                         ],
                         rgba,
+                        modulate_picture: 0,
                     });
                 }
-                offset += advance(c) * scale;
+                offset += font.advance(c) * scale;
             }
         };
         // XINTERFACE ExtPrint always requests the bitmap shadow.
@@ -130,27 +191,23 @@ impl TextDraw {
             [0, 0, 0, self.rgba[3]],
         );
         draw(out, [x, y], self.rgba);
-        ensure!(
-            out.len() <= MAX_INSTANCES,
-            "interface text frame glyph budget"
-        );
         Ok(())
     }
 }
 
-pub struct TextRenderer {
+pub struct InterfaceRenderer {
     pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
-    atlases: BTreeMap<usize, (Weak<BitmapFont>, wgpu::BindGroup)>,
+    textures: BTreeMap<usize, (Weak<Texture>, wgpu::BindGroup)>,
     instances: Option<wgpu::Buffer>,
 }
 
-impl TextRenderer {
+impl InterfaceRenderer {
     pub fn new(gpu: &Gpu, format: wgpu::TextureFormat) -> Self {
         let device = &gpu.device;
         let shader = device.create_shader_module(wgpu::include_wgsl!("interface_text.wgsl"));
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Interface bitmap text"),
+            label: Some("Interface images and text"),
             layout: None,
             vertex: wgpu::VertexState {
                 module: &shader,
@@ -159,7 +216,7 @@ impl TextRenderer {
                     array_stride: size_of::<Instance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x4, 1 => Float32x4, 2 => Unorm8x4
+                        0 => Float32x4, 1 => Float32x4, 2 => Unorm8x4, 3 => Uint32
                     ],
                 })],
                 compilation_options: Default::default(),
@@ -188,7 +245,7 @@ impl TextRenderer {
         Self {
             pipeline,
             sampler,
-            atlases: BTreeMap::new(),
+            textures: BTreeMap::new(),
             instances: None,
         }
     }
@@ -199,23 +256,37 @@ impl TextRenderer {
         encoder: &mut wgpu::CommandEncoder,
         target: &wgpu::TextureView,
         size: [u32; 2],
-        draws: &[TextDraw],
+        draws: &[InterfaceDraw],
     ) -> Result<()> {
-        self.atlases.retain(|_, (font, _)| font.strong_count() != 0);
+        self.textures
+            .retain(|_, (texture, _)| texture.strong_count() != 0);
         let mut instances = Vec::new();
         let mut batches: Vec<(usize, Range<u32>)> = Vec::new();
         for draw in draws {
             let first = instances.len() as u32;
-            draw.layout(size, &mut instances)?;
+            let texture = match draw {
+                InterfaceDraw::Picture(picture) => {
+                    picture.layout(&mut instances)?;
+                    &picture.texture
+                }
+                InterfaceDraw::Text(text) => {
+                    text.layout(size, &mut instances)?;
+                    &text.font.texture
+                }
+            };
+            ensure!(
+                instances.len() <= MAX_INSTANCES,
+                "interface frame quad budget"
+            );
             let end = instances.len() as u32;
             if first == end {
                 continue;
             }
-            let key = Rc::as_ptr(&draw.font) as usize;
-            if let std::collections::btree_map::Entry::Vacant(entry) = self.atlases.entry(key) {
-                let atlas = upload_texture(gpu, &draw.font.texture)?;
+            let key = Rc::as_ptr(texture) as usize;
+            if let std::collections::btree_map::Entry::Vacant(entry) = self.textures.entry(key) {
+                let atlas = upload_texture(gpu, texture)?;
                 let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Interface font atlas"),
+                    label: Some("Interface texture"),
                     layout: &self.pipeline.get_bind_group_layout(0),
                     entries: &[
                         wgpu::BindGroupEntry {
@@ -228,9 +299,15 @@ impl TextRenderer {
                         },
                     ],
                 });
-                entry.insert((Rc::downgrade(&draw.font), bind));
+                entry.insert((Rc::downgrade(texture), bind));
             }
-            batches.push((key, first..end));
+            if let Some((last_key, range)) = batches.last_mut()
+                && *last_key == key
+            {
+                range.end = end;
+            } else {
+                batches.push((key, first..end));
+            }
         }
         if batches.is_empty() {
             return Ok(());
@@ -246,7 +323,7 @@ impl TextRenderer {
             _ => self
                 .instances
                 .insert(gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Interface glyphs"),
+                    label: Some("Interface quads"),
                     size: capacity,
                     usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
@@ -254,7 +331,7 @@ impl TextRenderer {
         };
         gpu.queue.write_buffer(buffer, 0, bytes);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Interface strings"),
+            label: Some("Interface overlay"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target,
                 resolve_target: None,
@@ -269,7 +346,7 @@ impl TextRenderer {
         pass.set_pipeline(&self.pipeline);
         pass.set_vertex_buffer(0, buffer.slice(..));
         for (key, range) in batches {
-            pass.set_bind_group(0, &self.atlases[&key].1, &[]);
+            pass.set_bind_group(0, &self.textures[&key].1, &[]);
             pass.draw(0..6, range);
         }
         Ok(())

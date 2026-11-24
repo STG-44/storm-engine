@@ -3698,3 +3698,133 @@ fn configured_xinterface_loads_empty_dialogs_and_draws_live_bitmap_strings() -> 
     );
     Ok(())
 }
+
+#[test]
+fn configured_dialog_draws_ordered_pictures_and_titles_through_window_state() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::{Picture, Text};
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&textures)?;
+    std::fs::create_dir_all(ini.join("INTERFACES"))?;
+    std::fs::create_dir_all(ini.join("texts/test"))?;
+    std::fs::write(
+        ini.join("INTERFACES/interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/language.ini"),
+        "[COMMON]\ndefaultLanguage=Test\nstrings=common.ini\n[DIRECTORY]\nTest=test\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/test/common.ini"),
+        "string=Caption,\"Test Title\"\n",
+    )?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Font]\nTexture=interfaces/panel.tga\nTexture_xsize=2\nTexture_ysize=2\nHeight=2\nchar_T=0,0,2,2\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/defaultnode.ini"),
+        "[PLATE]\nclass=PICTURE\ntextureName=interfaces/panel.tga\n[Title]\nfont=Font\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/pictures.ini"),
+        "[Atlas]\nsTextureName=panel.tga\nwTextureWidth=2\nwTextureHeight=2\npicture=Patch,0,0,1,1\n",
+    )?;
+    let mut texture = [0u32, 2, 2, 1, 21, 16].map(u32::to_le_bytes).concat();
+    texture.extend([255; 16]);
+    std::fs::write(textures.join("panel.tga.tx"), texture)?;
+    std::fs::write(
+        ini.join("INTERFACES/dialog.ini"),
+        r#"
+        [MAIN]
+        item=95,PICTURE,Front
+        item=20,PLATE,Back
+        item=TITLE,Header
+        item=WINDOW,Child
+        item=WINDOW,Parent
+        [Back]
+        bAbsoluteRectangle=5
+        position=0,0,800,600
+        [Front]
+        position=20,30,80,100
+        [Header]
+        position=0,8,800,42
+        [Child]
+        nodelist=Front
+        [Parent]
+        nodelist=Child,Back
+        nodelist=Header,Absent
+        show=0
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        #libriary "script_interface_functions"
+        native void XI_WindowShow(string name, bool show);
+        native void XI_WindowDisable(string name, bool disabled);
+        native bool XI_IsWindowEnable(string name);
+        object ui;
+        #event_handler("Show","Show");
+        #event_handler("Release","Release");
+        #event_handler("Active","Active");
+        #event_handler("Enable","Enable");
+        void Main() {
+            ui.title="Caption";
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\dialog.ini");
+            ui.strings.overlay="T";
+            SendMessage(&ui,"lssllllf",45012,"Overlay","Font",argb(255,255,255,255),1,2,0,1.0);
+        }
+        void Show() {
+            XI_WindowShow("parent",true);
+            SendMessage(&ui,"lslss",45045,"Front",6,"Atlas","patch");
+            SendMessage(&ui,"lsll",45045,"Front",4,argb(180,101,202,15));
+        }
+        void Release() { SendMessage(&ui,"l",45011); }
+        int Active() { return XI_IsWindowEnable("Child"); }
+        void Enable() { XI_WindowDisable("Parent",false); }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    assert!(matches!(
+        engine.host.interface_draws().as_slice(),
+        [Text(_)]
+    ));
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("Show", &mut event)?;
+    engine.frame(1)?;
+    let draws = engine.host.interface_draws();
+    let [Picture(back), Text(title), Text(overlay), Picture(front)] = draws.as_slice() else {
+        panic!("expected a picture, title, dynamic text and foreground picture");
+    };
+    assert_eq!(back.rect, [0.0, 0.0, 1066.0, 600.0]);
+    assert_eq!(title.text, "Test Title");
+    assert_eq!(title.position, [533, 8]);
+    assert_eq!(overlay.text, "T");
+    assert_eq!(front.uv, [0.25; 4]);
+    assert_eq!(front.rgba, [101, 202, 15, 180]);
+    assert!(Rc::ptr_eq(&front.texture, &back.texture));
+    assert_eq!(
+        engine.emit_event("Active", &mut event)?,
+        Some(Value::Int(0))
+    );
+    engine.emit_event("Enable", &mut event)?;
+    assert_eq!(
+        engine.emit_event("Active", &mut event)?,
+        Some(Value::Int(1))
+    );
+    engine.emit_event("Release", &mut event)?;
+    engine.frame(1)?;
+    assert!(engine.host.interface_draws().is_empty());
+    Ok(())
+}

@@ -298,7 +298,7 @@ impl Engine {
                 && interfaces.dialog_active(id)
             {
                 storm_script::Host::world(&self.host)
-                    .read(|store| interfaces.realize_text(id, store))?;
+                    .read(|store| interfaces.realize_dialog(id, store))?;
             }
             if let Some((fog, celestial)) = self
                 .host

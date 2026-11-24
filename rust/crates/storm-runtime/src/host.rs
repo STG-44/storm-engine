@@ -206,6 +206,11 @@ impl NativeHost {
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }
+    pub fn interface_draws(&self) -> Vec<storm_render::interface_text::InterfaceDraw> {
+        self.interfaces
+            .as_ref()
+            .map_or_else(Vec::new, Interfaces::draws)
+    }
     pub fn interface_text_draws(&self) -> Vec<storm_render::interface_text::TextDraw> {
         self.interfaces
             .as_ref()
@@ -345,6 +350,9 @@ impl NativeHost {
                     host.bind_library(interface::functions(
                         &language,
                         host.color_correction.clone(),
+                        host.interfaces
+                            .clone()
+                            .context("native interface unavailable")?,
                     )?)
                 })
             }
