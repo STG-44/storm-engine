@@ -4126,6 +4126,152 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
 }
 
 #[test]
+fn dialog_frames_preserve_original_panel_geometry_and_border_tint() -> Result<()> {
+    use storm_render::interface_text::{InterfaceDraw::Picture, PictureColor};
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI/INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::create_dir_all(&textures)?;
+    let mut bytes = [0u32, 64, 64, 1, 21, 16_384].map(u32::to_le_bytes).concat();
+    bytes.extend([255; 16_384]);
+    std::fs::write(textures.join("panels.tga.tx"), bytes)?;
+    std::fs::write(
+        ini.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("pictures.ini"),
+        r#"
+        [Panels]
+        sTextureName=panels.tga
+        wTextureWidth=64
+        wTextureHeight=64
+        picture=Bar,0,0,32,4
+        picture=Corner,32,4,40,12
+        "#,
+    )?;
+    std::fs::write(
+        ini.join("defaultnode.ini"),
+        r#"
+        [FRAME_METAL]
+        class=FRAME
+        backimage=piclist=Panels, piccutuv=(0.5,0.125), color=(200,128,100,90)
+        groupName=Panels
+        topline_pic=Bar
+        lefttop_pic=Corner
+        lefttop_size=7,9
+        righttop_size=11,8
+        leftbottom_size=13,14
+        rightbottom_size=16,18
+        "#,
+    )?;
+    std::fs::write(
+        ini.join("frame.ini"),
+        r#"
+        [MAIN]
+        item=FRAME_METAL,Bio
+        item=FRAME,Flat
+        [Bio]
+        position=10,20,58,54
+        captionheight=12
+        captionimage=piclist=Panels, picname=Bar
+        captionoffset=1,2,3,4
+        captiondividerheight=3
+        [Flat]
+        position=10,80,58,104
+        backimage=color=(99,14,75,110)
+        "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("Recolor", "Recolor");
+        void Main() {
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\frame.ini");
+        }
+        void Recolor() {
+            SendMessage(&ui,"lsll",45045,"Bio",0,argb(123,45,67,89));
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    let draws = engine.host.interface_draws();
+    let [
+        Picture(background),
+        Picture(caption),
+        Picture(top),
+        Picture(bottom),
+        Picture(left),
+        Picture(right),
+        Picture(left_top),
+        Picture(right_top),
+        Picture(left_bottom),
+        Picture(right_bottom),
+        Picture(divider),
+        Picture(flat),
+    ] = draws.as_slice()
+    else {
+        panic!("expected frame images, border quads and caption divider");
+    };
+    assert_eq!(background.rect, [143.0, 20.0, 191.0, 54.0]);
+    assert_eq!(background.uv, [0.5, 0.125, 1.0, 0.65625]);
+    assert_eq!(background.rgba, [128, 100, 90, 200]);
+    assert_eq!(caption.rect, [144.0, 22.0, 188.0, 30.0]);
+    assert_eq!(
+        caption.uv,
+        [0.5 / 64.0, 0.5 / 64.0, 31.5 / 64.0, 3.5 / 64.0]
+    );
+    assert_eq!(top.rect, [150.0, 20.0, 180.0, 25.0]);
+    assert_eq!(bottom.rect, [150.0, 49.0, 180.0, 54.0]);
+    assert_eq!(left.rect, [143.0, 29.0, 148.0, 40.0]);
+    assert_eq!(right.rect, [186.0, 28.0, 191.0, 36.0]);
+    assert_eq!(left_top.rect, [143.0, 20.0, 150.0, 29.0]);
+    assert_eq!(
+        left_top.uv,
+        [32.5 / 64.0, 4.5 / 64.0, 39.5 / 64.0, 11.5 / 64.0]
+    );
+    assert_eq!(right_top.rect, [180.0, 20.0, 191.0, 28.0]);
+    assert_eq!(left_bottom.rect, [143.0, 40.0, 156.0, 54.0]);
+    assert_eq!(right_bottom.rect, [175.0, 36.0, 191.0, 54.0]);
+    assert_eq!(divider.rect, [148.0, 32.0, 186.0, 35.0]);
+    assert_eq!(divider.uv, top.uv);
+    assert_eq!(top.rgba, [255; 4]);
+    assert_eq!(bottom.uv, [0.0, 0.0, 1.0, 1.0]);
+    assert!(Rc::ptr_eq(&background.texture, &divider.texture));
+    assert!(matches!(flat.color, PictureColor::AlphaMask));
+    assert_eq!(flat.rgba, [14, 75, 110, 99]);
+
+    engine.emit_event("Recolor", &mut Message::new("", vec![])?)?;
+    engine.frame(16)?;
+    let recolored = engine.host.interface_draws();
+    assert_eq!(draws.len(), recolored.len());
+    for (index, (original, updated)) in draws.iter().zip(&recolored).enumerate() {
+        let (Picture(original), Picture(updated)) = (original, updated) else {
+            panic!("expected the same pictures after recoloring");
+        };
+        assert_eq!(original.rect, updated.rect);
+        assert_eq!(original.uv, updated.uv);
+        let rgba = if (2..=10).contains(&index) {
+            [45, 67, 89, 123]
+        } else {
+            original.rgba
+        };
+        assert_eq!(updated.rgba, rgba);
+    }
+    Ok(())
+}
+
+#[test]
 fn formatted_interface_text_wraps_cyrillic_and_keeps_script_scroll_and_colors() -> Result<()> {
     use storm_render::interface_text::Alignment;
 

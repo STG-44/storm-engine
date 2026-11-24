@@ -1,6 +1,7 @@
 mod button;
 mod collection;
 mod formatted;
+mod frame;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
@@ -8,6 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK};
 use collection::Collection;
 use formatted::FormattedText;
+use frame::Frame;
 use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
@@ -70,6 +72,7 @@ enum Widget {
     Button(Box<Button>),
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
+    Frame(Box<Frame>),
 }
 
 struct Atlas {
@@ -90,13 +93,13 @@ impl Default for Atlas {
 
 impl Atlas {
     fn part(&self, name: Option<&str>) -> ([f32; 4], i32) {
-        let Some(&[left, top, right, bottom]) =
-            name.and_then(|name| self.parts.get(&name.to_ascii_lowercase()))
-        else {
-            return ([0.0; 4], 0);
-        };
+        self.named_part(name).unwrap_or(([0.0; 4], 0))
+    }
+
+    fn named_part(&self, name: Option<&str>) -> Option<([f32; 4], i32)> {
+        let &[left, top, right, bottom] = self.parts.get(&name?.to_ascii_lowercase())?;
         let [width, height] = self.size.map(|n| n as f32);
-        (
+        Some((
             [
                 (left as f32 + 0.5) / width,
                 (top as f32 + 0.5) / height,
@@ -104,7 +107,7 @@ impl Atlas {
                 (bottom as f32 - 0.5) / height,
             ],
             right.saturating_sub(left),
-        )
+        ))
     }
 }
 
@@ -167,6 +170,7 @@ impl Nodes {
                 },
                 "picture" => nodes.load_picture(shared, &setting)?,
                 "title" => Widget::Title(nodes.load_title(shared, &setting, screen, rect, title)?),
+                "frame" => Widget::Frame(Box::new(Frame::load(&mut nodes, shared, &setting)?)),
                 "formatedtext" => Widget::FormattedText(Box::new(FormattedText::load(
                     shared,
                     &setting,
@@ -720,6 +724,12 @@ impl Nodes {
         if let Widget::FormattedText(text) = &mut node.widget {
             return text.send(code, message, node.rect);
         }
+        if let Widget::Frame(frame) = &mut node.widget {
+            if code == 0 {
+                frame.set_border_color(color(message.long()?));
+            }
+            return Ok(0);
+        }
         if matches!(node.widget, Widget::Button(_)) {
             self.send_button(index, shared, screen, code, message)?;
             return Ok(0);
@@ -882,6 +892,7 @@ impl Nodes {
                 Widget::Title(draws) => out.extend(draws.iter().cloned()),
                 Widget::Collection(collection) => collection.draw(screen.size, out),
                 Widget::FormattedText(text) => text.draw(node.rect, screen.size, out),
+                Widget::Frame(frame) => frame.draw(node.rect, screen.size, out),
                 _ => {}
             }
         }

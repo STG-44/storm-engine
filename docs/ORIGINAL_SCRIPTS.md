@@ -463,10 +463,11 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
 compiler and VM. Loading `selectCharacter.ini` passes the portrait
-collection and `FORMATEDTEXT,HERO_NAME`. It stops next at the unported
-`FRAME,INFO_FRAME`. A separate partial-layout capture shows the original
-portrait, biography and setup description. It uses `EI_CreateFrame` and
-`EI_CreateHLine` for the portrait and setup borders.
+collection, `FORMATEDTEXT,HERO_NAME` and the `INFO_FRAME` and `STATE_FRAME`
+panels. It stops at the unported `CHECKBUTTON,CHECK_ARCADESAIL`. A separate
+partial-layout Metal capture shows the original portrait and frames for
+the biography, difficulty and setup panels. It uses `EI_CreateFrame` and
+`EI_CreateHLine` for the scripted borders.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -565,6 +566,12 @@ line breaks and color spans, and limits output to the visible line slots.
 Node messages adjust the first line, alignment and group colors and can
 query line counts and positions. Keyboard and mouse-wheel scrolling,
 linked scrollers and their script notifications remain pending.
+`FRAME` and aliases such as `FRAME_METAL` read the original panel defaults
+and dialog overrides. The background and caption draw before the four
+stretched edges, corner pieces and caption divider. Images support
+named parts, size-based atlas crops, standalone textures and solid fills.
+The native node message updates the border color independently of the
+background and caption.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the
