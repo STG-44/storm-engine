@@ -4124,3 +4124,132 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
     assert_eq!(rebuilt.uv, border.uv);
     Ok(())
 }
+
+#[test]
+fn formatted_interface_text_wraps_cyrillic_and_keeps_script_scroll_and_colors() -> Result<()> {
+    use storm_render::interface_text::Alignment;
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&textures)?;
+    std::fs::create_dir_all(ini.join("INTERFACES"))?;
+    std::fs::create_dir_all(ini.join("texts/test"))?;
+    let mut texture = [0u32, 4, 4, 1, 21, 64].map(u32::to_le_bytes).concat();
+    texture.extend([255; 64]);
+    std::fs::write(textures.join("glyph.tga.tx"), texture)?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Face]\nTexture=Interfaces/glyph.tga\nTexture_xsize=4\nTexture_ysize=4\nHeight=4\nSpacebar=2\nchar_А=0,0,4,4\nchar_Б=0,0,4,4\nchar_В=0,0,4,4\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/language.ini"),
+        "[COMMON]\ndefaultLanguage=Test\nstrings=common.ini\n[DIRECTORY]\nTest=test\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/test/common.ini"),
+        "string=Caption,\"АБВ Б\"\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/defaultnode.ini"),
+        "[FORMATEDTEXT]\nfont=Face\nlineSpace=10\nalignment=center\nColor=255,255,255,255\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/format.ini"),
+        r#"
+        [MAIN]
+        item=FORMATEDTEXT,Main
+        item=100,FORMATEDTEXT,Single
+        [Main]
+        position=5,10,17,40
+        [Single]
+        position=20,12,28,52
+        string=Caption
+        valignment=1
+        wrapoff=1
+        alignment=right
+        "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("Scroll","Scroll");
+        #event_handler("Append","Append");
+        #event_handler("FitCount","FitCount");
+        #event_handler("LastY","LastY");
+        #event_handler("Clear","Clear");
+        int Append() {
+            string extra="АБ АБ";
+            return sti(SendMessage(&ui,"lsle",45045,"Main",0,&extra));
+        }
+        int FitCount() {
+            string extra="АБ АБ АБ";
+            return sti(SendMessage(&ui,"lsle",45045,"Main",9,&extra));
+        }
+        int LastY() { return sti(SendMessage(&ui,"lsll",45045,"Main",12,1)); }
+        void Scroll() {
+            SendMessage(&ui,"lslf",45045,"Main",2,0.75);
+            SendMessage(&ui,"lslll",45045,"Main",8,0,argb(220,10,20,30));
+        }
+        void Clear() { SendMessage(&ui,"lss",45038,"Main",""); }
+        void Main() {
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\format.ini");
+            SendMessage(&ui,"lss",45038,"Main","АБ АБ АБ\n<color=200,220,30,40>В</color> Б");
+        }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(800, 600);
+    engine.frame(0)?;
+    let draws = engine.host.interface_text_draws();
+    assert_eq!(
+        draws
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>(),
+        ["АБ", "АБ", "АБ", "АБ"]
+    );
+    assert_eq!(draws[0].position, [11, 10]);
+    assert_eq!(draws[2].position, [11, 30]);
+    assert_eq!(draws[3].position, [28, 27]);
+    assert!(draws[3].alignment == Alignment::Right);
+
+    let mut args = Message::new("", vec![])?;
+    assert_eq!(
+        engine.emit_event("FitCount", &mut args)?,
+        Some(Value::Int(3))
+    );
+    engine.emit_event("Scroll", &mut args)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_text_draws();
+    assert_eq!(draws.len(), 3);
+    assert_eq!(
+        (&draws[0].text[..], draws[0].position, draws[0].rgba),
+        ("В", [6, 10], [220, 30, 40, 200])
+    );
+    assert_eq!(
+        (&draws[1].text[..], draws[1].position, draws[1].rgba),
+        (" Б", [10, 10], [10, 20, 30, 220])
+    );
+
+    assert_eq!(engine.emit_event("Append", &mut args)?, Some(Value::Int(2)));
+    assert_eq!(engine.emit_event("LastY", &mut args)?, Some(Value::Int(20)));
+    engine.frame(16)?;
+    let draws = engine.host.interface_text_draws();
+    assert_eq!(draws[2].text, "АБ");
+    assert_eq!(draws[3].text, "АБ");
+    engine.emit_event("Clear", &mut args)?;
+    engine.frame(16)?;
+    assert_eq!(engine.host.interface_text_draws().len(), 1);
+    Ok(())
+}

@@ -22,6 +22,7 @@ pub(super) const SET_SELECTABLE: i32 = 45024;
 pub(super) const GET_SELECTABLE: i32 = 45026;
 pub(super) const GET_CURRENT_NODE: i32 = 45028;
 pub(super) const MSG_TO_NODE: i32 = 45045;
+pub(super) const SET_FORMATTED_TEXT: i32 = 45038;
 pub(super) const DELETE_STRING: i32 = 45050;
 pub(super) const CHANGE_COLOR: i32 = 45051;
 const FONT_INI: &str = "RESOURCE/INI/fonts.ini";

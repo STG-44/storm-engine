@@ -572,7 +572,7 @@ impl Actor {
         use dialog::{
             CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING,
             GET_CURRENT_NODE, GET_SELECTABLE, INIT, MSG_TO_NODE, NEW_CURRENT_NODE, RELEASE,
-            SET_NODE_USING, SET_SELECTABLE,
+            SET_FORMATTED_TEXT, SET_NODE_USING, SET_SELECTABLE,
         };
         match code {
             INIT => {
@@ -587,10 +587,22 @@ impl Actor {
                 state.dialog.nodes.set_using(&name, show);
             }
             MSG_TO_NODE => {
-                state
+                let result = state
                     .dialog
                     .nodes
                     .send(&self.shared, &state.screen, message)?;
+                self.shared
+                    .draws
+                    .borrow_mut()
+                    .retain(|(id, _)| *id != self.id);
+                return Ok(result);
+            }
+            SET_FORMATTED_TEXT => {
+                let node = message.string()?.to_owned();
+                state
+                    .dialog
+                    .nodes
+                    .set_formatted_text(&node, message.string()?)?;
             }
             NEW_CURRENT_NODE => state.dialog.nodes.set_focus(message.string()?),
             GET_CURRENT_NODE => {

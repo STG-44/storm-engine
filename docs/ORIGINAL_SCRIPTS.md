@@ -462,11 +462,11 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 `XINTERFACE`. The runtime then loaded the original `selectCharacter.c`
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
-compiler and VM. Loading `selectCharacter.ini` passes the window,
-background, title, exit button and both initial image collections.
-It stops at the unported `FORMATEDTEXT,HERO_NAME`. A separate partial
-layout capture uses the original `EI_CreateFrame` and `EI_CreateHLine`
-script functions to render both the portrait frame and the setup frame.
+compiler and VM. Loading `selectCharacter.ini` passes the portrait
+collection and `FORMATEDTEXT,HERO_NAME`. It stops next at the unported
+`FRAME,INFO_FRAME`. A separate partial-layout capture shows the original
+portrait, biography and setup description. It uses `EI_CreateFrame` and
+`EI_CreateHLine` for the portrait and setup borders.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -559,8 +559,13 @@ double-click handling remain pending. `IMAGECOLLECTION` draws its authored
 atlas pieces in order. The script can bind an atlas, append, recolor,
 replace and clear pieces. The configured screen origin applies to
 relative pieces, and the collection's offset applies to scripted appends.
-Unsupported widgets and video or blinking pictures report explicit
-errors. The renderer reads the
+Plain `FORMATEDTEXT` loads localized labels and accepts script replacements
+and appends. It wraps with the bitmap-font metrics, understands authored
+line breaks and color spans, and limits output to the visible line slots.
+Node messages adjust the first line, alignment and group colors and can
+query line counts and positions. Keyboard and mouse-wheel scrolling,
+linked scrollers and their script notifications remain pending.
+Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the
 same overlay pass.

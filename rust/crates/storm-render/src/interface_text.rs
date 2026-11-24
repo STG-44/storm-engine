@@ -108,7 +108,10 @@ impl PictureDraw {
 }
 
 impl BitmapFont {
-    fn advance(&self, c: char) -> f32 {
+    pub fn glyph_advance(&self, c: char) -> f32 {
+        if c as u32 >= 0x2070 {
+            return 0.0;
+        }
         self.glyphs
             .get(&c)
             .map_or(0.0, |glyph| (glyph[2] as f32 * self.pc_scale).trunc())
@@ -122,7 +125,7 @@ impl BitmapFont {
 
     /// Matches the native width used to position title plates and glyphs.
     pub fn text_width(&self, text: &str) -> i32 {
-        symbols(text).map(|c| self.advance(c)).sum::<f32>() as i32
+        symbols(text).map(|c| self.glyph_advance(c)).sum::<f32>() as i32
     }
 }
 
@@ -192,7 +195,7 @@ impl TextDraw {
                         color_mode: 0,
                     });
                 }
-                offset += font.advance(c) * scale;
+                offset += font.glyph_advance(c) * scale;
             }
         };
         if self.shadow {

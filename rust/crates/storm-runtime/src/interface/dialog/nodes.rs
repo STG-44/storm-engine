@@ -1,11 +1,13 @@
 mod button;
 mod collection;
+mod formatted;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
 use anyhow::{Context, Result, bail, ensure};
 use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK};
 use collection::Collection;
+use formatted::FormattedText;
 use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
@@ -67,6 +69,7 @@ enum Widget {
     Title(Vec<InterfaceDraw>),
     Button(Box<Button>),
     Collection(Box<Collection>),
+    FormattedText(Box<FormattedText>),
 }
 
 struct Atlas {
@@ -164,6 +167,14 @@ impl Nodes {
                 },
                 "picture" => nodes.load_picture(shared, &setting)?,
                 "title" => Widget::Title(nodes.load_title(shared, &setting, screen, rect, title)?),
+                "formatedtext" => Widget::FormattedText(Box::new(FormattedText::load(
+                    shared,
+                    &setting,
+                    rect,
+                    records(text, name)
+                        .filter(|(key, _)| key.eq_ignore_ascii_case("string"))
+                        .map(|(_, value)| value),
+                )?)),
                 "imagecollection" => Widget::Collection(Box::new(Collection::load(
                     &mut nodes,
                     shared,
@@ -681,6 +692,20 @@ impl Nodes {
         Ok(draws)
     }
 
+    pub(in crate::interface) fn set_formatted_text(
+        &mut self,
+        name: &str,
+        input: &str,
+    ) -> Result<()> {
+        if let Some(index) = self.find(name) {
+            let node = &mut self.items[index];
+            if let Widget::FormattedText(text) = &mut node.widget {
+                text.replace(input, node.rect)?;
+            }
+        }
+        Ok(())
+    }
+
     pub(in crate::interface) fn send(
         &mut self,
         shared: &Shared,
@@ -691,7 +716,11 @@ impl Nodes {
             return Ok(0);
         };
         let code = message.long()?;
-        if matches!(self.items[index].widget, Widget::Button(_)) {
+        let node = &mut self.items[index];
+        if let Widget::FormattedText(text) = &mut node.widget {
+            return text.send(code, message, node.rect);
+        }
+        if matches!(node.widget, Widget::Button(_)) {
             self.send_button(index, shared, screen, code, message)?;
             return Ok(0);
         }
@@ -852,6 +881,7 @@ impl Nodes {
                 }
                 Widget::Title(draws) => out.extend(draws.iter().cloned()),
                 Widget::Collection(collection) => collection.draw(screen.size, out),
+                Widget::FormattedText(text) => text.draw(node.rect, screen.size, out),
                 _ => {}
             }
         }
