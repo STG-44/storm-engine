@@ -462,11 +462,11 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 `XINTERFACE`. The runtime then loaded the original `selectCharacter.c`
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
-compiler and VM. Loading `selectCharacter.ini` now passes `MAIN_WINDOW`,
-`MAIN_BACK`, `TITLE` and `BUTTON,EXIT_BTN`. It stops at the unported
-`IMAGECOLLECTION,CHARACTER_BIG_PICTURE_BORDER`. A separate partial-layout
-capture includes the original backdrop, title, portrait, exit icon and
-difficulty and setup arrows.
+compiler and VM. Loading `selectCharacter.ini` passes the window,
+background, title, exit button and both initial image collections.
+It stops at the unported `FORMATEDTEXT,HERO_NAME`. A separate partial
+layout capture uses the original `EI_CreateFrame` and `EI_CreateHLine`
+script functions to render both the portrait frame and the setup frame.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -555,8 +555,12 @@ and pressed offsets. An eligible button receives pointer or focused
 keyboard edges and emits the original `ISound`, `ievnt_command` and
 configured events. Window locks and visibility are respected. A new
 dialog drops queued actions from its predecessor. Held-input repeat and
-double-click handling remain pending. Unsupported widgets and video
-or blinking pictures report explicit errors. The renderer reads the
+double-click handling remain pending. `IMAGECOLLECTION` draws its authored
+atlas pieces in order. The script can bind an atlas, append, recolor,
+replace and clear pieces. The configured screen origin applies to
+relative pieces, and the collection's offset applies to scripted appends.
+Unsupported widgets and video or blinking pictures report explicit
+errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the
 same overlay pass.

@@ -1,9 +1,11 @@
 mod button;
+mod collection;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
 use anyhow::{Context, Result, bail, ensure};
 use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK};
+use collection::Collection;
 use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
@@ -64,12 +66,23 @@ enum Widget {
     },
     Title(Vec<InterfaceDraw>),
     Button(Box<Button>),
+    Collection(Box<Collection>),
 }
 
 struct Atlas {
     texture: Option<Rc<Texture>>,
     size: [i32; 2],
     parts: BTreeMap<String, [i32; 4]>,
+}
+
+impl Default for Atlas {
+    fn default() -> Self {
+        Self {
+            texture: None,
+            size: [1; 2],
+            parts: BTreeMap::new(),
+        }
+    }
 }
 
 impl Atlas {
@@ -151,6 +164,15 @@ impl Nodes {
                 },
                 "picture" => nodes.load_picture(shared, &setting)?,
                 "title" => Widget::Title(nodes.load_title(shared, &setting, screen, rect, title)?),
+                "imagecollection" => Widget::Collection(Box::new(Collection::load(
+                    &mut nodes,
+                    shared,
+                    &setting,
+                    screen,
+                    records(text, name)
+                        .filter(|(key, _)| key.eq_ignore_ascii_case("picture"))
+                        .map(|(_, value)| value),
+                )?)),
                 "button" => Widget::Button(Box::new(Button::load(
                     &mut nodes,
                     shared,
@@ -515,11 +537,7 @@ impl Nodes {
             self.picture_ini = Some(read_ini(shared, PICTURES)?);
         }
         let ini = self.picture_ini.as_deref().unwrap_or_default();
-        let mut atlas = Atlas {
-            texture: None,
-            size: [1; 2],
-            parts: BTreeMap::new(),
-        };
+        let mut atlas = Atlas::default();
         let Some(name) = field(ini, group, "sTextureName") else {
             return Ok(atlas);
         };
@@ -677,6 +695,21 @@ impl Nodes {
             self.send_button(index, shared, screen, code, message)?;
             return Ok(0);
         }
+        if let Widget::Collection(collection) = &mut self.items[index].widget {
+            if code == 1 {
+                let group = message.string()?;
+                if !group.eq_ignore_ascii_case(collection.group()) {
+                    let atlas = self.atlas(shared, group)?;
+                    let Widget::Collection(collection) = &mut self.items[index].widget else {
+                        unreachable!()
+                    };
+                    collection.set_atlas(group.to_owned(), atlas);
+                }
+            } else {
+                collection.send(code, message)?;
+            }
+            return Ok(0);
+        }
         ensure!(
             matches!(self.items[index].widget, Widget::Picture { .. }),
             "unported XINTERFACE message {code} for node {:?}",
@@ -818,6 +851,7 @@ impl Nodes {
                     }));
                 }
                 Widget::Title(draws) => out.extend(draws.iter().cloned()),
+                Widget::Collection(collection) => collection.draw(screen.size, out),
                 _ => {}
             }
         }

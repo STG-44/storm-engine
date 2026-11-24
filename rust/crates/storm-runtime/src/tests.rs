@@ -3993,3 +3993,134 @@ fn dialog_buttons_dispatch_to_the_frontmost_unlocked_node() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::Picture;
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI/INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ini)?;
+    std::fs::create_dir_all(&textures)?;
+    for (name, tint) in [("first", [90, 30, 20, 255]), ("second", [20, 70, 30, 255])] {
+        let mut bytes = [0u32, 4, 4, 1, 21, 64].map(u32::to_le_bytes).concat();
+        bytes.extend(tint.repeat(16));
+        std::fs::write(textures.join(format!("{name}.tga.tx")), bytes)?;
+    }
+    std::fs::write(
+        ini.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("pictures.ini"),
+        r#"
+        [First]
+        sTextureName=first.tga
+        wTextureWidth=4
+        wTextureHeight=4
+        picture=Border,0,0,2,2
+        picture=Corner,0,2,2,4
+        [Second]
+        sTextureName=second.tga
+        wTextureWidth=4
+        wTextureHeight=4
+        picture=Border,2,0,4,2
+        picture=Corner,2,2,4,4
+        "#,
+    )?;
+    std::fs::write(
+        ini.join("collection.ini"),
+        r#"
+        [MAIN]
+        item=80,IMAGECOLLECTION,Relative
+        item=100,IMAGECOLLECTION,Absolute
+        [Relative]
+        groupName=First
+        offset=7,-3
+        picture=editsection:initial
+        picture=Border,col:{180,110,22,43},pos:{1,2,8,9}
+        picture=editsection:end
+        [Absolute]
+        groupName=First
+        bAbsoluteRectangle=5
+        picture=Corner,pos:{5,6,15,16}
+        "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("Swap", "Swap");
+        #event_handler("Edit", "Edit");
+        #event_handler("Clear", "Clear");
+        #event_handler("Append", "Append");
+        void Main() {
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\collection.ini");
+        }
+        void Swap() { SendMessage(&ui,"lsls",45045,"Relative",1,"Second"); }
+        void Append() {
+            SendMessage(&ui,"lslslllll",45045,"Relative",0,"Border",
+                argb(255,128,128,128),10,20,30,40);
+        }
+        void Edit() {
+            Append();
+            SendMessage(&ui,"lslll",45045,"Relative",3,0,argb(200,32,64,96));
+            SendMessage(&ui,"lslls",45045,"Relative",4,1,"Corner");
+        }
+        void Clear() { SendMessage(&ui,"lsl",45045,"Relative",2); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    let initial = engine.host.interface_draws();
+    let [Picture(relative), Picture(absolute)] = initial.as_slice() else {
+        panic!("expected both image collections");
+    };
+    assert_eq!(relative.rect, [134.0, 2.0, 141.0, 9.0]);
+    assert_eq!(relative.uv, [0.125, 0.125, 0.375, 0.375]);
+    assert_eq!(relative.rgba, [110, 22, 43, 180]);
+    assert_eq!(absolute.rect, [5.0, 6.0, 15.0, 16.0]);
+
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("Swap", &mut event)?;
+    engine.frame(16)?;
+    let swapped = engine.host.interface_draws();
+    let Picture(swap) = &swapped[0] else {
+        panic!("swapped collection")
+    };
+    assert!(!Rc::ptr_eq(&relative.texture, &swap.texture));
+    assert_eq!(relative.uv, swap.uv);
+
+    engine.emit_event("Edit", &mut event)?;
+    engine.frame(16)?;
+    let edited = engine.host.interface_draws();
+    let [Picture(border), Picture(corner), Picture(last)] = edited.as_slice() else {
+        panic!("expected appended and edited parts before the next widget");
+    };
+    assert_eq!(border.uv, [0.625, 0.125, 0.875, 0.375]);
+    assert_eq!(border.rgba, [32, 64, 96, 200]);
+    assert_eq!(corner.uv, [0.625, 0.625, 0.875, 0.875]);
+    assert_eq!(corner.rect, [150.0, 17.0, 170.0, 37.0]);
+    assert_eq!(last.rect, absolute.rect);
+    assert!(Rc::ptr_eq(&border.texture, &corner.texture));
+
+    engine.emit_event("Clear", &mut event)?;
+    engine.frame(16)?;
+    assert_eq!(engine.host.interface_draws().len(), 1);
+    engine.emit_event("Append", &mut event)?;
+    engine.frame(16)?;
+    let rebuilt = engine.host.interface_draws();
+    let Picture(rebuilt) = &rebuilt[0] else {
+        panic!("rebuilt collection")
+    };
+    assert!(Rc::ptr_eq(&rebuilt.texture, &border.texture));
+    assert_eq!(rebuilt.uv, border.uv);
+    Ok(())
+}
