@@ -195,6 +195,7 @@ impl Interfaces {
         &self,
         id: EntityId,
         delta_ms: u32,
+        store: &mut AttributeStore,
     ) -> Result<dialog::NodeEvents> {
         let mut states = self.0.states.borrow_mut();
         let Some(state) = states
@@ -203,13 +204,16 @@ impl Interfaces {
         else {
             return Ok(Vec::new());
         };
-        state.dialog.nodes.take_button_events(delta_ms)
+        let events = state.dialog.nodes.take_button_events(delta_ms)?;
+        state.dialog.nodes.publish_checks(store, state.binding)?;
+        Ok(events)
     }
 
     pub(crate) fn button_input(
         &self,
         id: EntityId,
         controls: &crate::controls::Controls,
+        store: &mut AttributeStore,
     ) -> Result<dialog::NodeEvents> {
         let mut states = self.0.states.borrow_mut();
         let Some(state) = states
@@ -226,7 +230,34 @@ impl Interfaces {
                     .trunc();
             }
         }
-        state.dialog.nodes.button_input(controls, point)
+        let events = state.dialog.nodes.button_input(controls, point)?;
+        state.dialog.nodes.publish_checks(store, state.binding)?;
+        Ok(events)
+    }
+
+    pub(crate) fn has_node_callback(&self, id: EntityId) -> bool {
+        self.0
+            .states
+            .borrow()
+            .get(&id.raw())
+            .is_some_and(|state| state.dialog.nodes.has_check_callback())
+    }
+
+    pub(crate) fn take_node_callback(&self, id: EntityId) -> Option<(&'static str, Message)> {
+        let mut states = self.0.states.borrow_mut();
+        let message = states
+            .get_mut(&id.raw())?
+            .dialog
+            .nodes
+            .take_check_callback()?;
+        Some((dialog::CHECK_EVENT, message))
+    }
+
+    fn publish_checks(&self, id: EntityId, store: &mut AttributeStore) -> Result<()> {
+        if let Some(state) = self.0.states.borrow_mut().get_mut(&id.raw()) {
+            state.dialog.nodes.publish_checks(store, state.binding)?;
+        }
+        Ok(())
     }
 
     pub fn set_pointer(&self, point: Option<[f64; 2]>) {
@@ -556,7 +587,11 @@ impl Entity for Actor {
                     .flatten()
                     .and_then(|root| attributes.value(root, Some("title")));
                 message.move_to_start();
-                self.receive(message, title)
+                let result = self.receive(message, title)?;
+                if matches!(code, dialog::INIT | dialog::MSG_TO_NODE) {
+                    Interfaces(self.shared.clone()).publish_checks(self.id, attributes)?;
+                }
+                Ok(result)
             }
         }
     }

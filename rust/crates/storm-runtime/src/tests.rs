@@ -4126,6 +4126,233 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
 }
 
 #[test]
+fn dialog_check_buttons_share_mouse_and_script_state_with_native_callbacks() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::{Picture, Text};
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let ui = ini.join("INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ui)?;
+    std::fs::create_dir_all(&textures)?;
+    std::fs::create_dir_all(ini.join("texts/test"))?;
+    let mut tx = [0u32, 4, 4, 1, 21, 64].map(u32::to_le_bytes).concat();
+    tx.extend([255; 64]);
+    std::fs::write(textures.join("check.tga.tx"), tx)?;
+    std::fs::write(
+        ui.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/language.ini"),
+        "[COMMON]\ndefaultLanguage=Test\nstrings=common.ini\n[DIRECTORY]\nTest=test\n",
+    )?;
+    std::fs::write(ini.join("texts/test/common.ini"), "string=First,\"АБ\"\n")?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Face]\nTexture=Interfaces/check.tga\nTexture_xsize=4\nTexture_ysize=4\nHeight=4\nSpacebar=2\nchar_А=0,0,4,4\nchar_Б=0,0,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("pictures.ini"),
+        "[Icon]\nsTextureName=check.tga\nwTextureWidth=4\nwTextureHeight=4\npicture=On,0,0,4,2\npicture=Off,0,2,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("defaultnode.ini"),
+        "[RADIOBUTTON]\nclass=CHECKBUTTON\nexclusiveChoose=1\n",
+    )?;
+    std::fs::write(
+        ui.join("choices.ini"),
+        r#"
+        [MAIN]
+        item=100,RADIOBUTTON,Radio
+        start=Radio
+        [Radio]
+        position=20,30,100,62
+        command=click
+        command=activate
+        icongroup=Icon
+        normalpicture=Off
+        selectpicture=On
+        normalpiccolor=255,128,128,128
+        normalFontColor=255,170,170,170
+        selectFontColor=255,223,223,223
+        disableFontColor=255,70,70,70
+        font=Face
+        rect_textoffset=12,1,0,0
+        textClickable=1
+        iconsize=8,8
+        lineheight=10
+        sectioninterval=4
+        section1=0,0,First
+        section2=0,0,#Б
+    "#,
+    )?;
+    std::fs::write(
+        ui.join("flags.ini"),
+        r#"
+        [MAIN]
+        item=100,CHECKBUTTON,Flags
+        [Flags]
+        position=200,30,220,40
+        command=click
+        exclusiveChoose=0
+        individualpos=1
+        icongroup=Icon
+        normalpicture=Off
+        selectpicture=On
+        iconsize=8,8
+        section1=1,0,#А
+        section2=1,0,#Б
+        pos1=30,0
+        pos2=45,0
+        "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r##"
+        object ui;
+        #event_handler("CheckButtonChange","Change");
+        #event_handler("ISound","Sound");
+        #event_handler("ievnt_command","Command");
+        #event_handler("Select","Select");
+        #event_handler("Disable","Disable");
+        #event_handler("LockClicks","LockClicks");
+        #event_handler("Edit","Edit");
+        #event_handler("OpenFlags","OpenFlags");
+        void Main() {
+            MapControl(CreateControl("ILClick"),1);
+            MapControl(CreateControl("IAction"),32);
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(4,&ui,0);
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\choices.ini");
+            Trace("initial="+ui.Radio.state1+ui.Radio.state2);
+        }
+        void Change() {
+            string node=GetEventData();
+            int choice=GetEventData();
+            int checked=GetEventData();
+            aref flags;
+            makearef(flags,ui.(node));
+            Trace(node+":"+choice+":"+checked+":"+flags.state1+flags.state2);
+        }
+        void Sound() { Trace("sound"); }
+        void Command() { string action=GetEventData(); Trace(action); }
+        void Select() {
+            Trace("before");
+            SendMessage(&ui,"lslll",45045,"Radio",2,2,1);
+            SendMessage(&ui,"lslll",45045,"Radio",2,2,0);
+            int state=SendMessage(&ui,"lsll",45045,"Radio",3,2);
+            int index=SendMessage(&ui,"lsl",45045,"Radio",4);
+            Trace("after="+state+index);
+        }
+        void Disable() { SendMessage(&ui,"lslll",45045,"Radio",5,2,1); }
+        void LockClicks() {
+            SendMessage(&ui,"lslll",45045,"Radio",-1,1,0);
+            int clickable=SendMessage(&ui,"lsll",45045,"Radio",-1,2);
+            Trace("clickable="+clickable);
+        }
+        void Edit() {
+            SendMessage(&ui,"lslsll",45045,"Radio",0,"#А",0,0);
+            SendMessage(&ui,"lslls",45045,"Radio",1,3,"БА");
+            SendMessage(&ui,"lsllllll",45045,"Radio",-1,4,24,50,110,100);
+        }
+        void OpenFlags() {
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\flags.ini");
+        }
+    "##,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(800, 600);
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:initial=10"]);
+    let draws = engine.host.interface_draws();
+    let [Picture(first), Text(label), Picture(second), Text(_)] = draws.as_slice() else {
+        panic!("two radio choices with labels");
+    };
+    let on_uv = [0.125, 0.125, 0.875, 0.375];
+    let off_uv = [0.125, 0.625, 0.875, 0.875];
+    assert_eq!(first.uv, on_uv);
+    assert_eq!(second.uv, off_uv);
+    assert_eq!(label.text, "АБ");
+    assert_eq!(label.position, [32, 31]);
+    assert_eq!(label.rgba, [223, 223, 223, 255]);
+
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("Select", &mut event)?;
+    assert_eq!(
+        trace.take(),
+        ["script:before", "script:Radio:2:1:01", "script:after=11"]
+    );
+    let input = |engine: &mut Engine, code, pressed| -> Result<()> {
+        engine.control_input(ControlInput::Button { code, pressed });
+        engine.frame(16)?;
+        Ok(())
+    };
+    input(&mut engine, 32, true)?;
+    input(&mut engine, 32, false)?;
+    assert_eq!(trace.take(), ["script:sound", "script:activate"]);
+
+    engine.host.set_interface_pointer(Some([58.0, 34.0]));
+    input(&mut engine, 1, true)?;
+    input(&mut engine, 1, false)?;
+    assert_eq!(
+        trace.take(),
+        ["script:sound", "script:Radio:1:1:10", "script:click"]
+    );
+    engine.emit_event("Disable", &mut event)?;
+    engine.host.set_interface_pointer(Some([23.0, 47.0]));
+    input(&mut engine, 1, true)?;
+    input(&mut engine, 1, false)?;
+    assert_eq!(trace.take(), ["script:sound", "script:click"]);
+
+    engine.emit_event("LockClicks", &mut event)?;
+    input(&mut engine, 1, true)?;
+    input(&mut engine, 1, false)?;
+    assert_eq!(trace.take(), ["script:clickable=0"]);
+
+    engine.emit_event("Edit", &mut event)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_draws();
+    let [
+        Picture(first),
+        Text(_),
+        Picture(_),
+        Text(disabled),
+        Picture(third),
+        Text(edited),
+    ] = draws.as_slice()
+    else {
+        panic!("three radio choices with labels");
+    };
+    assert_eq!(first.rect, [24.0, 50.0, 32.0, 58.0]);
+    assert_eq!(first.uv, on_uv);
+    assert_eq!(disabled.rgba, [70, 70, 70, 255]);
+    assert_eq!(third.rect, [24.0, 78.0, 32.0, 86.0]);
+    assert_eq!(edited.text, "БА");
+    assert!(trace.borrow().is_empty());
+
+    engine.emit_event("OpenFlags", &mut event)?;
+    engine.host.set_interface_pointer(Some([232.0, 32.0]));
+    input(&mut engine, 1, true)?;
+    input(&mut engine, 1, false)?;
+    assert_eq!(
+        trace.take(),
+        ["script:sound", "script:Flags:1:0:01", "script:click"]
+    );
+    let draws = engine.host.interface_draws();
+    let [Picture(first), Picture(second)] = draws.as_slice() else {
+        panic!("two independently placed checkboxes");
+    };
+    assert_eq!(first.uv, off_uv);
+    assert_eq!(second.uv, on_uv);
+    Ok(())
+}
+
+#[test]
 fn dialog_frames_preserve_original_panel_geometry_and_border_tint() -> Result<()> {
     use storm_render::interface_text::{InterfaceDraw::Picture, PictureColor};
 

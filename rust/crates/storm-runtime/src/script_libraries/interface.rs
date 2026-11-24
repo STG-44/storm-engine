@@ -66,12 +66,11 @@ impl LanguageService {
     }
 
     pub(crate) fn common_string(&self, key: &str) -> Result<String> {
-        Ok(self
-            .get()?
-            .strings
-            .get(&key.to_ascii_lowercase())
-            .cloned()
-            .unwrap_or_default())
+        Ok(self.lookup_common_string(key)?.unwrap_or_default())
+    }
+
+    pub(crate) fn lookup_common_string(&self, key: &str) -> Result<Option<String>> {
+        Ok(self.get()?.strings.get(&key.to_ascii_lowercase()).cloned())
     }
 
     fn set(&self, name: &str) -> Result<()> {

@@ -1,4 +1,5 @@
 mod button;
+mod check;
 mod collection;
 mod formatted;
 mod frame;
@@ -6,7 +7,8 @@ mod frame;
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
 use anyhow::{Context, Result, bail, ensure};
-use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK};
+use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK, bindings};
+use check::CheckButtons;
 use collection::Collection;
 use formatted::FormattedText;
 use frame::Frame;
@@ -14,7 +16,7 @@ use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
 };
-use storm_core::{Message, Value};
+use storm_core::{AttributeId, AttributeStore, Message, Value};
 use storm_formats::texture::Texture;
 use storm_render::interface_text::{Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw};
 
@@ -36,6 +38,7 @@ pub(in crate::interface) struct Nodes {
     previous_pointer: Option<[f64; 2]>,
     waiting_for_release: bool,
     pending: Vec<Pending>,
+    check_callback: Option<Message>,
 }
 
 struct Pending {
@@ -46,6 +49,7 @@ struct Pending {
 }
 
 pub(in crate::interface) type NodeEvents = Vec<(String, Message)>;
+pub(in crate::interface) const CHECK_EVENT: &str = "CheckButtonChange";
 
 struct Node {
     name: String,
@@ -53,8 +57,25 @@ struct Node {
     visible: bool,
     locked: bool,
     selectable: bool,
+    clickable: bool,
+    commands: BTreeMap<i32, Command>,
+    select_on_hover: bool,
+    on_release: bool,
     rect: [i32; 4],
     widget: Widget,
+}
+
+impl Node {
+    fn interactive(&self) -> bool {
+        matches!(self.widget, Widget::Button(_) | Widget::CheckButtons(_))
+    }
+
+    fn hit(&self, point: [f64; 2]) -> bool {
+        match &self.widget {
+            Widget::CheckButtons(checks) => checks.can_click(self.rect, point),
+            _ => inside(self.rect, point),
+        }
+    }
 }
 
 enum Widget {
@@ -70,6 +91,7 @@ enum Widget {
     },
     Title(Vec<InterfaceDraw>),
     Button(Box<Button>),
+    CheckButtons(Box<CheckButtons>),
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
     Frame(Box<Frame>),
@@ -188,19 +210,24 @@ impl Nodes {
                         .filter(|(key, _)| key.eq_ignore_ascii_case("picture"))
                         .map(|(_, value)| value),
                 )?)),
-                "button" => Widget::Button(Box::new(Button::load(
-                    &mut nodes,
-                    shared,
-                    &setting,
-                    records(text, name)
-                        .filter(|(key, _)| key.eq_ignore_ascii_case("command"))
-                        .map(|(_, value)| value),
+                "button" => Widget::Button(Box::new(Button::load(&mut nodes, shared, &setting)?)),
+                "checkbutton" => Widget::CheckButtons(Box::new(CheckButtons::load(
+                    &mut nodes, shared, &setting, rect,
                 )?)),
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
-            let selectable =
-                matches!(&widget, Widget::Button(button) if !button.commands.is_empty());
+            let commands = if matches!(widget, Widget::Button(_) | Widget::CheckButtons(_)) {
+                bindings(
+                    records(text, name)
+                        .filter(|(key, _)| key.eq_ignore_ascii_case("command"))
+                        .map(|(_, value)| value),
+                )?
+            } else {
+                BTreeMap::new()
+            };
+            let selectable = !commands.is_empty();
+            let clickable = selectable || matches!(widget, Widget::CheckButtons(_));
             let priority = priority.unwrap_or(80);
             let index = nodes
                 .items
@@ -213,6 +240,10 @@ impl Nodes {
                     visible: !flag(setting("bNotUse"), false),
                     locked: false,
                     selectable,
+                    clickable,
+                    commands,
+                    select_on_hover: flag(setting("moveMouseDoSelect"), false),
+                    on_release: flag(setting("UseActionByDeclick"), false),
                     rect,
                     widget,
                 },
@@ -224,12 +255,9 @@ impl Nodes {
             }
         }
         if let Some(start) = field(text, "MAIN", "start") {
-            nodes.focus = nodes.find(start).or_else(|| {
-                nodes
-                    .items
-                    .iter()
-                    .position(|node| matches!(node.widget, Widget::Button(_)))
-            });
+            nodes.focus = nodes
+                .find(start)
+                .or_else(|| nodes.items.iter().position(Node::interactive));
         }
         nodes.waiting_for_release = true;
         Ok(nodes)
@@ -323,15 +351,9 @@ impl Nodes {
         }
     }
 
-    fn button(&self, index: usize) -> Option<&Button> {
+    fn input_node(&self, index: usize) -> Option<&Node> {
         let node = self.items.get(index)?;
-        if !node.visible || node.locked || !node.selectable {
-            return None;
-        }
-        match &node.widget {
-            Widget::Button(button) => Some(button),
-            _ => None,
-        }
+        (node.interactive() && node.visible && !node.locked && node.selectable).then_some(node)
     }
 
     pub(in crate::interface) fn take_button_events(&mut self, delta_ms: u32) -> Result<NodeEvents> {
@@ -352,7 +374,7 @@ impl Nodes {
         {
             for (action, target) in command.redirects.into_iter().rev() {
                 if let Some(index) = self.find(&target) {
-                    self.press(index, action);
+                    events.extend(self.execute_action(index, action)?);
                 }
             }
             if let Some(name) = command.focus {
@@ -380,11 +402,7 @@ impl Nodes {
         point: Option<[f64; 2]>,
     ) -> Result<NodeEvents> {
         // Leave the separate 3D main-menu controls in InterfaceBackScene.
-        if !self
-            .items
-            .iter()
-            .any(|node| matches!(node.widget, Widget::Button(_)))
-        {
+        if !self.items.iter().any(Node::interactive) {
             return Ok(Vec::new());
         }
         const PRESS: [&str; 17] = [
@@ -410,18 +428,18 @@ impl Nodes {
             return Ok(Vec::new());
         }
         self.waiting_for_release = false;
-        let hit = |matches_button: fn(&Button) -> bool| {
-            point.and_then(|[x, y]| {
+        let hit = |matches_node: fn(&Node, [f64; 2]) -> bool| {
+            point.and_then(|point| {
                 (0..self.items.len()).rev().find(|&index| {
-                    let [left, top, right, bottom] = self.items[index].rect.map(f64::from);
-                    (left..=right).contains(&x)
-                        && (top..=bottom).contains(&y)
-                        && self.button(index).is_some_and(matches_button)
+                    self.input_node(index)
+                        .is_some_and(|node| matches_node(node, point))
                 })
             })
         };
-        let hovered = hit(|button| button.select_on_hover);
-        let clicked = hit(|button| button.commands.contains_key(&CLICK.0));
+        let hovered = hit(|node, point| node.select_on_hover && inside(node.rect, point));
+        let clicked = hit(|node, point| {
+            node.clickable && node.commands.contains_key(&CLICK.0) && node.hit(point)
+        });
         if point != self.previous_pointer && hovered.is_some() {
             self.focus = hovered;
         }
@@ -429,7 +447,7 @@ impl Nodes {
         if controls.activated("ILClick") {
             self.mouse_target = clicked;
             if let Some(index) = clicked
-                && self.button(index).is_some_and(|button| !button.on_release)
+                && self.input_node(index).is_some_and(|node| !node.on_release)
             {
                 return self.fire(index, CLICK);
             }
@@ -437,7 +455,9 @@ impl Nodes {
         }
         if controls.released("ILClick")
             && let Some(index) = self.mouse_target.take()
-            && self.button(index).is_some_and(|button| button.on_release)
+            && self
+                .input_node(index)
+                .is_some_and(|node| node.clickable && node.on_release)
         {
             return self.fire(index, CLICK);
         }
@@ -489,24 +509,39 @@ impl Nodes {
         }
     }
 
-    fn press(&mut self, index: usize, action: Action) {
+    fn execute_action(
+        &mut self,
+        index: usize,
+        action: Action,
+    ) -> Result<Option<(String, Message)>> {
         let node = &mut self.items[index];
-        if node.visible
-            && let Widget::Button(button) = &mut node.widget
-        {
-            button.press(action, node.selectable);
+        if !node.visible {
+            return Ok(None);
         }
+        match &mut node.widget {
+            Widget::Button(button) => button.press(action, node.selectable),
+            Widget::CheckButtons(checks) if action == CLICK => {
+                if let Some(change) = self
+                    .previous_pointer
+                    .and_then(|point| checks.click(node.rect, point))
+                {
+                    return Ok(Some((CHECK_EVENT.to_owned(), change.message(&node.name)?)));
+                }
+            }
+            _ => {}
+        }
+        Ok(None)
     }
 
     fn fire(&mut self, index: usize, action: Action) -> Result<NodeEvents> {
         let Some(command) = self
-            .button(index)
-            .and_then(|button| button.commands.get(&action.0))
+            .input_node(index)
+            .and_then(|node| node.commands.get(&action.0))
             .cloned()
         else {
             return Ok(Vec::new());
         };
-        self.press(index, action);
+        let change = self.execute_action(index, action)?;
         self.pending.retain(|pending| pending.node != index);
         if command.focus.is_some() || command.event.is_some() || !command.redirects.is_empty() {
             self.pending.push(Pending {
@@ -516,22 +551,22 @@ impl Nodes {
                 command,
             });
         }
-        Ok(vec![
-            (
-                "ISound".to_owned(),
-                Message::new("l", vec![Value::Long(1)])?,
-            ),
-            (
-                "ievnt_command".to_owned(),
-                Message::new(
-                    "ss",
-                    vec![
-                        Value::String(action.1.to_owned()),
-                        Value::String(self.items[index].name.clone()),
-                    ],
-                )?,
-            ),
-        ])
+        let mut events = vec![(
+            "ISound".to_owned(),
+            Message::new("l", vec![Value::Long(1)])?,
+        )];
+        events.extend(change);
+        events.push((
+            "ievnt_command".to_owned(),
+            Message::new(
+                "ss",
+                vec![
+                    Value::String(action.1.to_owned()),
+                    Value::String(self.items[index].name.clone()),
+                ],
+            )?,
+        ));
+        Ok(events)
     }
 
     fn texture(&mut self, shared: &Shared, name: &str) -> Result<Option<Rc<Texture>>> {
@@ -710,6 +745,29 @@ impl Nodes {
         Ok(())
     }
 
+    pub(in crate::interface) fn publish_checks(
+        &mut self,
+        store: &mut AttributeStore,
+        root: Option<AttributeId>,
+    ) -> Result<()> {
+        if let Some(root) = root {
+            for node in &mut self.items {
+                if let Widget::CheckButtons(checks) = &mut node.widget {
+                    checks.publish(store, root, &node.name)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(in crate::interface) fn has_check_callback(&self) -> bool {
+        self.check_callback.is_some()
+    }
+
+    pub(in crate::interface) fn take_check_callback(&mut self) -> Option<Message> {
+        self.check_callback.take()
+    }
+
     pub(in crate::interface) fn send(
         &mut self,
         shared: &Shared,
@@ -721,6 +779,41 @@ impl Nodes {
         };
         let code = message.long()?;
         let node = &mut self.items[index];
+        if code == -1 {
+            let code = message.long()?;
+            return match code {
+                1 => {
+                    node.clickable = message.long()? != 0;
+                    Ok(0)
+                }
+                2 => Ok(u64::from(node.clickable)),
+                4 => {
+                    let Widget::CheckButtons(checks) = &mut node.widget else {
+                        bail!("unported XINTERFACE base node position for {:?}", node.name);
+                    };
+                    let rect = [
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                    ];
+                    checks.move_to(rect)?;
+                    node.rect = rect;
+                    Ok(0)
+                }
+                _ => bail!(
+                    "unported XINTERFACE base node message {code} for {:?}",
+                    node.name
+                ),
+            };
+        }
+        if let Widget::CheckButtons(checks) = &mut node.widget {
+            let (result, change) = checks.send(shared, node.rect, code, message)?;
+            if let Some(change) = change {
+                self.check_callback = Some(change.message(&node.name)?);
+            }
+            return Ok(result);
+        }
         if let Widget::FormattedText(text) = &mut node.widget {
             return text.send(code, message, node.rect);
         }
@@ -893,6 +986,9 @@ impl Nodes {
                 Widget::Collection(collection) => collection.draw(screen.size, out),
                 Widget::FormattedText(text) => text.draw(node.rect, screen.size, out),
                 Widget::Frame(frame) => frame.draw(node.rect, screen.size, out),
+                Widget::CheckButtons(checks) => {
+                    checks.draw(node.rect, screen.size, node.selectable, out)
+                }
                 _ => {}
             }
         }
@@ -943,6 +1039,11 @@ fn screen_position(screen: &InterfaceScreen, setting: &Setting<'_>) -> Result<[i
     let rect = setting("position").map_or(Ok(screen.rect), tuple)?;
     let mask = setting("bAbsoluteRectangle").map_or(Ok(0), ini_integer)?;
     Ok(absolute_rect(rect, screen, mask))
+}
+
+fn inside([left, top, right, bottom]: [i32; 4], [x, y]: [f64; 2]) -> bool {
+    (f64::from(left)..=f64::from(right)).contains(&x)
+        && (f64::from(top)..=f64::from(bottom)).contains(&y)
 }
 
 fn absolute_rect(mut rect: [i32; 4], screen: &InterfaceScreen, mask: i32) -> [i32; 4] {

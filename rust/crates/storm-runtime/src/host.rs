@@ -498,20 +498,30 @@ impl Host for NativeHost {
             .send_message_with_attributes(id, message, store)
     }
     fn entity_message_has_callbacks(&self, id: EntityId, message: &Message) -> bool {
-        matches!(
-            message.values().first(),
-            Some(storm_core::Value::Long(crate::ship::CREATE))
-        ) && self.ships.as_ref().is_some_and(|ships| ships.mounting(id))
+        self.interfaces
+            .as_ref()
+            .is_some_and(|interfaces| interfaces.has_node_callback(id))
+            || (matches!(
+                message.values().first(),
+                Some(storm_core::Value::Long(crate::ship::CREATE))
+            ) && self.ships.as_ref().is_some_and(|ships| ships.mounting(id)))
     }
     fn next_entity_message_callback(
         &mut self,
         id: EntityId,
         store: &mut AttributeStore,
     ) -> Result<Option<(&'static str, Message)>> {
-        self.ships
+        if let Some(callback) = self
+            .interfaces
             .as_ref()
-            .context("SHIP service unavailable")?
-            .next_callback(id, &mut self.entities, store)
+            .and_then(|interfaces| interfaces.take_node_callback(id))
+        {
+            return Ok(Some(callback));
+        }
+        match self.ships.as_ref().filter(|ships| ships.mounting(id)) {
+            Some(ships) => ships.next_callback(id, &mut self.entities, store),
+            None => Ok(None),
+        }
     }
     fn abort_entity_message_callbacks(&mut self, id: EntityId) -> Result<()> {
         if let Some(ships) = &self.ships {

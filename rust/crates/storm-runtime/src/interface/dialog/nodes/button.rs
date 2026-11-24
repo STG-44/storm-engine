@@ -1,6 +1,4 @@
-use super::{
-    FULL_UV, NEUTRAL, Nodes, Setting, Shared, flag, ini_color, ini_integer, load_font, tuple,
-};
+use super::{FULL_UV, NEUTRAL, Nodes, Setting, Shared, ini_color, ini_integer, load_font, tuple};
 use anyhow::{Result, ensure};
 use std::{collections::BTreeMap, rc::Rc};
 use storm_formats::texture::Texture;
@@ -45,9 +43,6 @@ pub(super) struct Command {
 pub(super) struct Button {
     pub(super) texture: Option<Rc<Texture>>,
     pub(super) uv: [f32; 4],
-    pub(super) commands: BTreeMap<i32, Command>,
-    pub(super) select_on_hover: bool,
-    pub(super) on_release: bool,
     label: Option<(Rc<BitmapFont>, String, [u8; 4], i32)>,
     face: [u8; 4],
     disabled: [u8; 4],
@@ -71,13 +66,37 @@ fn action(name: &str) -> Option<Action> {
         .find(|kind| kind.1.eq_ignore_ascii_case(name))
 }
 
+pub(super) fn bindings<'a>(
+    commands: impl Iterator<Item = &'a str>,
+) -> Result<BTreeMap<i32, Command>> {
+    let mut bindings = BTreeMap::<i32, Command>::new();
+    for line in commands {
+        let mut fields = line.split(',').map(str::trim_ascii);
+        let Some(kind) = fields.next().and_then(action) else {
+            continue;
+        };
+        let binding = bindings.entry(kind.0).or_default();
+        for field in fields {
+            if let Some(value) = field.strip_prefix("event:") {
+                binding.event = Some(value.to_owned());
+            } else if let Some(value) = field.strip_prefix("select:") {
+                binding.focus = Some(value.to_owned());
+            } else if let Some(value) = field.strip_prefix("delay:") {
+                binding.delay = ini_integer(value)?.max(0) as u32;
+            } else if let Some((kind, target)) = field
+                .strip_prefix("com:")
+                .and_then(|value| value.split_once(':'))
+                && let Some(kind) = action(kind)
+            {
+                binding.redirects.push((kind, target.to_owned()));
+            }
+        }
+    }
+    Ok(bindings)
+}
+
 impl Button {
-    pub(super) fn load<'a>(
-        nodes: &mut Nodes,
-        shared: &Shared,
-        setting: &Setting<'_>,
-        commands: impl Iterator<Item = &'a str>,
-    ) -> Result<Self> {
+    pub(super) fn load(nodes: &mut Nodes, shared: &Shared, setting: &Setting<'_>) -> Result<Self> {
         ensure!(
             setting("videoTexture").is_none(),
             "unported XINTERFACE video button"
@@ -109,38 +128,12 @@ impl Button {
             (None, FULL_UV, None)
         };
 
-        let mut bindings = BTreeMap::<i32, Command>::new();
-        for line in commands {
-            let mut fields = line.split(',').map(str::trim_ascii);
-            let Some(kind) = fields.next().and_then(action) else {
-                continue;
-            };
-            let binding = bindings.entry(kind.0).or_default();
-            for field in fields {
-                if let Some(value) = field.strip_prefix("event:") {
-                    binding.event = Some(value.to_owned());
-                } else if let Some(value) = field.strip_prefix("select:") {
-                    binding.focus = Some(value.to_owned());
-                } else if let Some(value) = field.strip_prefix("delay:") {
-                    binding.delay = ini_integer(value)?.max(0) as u32;
-                } else if let Some((kind, target)) = field
-                    .strip_prefix("com:")
-                    .and_then(|value| value.split_once(':'))
-                    && let Some(kind) = action(kind)
-                {
-                    binding.redirects.push((kind, target.to_owned()));
-                }
-            }
-        }
         let rate = setting("blindTimeSec").map_or(Ok(-1.0), str::parse::<f32>)?;
         let offsets = |key| setting(key).map_or(Ok([0; 2]), tuple);
         Ok(Self {
             texture,
             uv,
-            commands: bindings,
             label,
-            select_on_hover: flag(setting("moveMouseDoSelect"), false),
-            on_release: flag(setting("UseActionByDeclick"), false),
             face: ini_color(setting("faceColor"), [255; 4])?,
             disabled: ini_color(setting("disableColor"), NEUTRAL)?,
             shadow_color: ini_color(setting("shadowColor"), [0, 0, 0, 255])?,

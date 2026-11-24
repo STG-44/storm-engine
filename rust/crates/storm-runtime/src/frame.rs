@@ -296,7 +296,9 @@ impl Engine {
             engine.host.entities.is_valid(id)
                 && interfaces.active_dialog_revision(id) == Some(revision)
         };
-        for (name, mut message) in interfaces.take_button_events(id, delta_ms)? {
+        let world = storm_script::Host::world(&self.host);
+        let pending = world.update(|store| interfaces.take_button_events(id, delta_ms, store))?;
+        for (name, mut message) in pending {
             if !active(self) {
                 return Ok(());
             }
@@ -304,7 +306,9 @@ impl Engine {
                 .emit(&name, &mut message, &mut self.host, self.limits)?;
         }
         if active(self) {
-            for (name, mut message) in interfaces.button_input(id, &self.host.controls)? {
+            let input =
+                world.update(|store| interfaces.button_input(id, &self.host.controls, store))?;
+            for (name, mut message) in input {
                 if !active(self) {
                     break;
                 }

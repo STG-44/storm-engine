@@ -462,12 +462,13 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 `XINTERFACE`. The runtime then loaded the original `selectCharacter.c`
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
-compiler and VM. Loading `selectCharacter.ini` passes the portrait
-collection, `FORMATEDTEXT,HERO_NAME` and the `INFO_FRAME` and `STATE_FRAME`
-panels. It stops at the unported `CHECKBUTTON,CHECK_ARCADESAIL`. A separate
-partial-layout Metal capture shows the original portrait and frames for
-the biography, difficulty and setup panels. It uses `EI_CreateFrame` and
-`EI_CreateHLine` for the scripted borders.
+compiler and VM. Loading `selectCharacter.ini` passes the original
+portrait, biography, difficulty panels, and all six checkbox widgets.
+It stops at the unported `TEXTBUTTON2,OK_BUTTON` (native class
+`TEXTBUTTON`). A separate partial-layout Metal capture shows both
+naval combat modes and the five independent options with their original
+labels and icons. The capture retains the scripted portrait and setup
+borders from `EI_CreateFrame` and `EI_CreateHLine`.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -572,6 +573,13 @@ stretched edges, corner pieces and caption divider. Images support
 named parts, size-based atlas crops, standalone textures and solid fills.
 The native node message updates the border color independently of the
 background and caption.
+`CHECKBUTTON` supports independent and exclusive options, including the
+`RADIOBUTTON` alias. It reads the original atlas, localized labels, and
+positioning, and handles mouse input on icons and configured label rows.
+Node messages can add, relabel, select, query and disable options, or
+move the widget.
+State changes publish `stateN` attributes before `CheckButtonChange` runs.
+Script setters dispatch that event before returning to the caller.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the

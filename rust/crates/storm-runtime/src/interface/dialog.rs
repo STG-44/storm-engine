@@ -6,7 +6,7 @@ use crate::{
     config::{ini_integer, ini_section},
 };
 use anyhow::{Context, Result, ensure};
-pub(super) use nodes::NodeEvents;
+pub(super) use nodes::{CHECK_EVENT, NodeEvents};
 use std::{collections::BTreeMap, rc::Rc};
 use storm_core::{AttributeId, AttributeStore, Message};
 use storm_render::interface_text::{Alignment, BitmapFont, InterfaceDraw, TextDraw};
