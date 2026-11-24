@@ -9,7 +9,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
         "and" | "or" | "shl" | "shr" => (2, Type::Int),
-        "sin" | "cos" | "sqrt" => (1, Type::Float),
+        "sin" | "cos" | "acos" | "sqrt" => (1, Type::Float),
         "pow" => (2, Type::Float),
         "sti" | "makeint" => (1, Type::Int),
         "stf" | "makefloat" => (1, Type::Float),
@@ -136,12 +136,26 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
             .map_or(-1, |offset| (start + offset) as i32);
         return Ok(Value::Int(offset));
     }
-    if matches!(name, "sin" | "cos" | "sqrt") {
+    if matches!(name, "sin" | "cos" | "acos" | "sqrt") {
         return match (name, value) {
             ("sin", Value::Int(value)) => Ok(Value::Float((value as f32).sin())),
             ("sin", Value::Float(value)) => Ok(Value::Float(f64::from(value).sin() as f32)),
             ("cos", Value::Int(value)) => Ok(Value::Float((value as f32).cos())),
             ("cos", Value::Float(value)) => Ok(Value::Float(f64::from(value).cos() as f32)),
+            ("acos", Value::Int(value)) => {
+                ensure!(
+                    (-1..=1).contains(&value),
+                    "acos argument is outside [-1, 1]"
+                );
+                Ok(Value::Float((value as f32).acos()))
+            }
+            ("acos", Value::Float(value)) => {
+                ensure!(
+                    value.is_nan() || (-1.0..=1.0).contains(&value),
+                    "acos argument is outside [-1, 1]"
+                );
+                Ok(Value::Float(f64::from(value).acos() as f32))
+            }
             ("sqrt", Value::Int(value)) if value >= 0 => {
                 Ok(Value::Int((value as f32).sqrt() as i32))
             }

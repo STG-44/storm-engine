@@ -1053,6 +1053,16 @@ impl Compiler<'_> {
                 return self.statement_end(allow_handoff && plain_assignment);
             }
         }
+        // CompileBlock emits a standalone NUMBER token that the native VM
+        // ignores. In particular, a number before a branch's break needs no
+        // separator and leaves the expression register alone.
+        if in_block
+            && matches!(self.current(), Token::Literal(Value::Int(_)))
+            && matches!(&self.tokens[self.p + 1].token, Token::Word(word) if word == "break")
+        {
+            self.p += 1;
+            return Ok(());
+        }
         let starts_with_call = self.starts_direct_call();
         self.expression(1)?;
         let direct_call = starts_with_call && self.mark_statement_call();

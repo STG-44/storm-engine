@@ -58,6 +58,9 @@ pub trait Host {
     fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
         bail!("entity deletion is not bound by this host")
     }
+    fn delete_entities(&mut self) -> Result<()> {
+        bail!("scene-wide entity deletion is not bound by this host")
+    }
     fn delete_entities_by_type(&mut self, _class: &str) -> Result<()> {
         bail!("class-based entity deletion is not bound by this host")
     }

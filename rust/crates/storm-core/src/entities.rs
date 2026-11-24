@@ -384,6 +384,29 @@ impl EntityManager {
             .map(|entry| entry.id)
             .collect()
     }
+    /// Destroy every existing entity before the caller builds a new scene.
+    /// Slots are visited in storage order, including previously erased actors.
+    /// Layer settings and factories survive, and old IDs cannot alias new ones.
+    pub fn erase_all(&mut self) -> Result<()> {
+        ensure!(
+            self.init_depth == 0 && !self.lifecycle_active,
+            "cannot erase all entities during native initialization or destruction"
+        );
+        self.deleted.clear();
+        for (index, entry) in self.entries.iter_mut().enumerate().rev() {
+            if let Some(entry) = entry {
+                entry.valid = false;
+                self.deleted.push(index);
+            }
+        }
+        let result = self.new_lifecycle();
+        if self.entries.iter().all(Option::is_none) {
+            self.entries.clear();
+            self.free.clear();
+        }
+        result
+    }
+
     pub fn new_lifecycle(&mut self) -> Result<()> {
         // Never destroy/reuse an instance whose Init is still on the stack.
         // The next lifecycle boundary after Init performs the queued cleanup.

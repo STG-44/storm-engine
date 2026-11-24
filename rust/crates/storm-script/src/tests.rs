@@ -69,6 +69,10 @@ fn startup_math_and_color_builtins_use_original_numeric_types() -> Result<()> {
     assert_eq!(eval("float", r#"pow("2.5", 2)"#)?, Value::Float(6.25));
     assert_eq!(eval("float", "pow(-2.0, 3)")?, Value::Float(-8.0));
     assert_eq!(eval("float", "cos(1)")?, Value::Float(1.0_f32.cos()));
+    assert_eq!(eval("float", "acos(-1)")?, Value::Float((-1.0_f32).acos()));
+    assert_eq!(eval("float", "acos(1.0)")?, Value::Float(0.0));
+    assert!(eval("float", "acos(1.25)").is_err());
+    assert!(eval("float", r#"acos("0")"#).is_err());
     assert_eq!(
         program.call("Wave", &[Value::Int(0)], &mut (), limits)?,
         Value::Float(0.0)
@@ -330,6 +334,30 @@ fn dynamic_calls_read_the_name_after_arguments_and_support_returns_and_ref_argum
     assert!(format!("{error:#}").contains("unknown function missing"));
     assert!(Program::compile("int main(){int name=0;return call name();}").is_err());
     assert!(Program::compile("void main(){call \"Missing\"();}").is_err());
+    Ok(())
+}
+
+#[test]
+fn standalone_number_before_switch_break_leaves_the_previous_assignment() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        int Main(int choice) {
+            int result = 0;
+            switch (choice) {
+                case 0: result = 12;7
+                    break;
+                default: result = 31; break;
+            }
+            return result;
+        }
+        "#,
+    )?;
+    for (choice, expected) in [(0, 12), (1, 31)] {
+        assert_eq!(
+            program.call("main", &[Value::Int(choice)], &mut (), Limits::default())?,
+            Value::Int(expected)
+        );
+    }
     Ok(())
 }
 

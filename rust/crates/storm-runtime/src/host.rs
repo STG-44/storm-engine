@@ -436,6 +436,9 @@ impl Host for NativeHost {
         self.entities.erase(id);
         Ok(())
     }
+    fn delete_entities(&mut self) -> Result<()> {
+        self.entities.erase_all()
+    }
     fn delete_entities_by_type(&mut self, class: &str) -> Result<()> {
         for id in self.entities.ids(class) {
             self.entities.erase(id);

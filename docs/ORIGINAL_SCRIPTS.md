@@ -218,7 +218,8 @@ codes and flags, and runs timed control trees. It sends the original control
 activation, deactivation and wheel events to scripts. The desktop window
 feeds keyboard and mouse input to the same service used by the headless
 tests. Text input and camera consumption of raw mouse axes remain pending.
-The VM also supplies `Sin`, integer and float `Sqrt`, and `ARGB` color packing.
+The VM also supplies `Sin`, `Cos`, `Acos`, integer and float `Sqrt`, and
+`ARGB` color packing.
 
 The `locator` class handles the island initialization message `LM_LOCATE_I`.
 It reads GM model labels without loading textures and writes reload points,
@@ -418,6 +419,11 @@ standalone limits. The configured attribute store also has room for the
 full startup tables.
 
 `GetEntity` and `DeleteEntitiesByType` use the native entity registry.
+`DeleteEntities` synchronously destroys all scene entities, including
+those already queued for deletion, before the calling script creates the
+next scene. It preserves class registrations and layer settings. Rust
+keeps allocation stamps monotonic to prevent stale script references
+from resolving to replacement entities.
 The startup particle entity supports the empty-system lifecycle and missing
 profiles. World-space emission and the debug teleport UI remain pending.
 The options reader loads the original dotted paths into script attributes.
@@ -449,6 +455,14 @@ version string on Metal at 1280 × 720. Add `--headless menu.png --width 1280
 A randomly selected thunderstorm can stop earlier at the missing
 `Lightning` class in `weather/whrlightning.c:34`. These probes use the
 original source files as supplied.
+
+A keyboard replay selected New Game and activated it with Space. The
+original `InterfaceDoExit` destroyed the menu scene and recreated
+`XINTERFACE`. The runtime then loaded the original `selectCharacter.c`
+and entered its `InitInterface`. The compiler accepts the standalone
+integer before a branch's `break` in that source, matching the retained
+compiler and VM. Loading `selectCharacter.ini` stops at its first widget,
+`WINDOW,MAIN_WINDOW`. Character selection is pending at that point.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including

@@ -3361,6 +3361,56 @@ fn original_layer_builtins_freeze_remove_retype_and_keep_unsigned_priority() -> 
 }
 
 #[test]
+fn delete_entities_destroys_the_old_scene_before_creating_the_next_one() -> Result<()> {
+    let trace = Trace::default();
+    let mut engine = Engine::from_runtime(
+        Runtime::compile(
+            r#"
+            object first, second, replacement;
+            #event_handler("transition","Transition");
+            void Main() {
+                CreateEntity(&first,"runtime_test");
+                CreateEntity(&second,"runtime_test");
+                LayerAddObject(0,&first,0);
+                LayerAddObject(0,&second,1);
+            }
+            void Transition() {
+                DeleteClass(&second);
+                DeleteEntities();
+                Trace("old="+IsEntity(first)+":"+IsEntity(second));
+                CreateEntity(&replacement,"runtime_test");
+                LayerAddObject(0,&replacement,0);
+                Trace("new="+IsEntity(replacement)+":"+IsEntity(first));
+            }
+            "#,
+        )?,
+        host(&trace)?,
+    );
+    engine.frame(0)?;
+    let old = engine.host.entities.all_ids();
+    trace.borrow_mut().clear();
+
+    engine.emit_event("transition", &mut Message::new("", vec![])?)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "destroy",
+            "destroy",
+            "script:old=0:0",
+            "init",
+            "script:new=1:0"
+        ]
+    );
+    let active = engine.host.entities.all_ids();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].raw() as u32, old[0].raw() as u32);
+    assert!(old.iter().all(|&id| engine.host.entities.get(id).is_none()));
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["Execute:16"]);
+    Ok(())
+}
+
+#[test]
 fn failing_shutdown_releases_entities_and_never_repeats_the_application_exit_event() -> Result<()> {
     struct Failing(Trace);
     impl Entity for Failing {

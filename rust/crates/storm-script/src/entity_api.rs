@@ -10,6 +10,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
         "createclass" => (1, Type::Object),
         "sendmessage" => (2, Type::Ptr),
         "deleteclass" | "deleteentitiesbytype" | "entityupdate" => (1, Type::Void),
+        "deleteentities" => (0, Type::Void),
         "layersetexecute" | "layersetrealize" | "trace" => (1, Type::Void),
         "layeraddobject" => (3, Type::Void),
         "layerdelobject" | "layerfreeze" => (2, Type::Void),
@@ -186,6 +187,10 @@ pub(crate) fn call(
         }
         "deleteclass" => {
             execution.host.delete_entity(entity(&arguments[0])?)?;
+            Ok(Value::Void)
+        }
+        "deleteentities" => {
+            execution.host.delete_entities()?;
             Ok(Value::Void)
         }
         "deleteentitiesbytype" => {
