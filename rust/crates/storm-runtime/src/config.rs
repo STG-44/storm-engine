@@ -160,8 +160,8 @@ impl Startup {
         crate::sky::Skies::register(&mut host, game.clone())?;
         crate::teleport::register(&mut host, game.clone())?;
         storm_script::Host::world(&host).use_game_limits();
-        crate::interface::Interfaces::register(&mut host, game.clone())?;
         let language = crate::script_libraries::interface::LanguageService::new(game.clone());
+        crate::interface::Interfaces::register(&mut host, game.clone(), language.clone())?;
         language.register(&mut host)?;
         crate::back_scene::BackScenes::register(&mut host, game.clone(), language.clone())?;
         host.interface_language = Some(language);

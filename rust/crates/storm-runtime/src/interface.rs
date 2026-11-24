@@ -1,4 +1,5 @@
 //! XINTERFACE startup state, including its original script callbacks.
+mod dialog;
 mod fader;
 mod info;
 mod log;
@@ -10,7 +11,9 @@ mod settings;
 mod timer;
 mod video;
 
-use crate::{GameDirectory, NativeHost, WindowSettings};
+use crate::{
+    GameDirectory, NativeHost, WindowSettings, script_libraries::interface::LanguageService,
+};
 use anyhow::{Context, Result, bail};
 use progress::{BorderSelection, PictureLayer};
 use quest_text::QuestText;
@@ -22,10 +25,16 @@ use std::{
     time::Instant,
 };
 use storm_core::{
-    AttributeStore, Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message, Value as Field,
+    AttributeId, AttributeStore, Entity, EntityDestroy, EntityId, EntityInit, LayerType, Message,
+    Value as Field,
 };
 use storm_formats::texture::Texture;
-use storm_render::{fade::FadeDraw, loading::LoadingPictures, texture_paths::TexturePaths};
+use storm_render::{
+    fade::FadeDraw,
+    interface_text::{BitmapFont, TextDraw},
+    loading::LoadingPictures,
+    texture_paths::TexturePaths,
+};
 use storm_script::{Reference, Value};
 
 pub use log::{ActionHint, ActionLayout, LogAndActionsState, LogLayout, LogLine};
@@ -39,6 +48,8 @@ pub struct InterfaceState {
     pub screen: InterfaceScreen,
     pub cursor: Option<InterfaceCursor>,
     pub game_time: [u32; 3],
+    binding: Option<AttributeId>,
+    dialog: dialog::Dialog,
     quests: QuestText,
     wheel: Option<Reference>,
 }
@@ -59,6 +70,9 @@ impl InterfaceState {
 
 struct Shared {
     game: GameDirectory,
+    language: LanguageService,
+    fonts: RefCell<BTreeMap<String, std::rc::Weak<BitmapFont>>>,
+    text: RefCell<Vec<(EntityId, TextDraw)>>,
     paths: Rc<RefCell<TexturePaths>>,
     time_scale: Rc<Cell<f32>>,
     window: Cell<Option<[u32; 2]>>,
@@ -91,9 +105,16 @@ impl Shared {
 pub(crate) struct Interfaces(Rc<Shared>);
 
 impl Interfaces {
-    pub(crate) fn register(host: &mut NativeHost, game: GameDirectory) -> Result<()> {
+    pub(crate) fn register(
+        host: &mut NativeHost,
+        game: GameDirectory,
+        language: LanguageService,
+    ) -> Result<()> {
         let interfaces = Self(Rc::new(Shared {
             game,
+            language,
+            fonts: RefCell::default(),
+            text: RefCell::default(),
             paths: host.texture_paths.clone(),
             time_scale: host.time_scale.clone(),
             window: Cell::new(None),
@@ -145,6 +166,36 @@ impl Interfaces {
         Ok(())
     }
 
+    pub(crate) fn dialog_active(&self, id: EntityId) -> bool {
+        self.state(id).is_some_and(|state| state.dialog.active)
+    }
+
+    pub(crate) fn realize_text(&self, id: EntityId, store: &AttributeStore) {
+        if let Some(state) = self.state(id) {
+            self.0.text.borrow_mut().extend(
+                state
+                    .dialog
+                    .draws(store, state.binding, &state.screen)
+                    .into_iter()
+                    .map(|draw| (id, draw)),
+            );
+        }
+    }
+
+    pub(crate) fn text_draws(&self) -> Vec<TextDraw> {
+        self.0
+            .text
+            .borrow()
+            .iter()
+            .map(|(_, draw)| draw.clone())
+            .collect()
+    }
+
+    pub(crate) fn take_dialog_post(&self, id: EntityId) -> Option<(&'static str, i32)> {
+        let mut states = self.0.states.borrow_mut();
+        std::mem::take(&mut states.get_mut(&id.raw())?.dialog.missing).then_some(("exitCancel", 1))
+    }
+
     pub fn set_window(&self, width: u32, height: u32) {
         if width != 0 && height != 0 {
             self.0.window.set(Some([width, height]));
@@ -184,6 +235,7 @@ impl Interfaces {
         self.0.screenshots.borrow().image(handle)
     }
     pub fn clear_draws(&self) {
+        self.0.text.borrow_mut().clear();
         self.0.loading_draw.replace(None);
         self.0.previous_loading_draw.replace(None);
         self.0.fade_draws.borrow_mut().clear();
@@ -191,6 +243,7 @@ impl Interfaces {
     }
 
     pub fn begin_frame(&self) {
+        self.0.text.borrow_mut().clear();
         self.0.fade_draws.borrow_mut().clear();
         self.0
             .previous_loading_draw
@@ -376,6 +429,8 @@ impl Entity for Actor {
                 screen,
                 cursor,
                 game_time,
+                binding: context.attributes,
+                dialog: dialog::Dialog::default(),
                 quests: QuestText::default(),
                 wheel: None,
             },
@@ -385,6 +440,10 @@ impl Entity for Actor {
 
     fn destroy(&mut self, context: &mut EntityDestroy<'_>) -> Result<()> {
         self.shared.states.borrow_mut().remove(&context.id.raw());
+        self.shared
+            .text
+            .borrow_mut()
+            .retain(|(id, _)| *id != context.id);
         if self.shared.options_break.get() == Some(context.id) {
             self.shared.options_break.set(None);
         }
@@ -392,7 +451,30 @@ impl Entity for Actor {
     }
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
-        bail!("unsupported XINTERFACE message {}", message.long()?);
+        let code = message.long()?;
+        let mut states = self.shared.states.borrow_mut();
+        let state = states
+            .get_mut(&self.id.raw())
+            .context("missing XINTERFACE state")?;
+        use dialog::{
+            CHANGE_COLOR, CREATE_STRING, DELETE_STRING, DISABLE_STRING, ENABLE_STRING, INIT,
+            RELEASE,
+        };
+        match code {
+            INIT => state.dialog.activate(&self.shared, message.string()?)?,
+            RELEASE => state.dialog = dialog::Dialog::default(),
+            CREATE_STRING => state.dialog.create_string(&self.shared, message)?,
+            ENABLE_STRING | DISABLE_STRING | DELETE_STRING | CHANGE_COLOR => {
+                state.dialog.update_string(code, message)?;
+            }
+            _ => bail!("unsupported XINTERFACE message {code}"),
+        }
+        // A later Realize publishes the replacement dialog and its strings.
+        self.shared
+            .text
+            .borrow_mut()
+            .retain(|(id, _)| *id != self.id);
+        Ok(0)
     }
 
     fn process_message_with_attributes(
@@ -409,7 +491,10 @@ impl Entity for Actor {
                 }
                 Ok(0)
             }
-            code => bail!("unsupported XINTERFACE message {code}"),
+            _ => {
+                message.move_to_start();
+                self.process_message(message)
+            }
         }
     }
 }

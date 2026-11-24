@@ -3549,3 +3549,102 @@ fn rooted_files_reject_escape_and_nonregular_or_oversized_inputs() -> Result<()>
     assert_eq!(Host::call(&mut native, "answer", &[])?, Value::Int(42));
     Ok(())
 }
+
+#[test]
+fn configured_xinterface_loads_empty_dialogs_and_draws_live_bitmap_strings() -> Result<()> {
+    use std::rc::Rc;
+    use storm_render::interface_text::Alignment;
+    use storm_script::Value;
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    std::fs::create_dir_all(ini.join("INTERFACES"))?;
+    std::fs::create_dir_all(temp.0.join("RESOURCE/Textures/Fonts"))?;
+    std::fs::write(
+        ini.join("INTERFACES/interfaces.ini"),
+        "[PC_SCREEN]\nwScreenWidth=800\nwScreenHeight=600\nwScreenLeft=12\nwScreenTop=17\n",
+    )?;
+    std::fs::write(
+        ini.join("INTERFACES/menu.ini"),
+        "[MAIN]\n;item=BUTTON,legacy\nitem=80,XBOX,BUTTON,console\nitem=LANG,Polish,BUTTON,other\n[Legacy]\nitem=BUTTON,unused",
+    )?;
+    let mut font = b"[Interface_Normal]\nTexture=Fonts/Test.tga\nTexture_xsize=2\nTexture_ysize=2\nHeight=2\nPCScale=0.6\nchar_A=0,0,2,2\nchar_".to_vec();
+    font.extend([0xdf]);
+    font.extend(b"=0,0,2,2\n");
+    std::fs::write(ini.join("fonts.ini"), font)?;
+    let mut texture = [0u32, 2, 2, 1, 21, 16]
+        .into_iter()
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    texture.extend([255; 16]);
+    std::fs::write(temp.0.join("RESOURCE/Textures/Fonts/Test.tga.tx"), texture)?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object xi;
+        int cancelled;
+        #event_handler("Edit", "Edit");
+        #event_handler("Hide", "Hide");
+        #event_handler("Show", "Show");
+        #event_handler("Release", "Release");
+        #event_handler("Missing", "Missing");
+        #event_handler("exitCancel", "Cancel");
+        #event_handler("State", "State");
+        void Main() {
+            CreateEntity(&xi, "XINTERFACE");
+            LayerAddObject(5, &xi, 0);
+            SendMessage(&xi, "ls", 45010, "resource\ini\interfaces\menu.ini");
+            xi.strings.version = "AЯ";
+            SendMessage(&xi, "lssllllf", 45012, "Version", "interface_normal",
+                argb(255, 255, 255, 255), 780, 580, 1, 0.9);
+        }
+        void Edit() {
+            xi.strings.Version = "ЯA";
+            SendMessage(&xi, "lsl", 45051, "VERSION", argb(128, 210, 100, 30));
+        }
+        void Hide() { SendMessage(&xi, "ls", 45015, "Version"); }
+        void Show() { SendMessage(&xi, "ls", 45014, "version"); }
+        void Release() { SendMessage(&xi, "l", 45011); }
+        void Missing() { SendMessage(&xi, "ls", 45010, "resource\ini\interfaces\missing.ini"); }
+        void Cancel() { cancelled++; }
+        int State() { return cancelled; }
+    "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    let draws = engine.host.interface_text_draws();
+    assert_eq!(draws.len(), 1);
+    assert_eq!(draws[0].text, "AЯ");
+    assert_eq!(draws[0].canvas, [800, 600]);
+    assert_eq!(draws[0].position, [792, 597]);
+    assert!(draws[0].alignment == Alignment::Right);
+    assert_eq!(draws[0].font.glyphs[&'Я'], [0, 0, 2, 2]);
+
+    let mut message = Message::new("", vec![])?;
+    engine.emit_event("Edit", &mut message)?;
+    engine.frame(1)?;
+    let edited = engine.host.interface_text_draws();
+    assert_eq!(edited[0].text, "ЯA");
+    assert_eq!(edited[0].rgba, [210, 100, 30, 128]);
+    assert!(Rc::ptr_eq(&draws[0].font, &edited[0].font));
+    engine.emit_event("Hide", &mut message)?;
+    engine.frame(1)?;
+    assert!(engine.host.interface_text_draws().is_empty());
+    engine.emit_event("Show", &mut message)?;
+    engine.frame(1)?;
+    assert_eq!(engine.host.interface_text_draws().len(), 1);
+    engine.emit_event("Release", &mut message)?;
+    engine.frame(1)?;
+    assert!(engine.host.interface_text_draws().is_empty());
+    engine.emit_event("Missing", &mut message)?;
+    engine.frame(1)?;
+    engine.frame(1)?;
+    assert_eq!(
+        engine.emit_event("State", &mut message)?,
+        Some(Value::Int(1))
+    );
+    Ok(())
+}

@@ -206,6 +206,11 @@ impl NativeHost {
     pub fn loading_draw(&self) -> Option<Rc<storm_render::loading::LoadingPictures>> {
         self.interfaces.as_ref()?.loading_draw()
     }
+    pub fn interface_text_draws(&self) -> Vec<storm_render::interface_text::TextDraw> {
+        self.interfaces
+            .as_ref()
+            .map_or_else(Vec::new, Interfaces::text_draws)
+    }
     pub fn fade_draws(&self) -> Option<Ref<'_, [FadeDraw]>> {
         self.interfaces.as_ref().map(Interfaces::fade_draws)
     }
@@ -504,10 +509,13 @@ impl Host for NativeHost {
         self.interfaces.as_ref()?.take_event(id)
     }
     fn take_entity_posts(&mut self, id: EntityId) -> Vec<(&'static str, i32)> {
-        self.interfaces
-            .as_ref()
-            .and_then(|interfaces| interfaces.take_video_post(id))
+        let Some(interfaces) = &self.interfaces else {
+            return Vec::new();
+        };
+        interfaces
+            .take_video_post(id)
             .into_iter()
+            .chain(interfaces.take_dialog_post(id))
             .collect()
     }
     fn event_handler_instructions(&self, event: &str, function: &str) -> Option<u64> {

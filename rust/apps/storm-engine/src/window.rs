@@ -285,6 +285,7 @@ impl Application<'_> {
                     correction: self.engine.host.color_correction(),
                     sea: self.engine.host.sea_draw(),
                     camera: self.engine.host.authored_camera(),
+                    text: self.engine.host.interface_text_draws(),
                     coast_foam: self.engine.host.coast_foam_draws(),
                     rain: self.engine.host.rain_draws(),
                     sun: self.engine.host.sun_draws(),

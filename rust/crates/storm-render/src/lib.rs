@@ -7,6 +7,7 @@ use wgpu::util::DeviceExt;
 pub const DIAGNOSTIC_SHADER: &str = include_str!("sea.wgsl");
 pub mod color;
 pub mod fade;
+pub mod interface_text;
 pub mod loading;
 pub mod model;
 pub mod screenshot;

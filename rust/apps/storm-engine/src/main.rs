@@ -113,6 +113,9 @@ fn main() -> Result<()> {
             arguments.width.unwrap_or(960),
             arguments.height.unwrap_or(540),
         ];
+        if arguments.headless.is_some() {
+            engine.host.set_interface_window(size[0], size[1]);
+        }
         let mut elapsed_ms = 0u64;
         let mut headless: Option<(Gpu, SceneRenderer)> = None;
         for (index, delta_ms) in arguments.frame_ms.into_iter().enumerate() {
@@ -160,6 +163,7 @@ fn main() -> Result<()> {
                                 correction: engine.host.color_correction(),
                                 sea: engine.host.sea_draw(),
                                 camera: engine.host.authored_camera(),
+                                text: engine.host.interface_text_draws(),
                                 coast_foam: engine.host.coast_foam_draws(),
                                 rain: engine.host.rain_draws(),
                                 sun: engine.host.sun_draws(),
@@ -189,6 +193,7 @@ fn main() -> Result<()> {
                 correction: engine.host.color_correction(),
                 sea: engine.host.sea_draw(),
                 camera: engine.host.authored_camera(),
+                text: engine.host.interface_text_draws(),
                 coast_foam: engine.host.coast_foam_draws(),
                 rain: engine.host.rain_draws(),
                 sun: engine.host.sun_draws(),

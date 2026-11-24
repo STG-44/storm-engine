@@ -237,8 +237,7 @@ window size, loads the cursor texture, and reads the script's initial
 `GameTime` attributes. Its synchronous initialization events obtain the
 quest text files and the live script reference for the mouse wheel. The
 `obj_strservice` messages and language functions share the open catalog
-IDs and reference counts. Dialog nodes, interface rendering, and quest
-parameter substitution remain pending.
+IDs and reference counts. Active dialog widgets remain pending.
 
 `ILogAndActions` sends the synchronous `SetWindowSize` event with the
 current window dimensions during initialization. It reads the log and
@@ -442,11 +441,14 @@ loads the `MainMenu` coastal foam profile and schedules `CoastFoam`.
 and menu models through `InterfaceBackScene` before calling
 `MainMenu_CreateShip`. With an ordinary weather preset it generates the
 menu character, mounts the selected ship and completes the background
-setup. It then reaches the unported XINTERFACE dialog initializer
-(`MSG_INTERFACE_INIT`, 45010) at `interface/mainmenu.c:55`. A randomly
-selected thunderstorm can stop earlier at the missing `Lightning` class
-in `weather/whrlightning.c:34`. These probes use the original source
-files as supplied.
+setup. The original `InitInterface` opens `mainmenu.ini` through
+`MSG_INTERFACE_INIT` and creates the version string returned by the script.
+The pinned startup rendered the menu with its logo, items and Cyrillic
+version string on Metal at 1280 × 720. Add `--headless menu.png --width 1280
+--height 720` to the startup command above to capture the final frame.
+A randomly selected thunderstorm can stop earlier at the missing
+`Lightning` class in `weather/whrlightning.c:34`. These probes use the
+original source files as supplied.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -505,8 +507,7 @@ and post `backgroundcommand` with the selected item's event name. Ship
 placement reads a locator's position and yaw when the locator exists.
 Light sources, animated props and the optional static-model messages remain
 pending. A separate capture exercises the original background and all six
-menu items through the configured renderer before the complete start-up
-sequence can show the menu.
+menu items through the configured renderer.
 
 The configured `SHIP` takes the character and real ship attributes from
 `MSG_SHIP_CREATE`. Script callbacks set the original texture path and sea
@@ -521,6 +522,17 @@ Destruction releases the model and rigging groups. The scope covers living
 vessels. Collisions, sinking, ship-driven lights, damage, blots, tracks
 and menu cannon effects remain pending. The Barkentine capture exercises
 this configured path with original assets and wave frames.
+
+`XINTERFACE` opens the configured dialog INI and resets the preceding
+dialog's strings. The original `mainmenu.ini` has no active nodes in its
+`[MAIN]` section because its interactive items are the GM models owned
+by `InterfaceBackScene`. Dialogs with active native widgets still need
+their widget handlers. A missing INI posts the original `exitCancel`
+event. Dynamic strings retain the script's `GameInterface.strings` values,
+positions, alignment, visibility and color. The renderer reads the
+original bitmap atlas and font metrics, including PC scaling, Cyrillic
+glyphs and the native shadow. Window, frame capture and PNG output use
+the same text pass.
 
 `ShipLights` loads the script-owned light catalog and corona textures on the
 first attachment request. The native attachment API follows the original GM

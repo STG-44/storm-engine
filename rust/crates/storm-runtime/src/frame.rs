@@ -293,6 +293,13 @@ impl Engine {
                     .process_entity_stage(id, Stage::Realize, delta_ms)?;
                 astronomy_realized |= Some(id) == astronomy;
             }
+            if self.host.entities.is_valid(id)
+                && let Some(interfaces) = &self.host.interfaces
+                && interfaces.dialog_active(id)
+            {
+                storm_script::Host::world(&self.host)
+                    .read(|store| interfaces.realize_text(id, store))?;
+            }
             if let Some((fog, celestial)) = self
                 .host
                 .skies
