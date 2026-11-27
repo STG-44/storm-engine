@@ -17,7 +17,7 @@ use storm_runtime::{
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
-    event::{DeviceEvent, DeviceId, WindowEvent},
+    event::{DeviceEvent, DeviceId, Ime, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Fullscreen, Window, WindowId},
 };
@@ -201,11 +201,20 @@ struct Application<'a> {
     next_frame: Instant,
     elapsed_ms: u64,
     focused: bool,
+    ime_allowed: bool,
     closing: bool,
     presented: u64,
     failure: Option<anyhow::Error>,
 }
 impl Application<'_> {
+    fn sync_ime(&mut self, window: &Window) {
+        let allowed = self.focused && self.engine.host.interface_editor_focused();
+        if self.ime_allowed != allowed {
+            window.set_ime_allowed(allowed);
+            self.ime_allowed = allowed;
+        }
+    }
+
     fn fail(&mut self, event_loop: &ActiveEventLoop, error: anyhow::Error) {
         self.failure = Some(error);
         event_loop.exit();
@@ -266,6 +275,9 @@ impl Application<'_> {
             return Ok(());
         }
         self.elapsed_ms = next_elapsed;
+        if let Some(surface) = self.surface.clone() {
+            self.sync_ime(&surface.borrow().window);
+        }
         if frame.skipped {
             return Ok(());
         }
@@ -357,6 +369,7 @@ impl ApplicationHandler for Application<'_> {
         self.engine.control_input(ControlInput::FocusLost);
         self.engine.host.set_interface_pointer(None);
         self.surface = None;
+        self.ime_allowed = false;
     }
     fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
         if self.focused
@@ -392,11 +405,26 @@ impl ApplicationHandler for Application<'_> {
                     self.engine.control_input(ControlInput::FocusLost);
                     self.engine.host.set_interface_pointer(None);
                 }
+                self.sync_ime(&surface.borrow().window);
                 Ok(())
             }
             WindowEvent::KeyboardInput { event, .. } if self.focused => {
-                if let Some(input) = input::keyboard(event) {
+                if let Some(input) = input::keyboard(&event) {
                     self.engine.control_input(input);
+                }
+                if self.ime_allowed
+                    && event.state.is_pressed()
+                    && let Some(text) = &event.text
+                {
+                    for c in text.chars() {
+                        self.engine.control_input(ControlInput::Text(c));
+                    }
+                }
+                Ok(())
+            }
+            WindowEvent::Ime(Ime::Commit(text)) if self.ime_allowed => {
+                for c in text.chars() {
+                    self.engine.control_input(ControlInput::Text(c));
                 }
                 Ok(())
             }
@@ -505,6 +533,7 @@ pub fn run(engine: &mut Engine, models: Models, options: Options) -> Result<()> 
         next_frame: now,
         elapsed_ms: 0,
         focused: true,
+        ime_allowed: false,
         closing: false,
         presented: 0,
         failure: None,

@@ -12,6 +12,7 @@ const WHEEL_UP: usize = 258;
 const WHEEL_DOWN: usize = 259;
 const BUTTON_COUNT: usize = MOUSE_X;
 const MAX_CONTROLS: usize = 4096;
+const MAX_EDIT_KEYS: usize = 1024;
 const USE_AXIS_AS_BUTTON: u32 = 1;
 const INVERSE_CONTROL: u32 = 4;
 
@@ -19,10 +20,22 @@ const INVERSE_CONTROL: u32 = 4;
 #[derive(Clone, Copy, Debug)]
 pub enum ControlInput {
     Button { code: u8, pressed: bool },
+    Text(char),
     NumpadEnter(bool),
     MouseMotion { x: f64, y: f64 },
     MouseWheel(i32),
     FocusLost,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum EditKey {
+    Character(char),
+    Backspace,
+    Delete,
+    Home,
+    End,
+    Left,
+    Right,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -80,6 +93,7 @@ impl Hardware {
         match input {
             ControlInput::Button { code, pressed } => self.buttons[usize::from(code)] = pressed,
             ControlInput::NumpadEnter(pressed) => self.numpad_enter = pressed,
+            ControlInput::Text(_) => {}
             ControlInput::MouseMotion { x, y } if x.is_finite() && y.is_finite() => {
                 self.motion[0] += x;
                 self.motion[1] += y;
@@ -166,15 +180,57 @@ pub(crate) struct Controls {
     names: BTreeMap<String, usize>,
     tree: Tree,
     locked: bool,
+    edit_keys: Vec<EditKey>,
+    queued_edit_keys: Vec<EditKey>,
 }
 
 impl Controls {
     pub fn input(&mut self, input: ControlInput) {
+        let edit = match input {
+            ControlInput::Text(c) if !c.is_control() => Some(EditKey::Character(c)),
+            ControlInput::Button {
+                code: 8,
+                pressed: true,
+            } => Some(EditKey::Backspace),
+            ControlInput::Button {
+                code: 46,
+                pressed: true,
+            } => Some(EditKey::Delete),
+            ControlInput::Button {
+                code: 36,
+                pressed: true,
+            } => Some(EditKey::Home),
+            ControlInput::Button {
+                code: 35,
+                pressed: true,
+            } => Some(EditKey::End),
+            ControlInput::Button {
+                code: 37,
+                pressed: true,
+            } => Some(EditKey::Left),
+            ControlInput::Button {
+                code: 39,
+                pressed: true,
+            } => Some(EditKey::Right),
+            ControlInput::FocusLost => {
+                self.edit_keys.clear();
+                self.queued_edit_keys.clear();
+                None
+            }
+            _ => None,
+        };
+        if let Some(edit) = edit
+            && self.queued_edit_keys.len() < MAX_EDIT_KEYS
+        {
+            self.queued_edit_keys.push(edit);
+        }
         self.hardware.input(input);
     }
 
     pub fn advance(&mut self, delta_ms: u32) {
         self.hardware.advance();
+        self.edit_keys.clear();
+        std::mem::swap(&mut self.edit_keys, &mut self.queued_edit_keys);
         let bindings = &self.bindings;
         let names = &self.names;
         let hardware = &self.hardware;
@@ -186,6 +242,10 @@ impl Controls {
                 .get(&name.to_ascii_lowercase())
                 .map_or(State::Inactive, |&id| bindings[id].state(hardware, tree))
         });
+    }
+
+    pub(crate) fn edit_keys(&self) -> &[EditKey] {
+        &self.edit_keys
     }
 
     pub fn len(&self) -> usize {

@@ -5,7 +5,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-pub(super) fn keyboard(event: KeyEvent) -> Option<ControlInput> {
+pub(super) fn keyboard(event: &KeyEvent) -> Option<ControlInput> {
     let PhysicalKey::Code(key) = event.physical_key else {
         return None;
     };

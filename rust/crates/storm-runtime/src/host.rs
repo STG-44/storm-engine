@@ -156,6 +156,11 @@ impl NativeHost {
             scenes.set_pointer(pointer);
         }
     }
+    pub fn interface_editor_focused(&self) -> bool {
+        self.interfaces
+            .as_ref()
+            .is_some_and(Interfaces::editor_focused)
+    }
     pub fn authored_camera(&self) -> Option<storm_render::model::OrbitCamera> {
         self.back_scenes.as_ref()?.camera(&self.entities)
     }

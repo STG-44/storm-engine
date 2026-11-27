@@ -464,11 +464,12 @@ and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
 compiler and VM. Loading `selectCharacter.ini` passes the original
 portrait, biography, difficulty panels, six checkbox widgets, and the
-`TEXTBUTTON2` controls for OK and Cancel. It stops at the unported
-`PCEDITBOX,PROFILE_NAME`. A separate partial-layout Metal capture uses
-the original icons and labels for the options and the two buttons.
-The capture retains the scripted portrait and setup borders from
-`EI_CreateFrame` and `EI_CreateHLine`.
+`TEXTBUTTON2` controls for OK and Cancel. It initializes the
+`PCEDITBOX,PROFILE_NAME` field and stops at the unported
+`TABLE,TABLE_SMALLSKILL`. A separate partial-layout Metal capture shows
+the active profile field with the original `Player` value and the caret.
+It retains the scripted portrait and setup borders from `EI_CreateFrame`
+and `EI_CreateHLine`.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -589,6 +590,12 @@ An explicit dialog node `strOffset` sets the offset from the top edge.
 A button configured with
 `UseActionByDeclick` shows its pressed state while held and runs its
 command on mouse release. Video textures inside text buttons remain pending.
+`PCEDITBOX` reads and writes the script-owned `<node>.str` attribute.
+It draws the configured atlas pieces, clips long names to the field and
+shows the caret when focused. Keyboard edits handle UTF-8 text, the
+configured character exclusions, and the length and width limits.
+Backspace removes one Unicode character while preserving the following
+text. Enter dispatches the configured command against the edited value.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the

@@ -4126,6 +4126,173 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
 }
 
 #[test]
+fn dialog_pc_edit_box_edits_unicode_and_confirms_the_script_owned_value() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::{Picture, Text};
+
+    let temp = Temporary::new()?;
+    let resource = temp.0.join("RESOURCE");
+    let ui = resource.join("INI/INTERFACES");
+    let textures = resource.join("Textures/Interfaces");
+    std::fs::create_dir_all(&ui)?;
+    std::fs::create_dir_all(&textures)?;
+    let mut tx = [0u32, 8, 4, 1, 21, 128].map(u32::to_le_bytes).concat();
+    tx.extend([255; 128]);
+    std::fs::write(textures.join("editor.tga.tx"), tx)?;
+    std::fs::write(
+        ui.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        resource.join("INI/fonts.ini"),
+        "[Face]\nTexture=Interfaces/editor.tga\nTexture_xsize=8\nTexture_ysize=4\nHeight=4\nchar_А=0,0,4,4\nchar_Б=0,0,4,4\nchar_В=0,0,4,4\nchar_Г=0,0,4,4\nchar_Я=0,0,4,4\nchar_Ш=0,0,8,4\nchar_Ю=0,0,4,4\nchar__=0,0,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("pictures.ini"),
+        "[UI]\nsTextureName=editor.tga\nwTextureWidth=8\nwTextureHeight=4\npicture=Face,0,0,8,4\n",
+    )?;
+    std::fs::write(
+        ui.join("profile.ini"),
+        r#"
+        [MAIN]
+        item=BUTTON,Outside
+        item=100,PCEDITBOX,Profile
+        item=PCEDITBOX,Blank
+        start=Outside
+        [Outside]
+        position=300,300,340,340
+        [Profile]
+        command=click,select:Profile
+        command=activate,event:Confirm
+        position=20,30,62,44
+        strFont=Face
+        argbFontColor=255,240,220,200
+        stringoffset=2,3
+        stringLength=5
+        stringWidth=20
+        excludechars=* ?
+        LeftImage=piclist=UI,picname=Face,size=(3,4)
+        MiddleImage=color=(255,128,128,128),piclist=UI,picname=Face
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("Confirm","Confirm");
+        #event_handler("editexit","EditExit");
+        #event_handler("Rename","Rename");
+        void Main() {
+            MapControl(CreateControl("ILClick"),1);
+            MapControl(CreateControl("IStartButton"),13);
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(4,&ui,0);
+            LayerAddObject(5,&ui,0);
+            ui.Profile.str = "АБВ";
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\profile.ini");
+            Trace(ui.Profile.str);
+            if (CheckAttribute(&ui,"Blank.str")) Trace("blank initialized");
+        }
+        void Confirm() { Trace("confirm="+ui.Profile.str); }
+        void EditExit() {
+            string node=GetEventData();
+            if (node=="Profile") Trace("exit="+ui.Profile.str);
+        }
+        void Rename() { ui.Profile.str = "Ю"; }
+    "#,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(800, 600);
+    engine.frame(0)?;
+    assert_eq!(trace.take(), ["script:АБВ", "script:blank initialized"]);
+    assert!(!engine.host.interface_editor_focused());
+    engine.control_input(ControlInput::Text('Г'));
+    engine.frame(16)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_draws();
+    let [Picture(left), Picture(middle), Text(name)] = draws.as_slice() else {
+        panic!("edit box art and script name");
+    };
+    assert_eq!(left.rect, [20.0, 30.0, 23.0, 44.0]);
+    assert_eq!(middle.rect, [23.0, 30.0, 62.0, 44.0]);
+    assert_eq!(name.text, "АБВ");
+    assert_eq!(name.position, [22, 33]);
+
+    engine.host.set_interface_pointer(Some([37.0, 38.0]));
+    engine.control_input(ControlInput::Button {
+        code: 1,
+        pressed: true,
+    });
+    for _ in 0..4 {
+        engine.frame(16)?;
+    }
+    assert!(engine.host.interface_editor_focused());
+    engine.control_input(ControlInput::Button {
+        code: 1,
+        pressed: false,
+    });
+    for code in [36, 39, 8] {
+        engine.control_input(ControlInput::Button {
+            code,
+            pressed: true,
+        });
+        engine.control_input(ControlInput::Button {
+            code,
+            pressed: false,
+        });
+    }
+    engine.control_input(ControlInput::Text('Я'));
+    engine.control_input(ControlInput::Text('*'));
+    for code in [46, 35] {
+        engine.control_input(ControlInput::Button {
+            code,
+            pressed: true,
+        });
+        engine.control_input(ControlInput::Button {
+            code,
+            pressed: false,
+        });
+    }
+    for c in ['Г', 'Ш', 'А'] {
+        engine.control_input(ControlInput::Text(c));
+    }
+    engine.control_input(ControlInput::Button {
+        code: 13,
+        pressed: true,
+    });
+    for _ in 0..3 {
+        engine.frame(16)?;
+    }
+    assert_eq!(trace.take(), ["script:confirm=ЯВГШ"]);
+    let draws = engine.host.interface_draws();
+    let [_, _, Text(name), Text(caret)] = draws.as_slice() else {
+        panic!("edited name and caret");
+    };
+    assert_eq!(name.text, "ЯВГШ");
+    assert_eq!(caret.text, "_");
+    assert_eq!(caret.position, [42, 33]);
+
+    engine.control_input(ControlInput::Button {
+        code: 13,
+        pressed: false,
+    });
+    engine.frame(16)?;
+    engine.frame(16)?;
+    assert_eq!(trace.take(), ["script:exit=ЯВГШ"]);
+    engine.emit_event("Rename", &mut Message::new("", vec![])?)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_draws();
+    let [_, _, Text(name), Text(caret)] = draws.as_slice() else {
+        panic!("script replacement and clamped caret");
+    };
+    assert_eq!(name.text, "Ю");
+    assert_eq!(caret.position, [26, 33]);
+    Ok(())
+}
+
+#[test]
 fn dialog_text_button_uses_atlas_caps_and_dispatches_on_mouse_release() -> Result<()> {
     use storm_render::interface_text::InterfaceDraw::{Picture, Text};
 

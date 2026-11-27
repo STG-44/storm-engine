@@ -230,9 +230,20 @@ impl Interfaces {
                     .trunc();
             }
         }
-        let events = state.dialog.nodes.button_input(controls, point)?;
+        state
+            .dialog
+            .nodes
+            .edit_input(controls, store, state.binding)?;
+        let mut events = state.dialog.nodes.button_input(controls, point)?;
+        state.dialog.nodes.edit_exit(controls, &mut events)?;
         state.dialog.nodes.publish_checks(store, state.binding)?;
         Ok(events)
+    }
+
+    pub(crate) fn editor_focused(&self) -> bool {
+        self.0.states.borrow().values().any(|state| {
+            state.dialog.active && state.binding.is_some() && state.dialog.nodes.editor_focused()
+        })
     }
 
     pub(crate) fn has_node_callback(&self, id: EntityId) -> bool {
@@ -253,8 +264,16 @@ impl Interfaces {
         Some((dialog::CHECK_EVENT, message))
     }
 
-    fn publish_checks(&self, id: EntityId, store: &mut AttributeStore) -> Result<()> {
+    fn publish_dialog_attributes(
+        &self,
+        id: EntityId,
+        store: &mut AttributeStore,
+        init_edits: bool,
+    ) -> Result<()> {
         if let Some(state) = self.0.states.borrow_mut().get_mut(&id.raw()) {
+            if init_edits {
+                state.dialog.nodes.initialize_edits(store, state.binding)?;
+            }
             state.dialog.nodes.publish_checks(store, state.binding)?;
         }
         Ok(())
@@ -589,7 +608,11 @@ impl Entity for Actor {
                 message.move_to_start();
                 let result = self.receive(message, title)?;
                 if matches!(code, dialog::INIT | dialog::MSG_TO_NODE) {
-                    Interfaces(self.shared.clone()).publish_checks(self.id, attributes)?;
+                    Interfaces(self.shared.clone()).publish_dialog_attributes(
+                        self.id,
+                        attributes,
+                        code == dialog::INIT,
+                    )?;
                 }
                 Ok(result)
             }

@@ -1,8 +1,10 @@
 mod button;
 mod check;
 mod collection;
+mod edit_box;
 mod formatted;
 mod frame;
+mod image;
 mod text_button;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
@@ -11,6 +13,7 @@ use anyhow::{Context, Result, bail, ensure};
 use button::{ACTIVATE, Action, Button, CANCEL, CLICK, Command, RIGHT_CLICK, bindings};
 use check::CheckButtons;
 use collection::Collection;
+use edit_box::EditBox;
 use formatted::FormattedText;
 use frame::Frame;
 use std::{
@@ -98,6 +101,7 @@ enum Widget {
     Button(Box<Button>),
     TextButton(Box<TextButton>),
     CheckButtons(Box<CheckButtons>),
+    EditBox(Box<EditBox>),
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
     Frame(Box<Frame>),
@@ -107,7 +111,7 @@ impl Widget {
     fn interactive(&self) -> bool {
         matches!(
             self,
-            Self::Button(_) | Self::TextButton(_) | Self::CheckButtons(_)
+            Self::Button(_) | Self::TextButton(_) | Self::CheckButtons(_) | Self::EditBox(_)
         )
     }
 }
@@ -235,6 +239,9 @@ impl Nodes {
                 "checkbutton" => Widget::CheckButtons(Box::new(CheckButtons::load(
                     &mut nodes, shared, &setting, rect,
                 )?)),
+                "pceditbox" => {
+                    Widget::EditBox(Box::new(EditBox::load(&mut nodes, shared, &setting)?))
+                }
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
@@ -298,6 +305,7 @@ impl Nodes {
             match &mut node.widget {
                 Widget::Button(button) => button.reset_press(),
                 Widget::TextButton(button) => button.reset_press(),
+                Widget::EditBox(edit) => edit.lose_focus(),
                 _ => {}
             }
         }
@@ -305,8 +313,20 @@ impl Nodes {
 
     pub(in crate::interface) fn set_focus(&mut self, name: &str) {
         if let Some(index) = self.find(name) {
-            self.focus = Some(index);
+            self.change_focus(index);
         }
+    }
+
+    fn change_focus(&mut self, index: usize) {
+        if self.focus == Some(index) {
+            return;
+        }
+        if let Some(previous) = self.focus
+            && let Widget::EditBox(edit) = &mut self.items[previous].widget
+        {
+            edit.lose_focus();
+        }
+        self.focus = Some(index);
     }
 
     pub(in crate::interface) fn focused_name(&self) -> &str {
@@ -464,8 +484,10 @@ impl Nodes {
         let clicked = hit(|node, point| {
             node.clickable && node.commands.contains_key(&CLICK.0) && node.hit(point)
         });
-        if point != self.previous_pointer && hovered.is_some() {
-            self.focus = hovered;
+        if point != self.previous_pointer
+            && let Some(index) = hovered
+        {
+            self.change_focus(index);
         }
         self.previous_pointer = point;
         if controls.activated("ILClick") {
@@ -795,6 +817,68 @@ impl Nodes {
         Ok(())
     }
 
+    pub(in crate::interface) fn initialize_edits(
+        &self,
+        store: &mut AttributeStore,
+        root: Option<AttributeId>,
+    ) -> Result<()> {
+        if let Some(root) = root {
+            for node in &self.items {
+                if matches!(node.widget, Widget::EditBox(_)) {
+                    EditBox::initialize(store, root, &node.name)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(in crate::interface) fn editor_focused(&self) -> bool {
+        self.focus
+            .and_then(|index| self.input_node(index))
+            .is_some_and(|node| matches!(node.widget, Widget::EditBox(_)))
+    }
+
+    pub(in crate::interface) fn edit_input(
+        &mut self,
+        controls: &Controls,
+        store: &mut AttributeStore,
+        root: Option<AttributeId>,
+    ) -> Result<()> {
+        if let Some(index) = self.focus {
+            let node = &mut self.items[index];
+            if let Widget::EditBox(edit) = &mut node.widget {
+                if node.visible
+                    && !node.locked
+                    && node.selectable
+                    && let Some(root) = root
+                {
+                    edit.apply(store, root, &node.name, controls.edit_keys())?;
+                } else {
+                    edit.lose_focus();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(in crate::interface) fn edit_exit(
+        &self,
+        controls: &Controls,
+        events: &mut NodeEvents,
+    ) -> Result<()> {
+        if controls.released("IStartButton") {
+            for node in &self.items {
+                if node.visible && matches!(node.widget, Widget::EditBox(_)) {
+                    events.push((
+                        "editexit".to_owned(),
+                        Message::new("s", vec![Value::String(node.name.clone())])?,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(in crate::interface) fn has_check_callback(&self) -> bool {
         self.check_callback.is_some()
     }
@@ -824,7 +908,10 @@ impl Nodes {
                 2 => Ok(u64::from(node.clickable)),
                 4 => {
                     ensure!(
-                        matches!(node.widget, Widget::CheckButtons(_) | Widget::TextButton(_)),
+                        matches!(
+                            node.widget,
+                            Widget::CheckButtons(_) | Widget::TextButton(_) | Widget::EditBox(_)
+                        ),
                         "unported XINTERFACE base node position for {:?}",
                         node.name
                     );
@@ -845,6 +932,9 @@ impl Nodes {
                     node.name
                 ),
             };
+        }
+        if matches!(node.widget, Widget::EditBox(_)) {
+            return Ok(0);
         }
         if let Widget::TextButton(button) = &mut node.widget {
             match code {
@@ -1007,6 +1097,8 @@ impl Nodes {
         screen: &InterfaceScreen,
         foreground: bool,
         delta_ms: u32,
+        store: &AttributeStore,
+        root: Option<AttributeId>,
         out: &mut Vec<InterfaceDraw>,
     ) {
         for (index, node) in self.items.iter_mut().enumerate() {
@@ -1050,6 +1142,19 @@ impl Nodes {
                 Widget::Frame(frame) => frame.draw(node.rect, screen.size, out),
                 Widget::CheckButtons(checks) => {
                     checks.draw(node.rect, screen.size, node.selectable, out)
+                }
+                Widget::EditBox(edit) => {
+                    let value = root
+                        .and_then(|root| store.child(root, &node.name))
+                        .and_then(|field| store.value(field, Some("str")))
+                        .unwrap_or_default();
+                    edit.draw(
+                        node.rect,
+                        screen.size,
+                        value,
+                        self.focus == Some(index) && node.selectable && !node.locked,
+                        out,
+                    );
                 }
                 _ => {}
             }

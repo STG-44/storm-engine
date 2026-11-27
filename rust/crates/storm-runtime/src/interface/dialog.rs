@@ -135,13 +135,15 @@ impl Dialog {
         delta_ms: u32,
     ) -> Vec<InterfaceDraw> {
         let mut draws = Vec::new();
-        self.nodes.draws(screen, false, delta_ms, &mut draws);
+        self.nodes
+            .draws(screen, false, delta_ms, store, root, &mut draws);
         draws.extend(
             self.string_draws(store, root, screen)
                 .into_iter()
                 .map(InterfaceDraw::Text),
         );
-        self.nodes.draws(screen, true, delta_ms, &mut draws);
+        self.nodes
+            .draws(screen, true, delta_ms, store, root, &mut draws);
         draws
     }
 
