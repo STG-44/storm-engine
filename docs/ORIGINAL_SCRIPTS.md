@@ -465,11 +465,17 @@ integer before a branch's `break` in that source, matching the retained
 compiler and VM. Loading `selectCharacter.ini` passes the original
 portrait, biography, difficulty panels, six checkbox widgets, and the
 `TEXTBUTTON2` controls for OK and Cancel. It initializes the
-`PCEDITBOX,PROFILE_NAME` field and stops at the unported
-`TABLE,TABLE_SMALLSKILL`. A separate partial-layout Metal capture shows
-the active profile field with the original `Player` value and the caret.
-It retains the scripted portrait and setup borders from `EI_CreateFrame`
-and `EI_CreateHLine`.
+`PCEDITBOX,PROFILE_NAME` field and the `TABLE,TABLE_SMALLSKILL` node.
+It stops at the unported `RECTANGLE,CONFIRM_WINDOW_FADER`. A separate
+partial-layout Metal capture shows the original default difficulty and
+the seven starting attributes populated by the original table script.
+It retains the scripted borders from `EI_CreateFrame` and `EI_CreateHLine`.
+
+The original difficulty handlers step through rates 2, 4, 6, 8, and 10.
+Rate 4 is the default and the fallback for invalid saved values.
+At rate 10 the script locks incremental pistol reloading off and loot
+sharing on. Option messages load and save
+`StartGameParam.MOD_SKILL_ENEMY_RATE` in the native dotted-key file.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -596,6 +602,13 @@ shows the caret when focused. Keyboard edits handle UTF-8 text, the
 configured character exclusions, and the length and width limits.
 Backspace removes one Unicode character while preserving the following
 text. Enter dispatches the configured command against the edited value.
+`TABLE` renders fixed-size rows and columns from the script's `hr`,
+`trN`, and `tdN` attributes. It applies the original atlas grid, row and
+selection colors, font settings, and cell offsets. A missing indexed font
+falls back to the configured cell font. The refresh message rebuilds the
+snapshot, and directional input and clicks maintain selection attributes
+and send the original events. Variable-height rows, cell images, and
+linked scrollers remain pending.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the

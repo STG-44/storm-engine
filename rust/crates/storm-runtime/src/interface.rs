@@ -205,7 +205,10 @@ impl Interfaces {
             return Ok(Vec::new());
         };
         let events = state.dialog.nodes.take_button_events(delta_ms)?;
-        state.dialog.nodes.publish_checks(store, state.binding)?;
+        state
+            .dialog
+            .nodes
+            .publish_widget_attributes(store, state.binding)?;
         Ok(events)
     }
 
@@ -236,7 +239,10 @@ impl Interfaces {
             .edit_input(controls, store, state.binding)?;
         let mut events = state.dialog.nodes.button_input(controls, point)?;
         state.dialog.nodes.edit_exit(controls, &mut events)?;
-        state.dialog.nodes.publish_checks(store, state.binding)?;
+        state
+            .dialog
+            .nodes
+            .publish_widget_attributes(store, state.binding)?;
         Ok(events)
     }
 
@@ -272,9 +278,15 @@ impl Interfaces {
     ) -> Result<()> {
         if let Some(state) = self.0.states.borrow_mut().get_mut(&id.raw()) {
             if init_edits {
-                state.dialog.nodes.initialize_edits(store, state.binding)?;
+                state
+                    .dialog
+                    .nodes
+                    .initialize_attributes(store, state.binding)?;
             }
-            state.dialog.nodes.publish_checks(store, state.binding)?;
+            state
+                .dialog
+                .nodes
+                .publish_widget_attributes(store, state.binding)?;
         }
         Ok(())
     }
@@ -577,7 +589,7 @@ impl Entity for Actor {
     }
 
     fn process_message(&mut self, message: &mut Message) -> Result<u64> {
-        self.receive(message, None)
+        self.receive(message, None, None)
     }
 
     fn process_message_with_attributes(
@@ -586,6 +598,12 @@ impl Entity for Actor {
         attributes: &mut AttributeStore,
     ) -> Result<u64> {
         match message.long()? {
+            options::MSG_INTERFACE_SAVEOPTIONS => {
+                let path = message.string()?.to_owned();
+                let root = message.attribute()?;
+                options::save(&self.shared.game, &path, attributes, root)?;
+                Ok(0)
+            }
             options::MSG_INTERFACE_LOADOPTIONS => {
                 let path = message.string()?.to_owned();
                 let root = message.attribute()?;
@@ -606,7 +624,7 @@ impl Entity for Actor {
                     .flatten()
                     .and_then(|root| attributes.value(root, Some("title")));
                 message.move_to_start();
-                let result = self.receive(message, title)?;
+                let result = self.receive(message, title, Some(attributes))?;
                 if matches!(code, dialog::INIT | dialog::MSG_TO_NODE) {
                     Interfaces(self.shared.clone()).publish_dialog_attributes(
                         self.id,
@@ -621,7 +639,12 @@ impl Entity for Actor {
 }
 
 impl Actor {
-    fn receive(&mut self, message: &mut Message, title: Option<&str>) -> Result<u64> {
+    fn receive(
+        &mut self,
+        message: &mut Message,
+        title: Option<&str>,
+        store: Option<&AttributeStore>,
+    ) -> Result<u64> {
         let code = message.long()?;
         let mut states = self.shared.states.borrow_mut();
         let state = states
@@ -645,10 +668,12 @@ impl Actor {
                 state.dialog.nodes.set_using(&name, show);
             }
             MSG_TO_NODE => {
-                let result = state
-                    .dialog
-                    .nodes
-                    .send(&self.shared, &state.screen, message)?;
+                let result = state.dialog.nodes.send(
+                    &self.shared,
+                    &state.screen,
+                    message,
+                    store.zip(state.binding),
+                )?;
                 self.shared
                     .draws
                     .borrow_mut()

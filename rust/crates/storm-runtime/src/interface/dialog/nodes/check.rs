@@ -248,53 +248,18 @@ impl CheckButtons {
                 .as_ref()
                 .map_or(0, |font| (font.text_width(text) as f32 * self.scale) as i32)
         };
-        let mut lines = Vec::new();
-        let mut rest = label;
-        loop {
-            let mut line = String::new();
-            let mut previous_space = None;
-            while let Some(ch) = rest.chars().next() {
-                if ch == ' ' {
-                    if measure(&line) >= width {
-                        break;
-                    }
-                    previous_space = Some((rest, line.len()));
-                    rest = rest.trim_start_matches(' ');
-                    line.push(' ');
-                    continue;
-                }
-                if rest.starts_with("\\n") || rest.starts_with("\\N") {
-                    break;
-                }
-                line.push(ch);
-                rest = &rest[ch.len_utf8()..];
-            }
-            if measure(&line) > width
-                && let Some((remainder, length)) = previous_space
-            {
-                rest = remainder;
-                line.truncate(length);
-                line.push(' ');
-            }
-            rest = rest.trim_start_matches(' ');
-            if let Some(after) = rest
-                .strip_prefix("\\n")
-                .or_else(|| rest.strip_prefix("\\N"))
-            {
-                rest = after;
-                line.truncate(line.trim_end_matches(' ').len());
-            }
-            let unused = width.saturating_sub(measure(&line));
-            let offset = match self.alignment {
-                Alignment::Left => 0,
-                Alignment::Center => unused / 2,
-                Alignment::Right => unused,
-            };
-            lines.push((line, offset));
-            if rest.is_empty() {
-                return Ok(lines);
-            }
-        }
+        Ok(super::wrap::lines(label, width, measure)
+            .into_iter()
+            .map(|line| {
+                let unused = width.saturating_sub(measure(&line));
+                let offset = match self.alignment {
+                    Alignment::Left => 0,
+                    Alignment::Center => unused / 2,
+                    Alignment::Right => unused,
+                };
+                (line, offset)
+            })
+            .collect())
     }
 
     pub(super) fn move_to(&mut self, rect: [i32; 4]) -> Result<()> {

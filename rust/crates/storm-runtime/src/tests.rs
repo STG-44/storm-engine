@@ -838,6 +838,11 @@ fn interface_loads_legacy_options_and_reports_an_empty_file_synchronously() -> R
                 Trace(options.StartGameParam.PlayerProfile+":"+options.note);
                 SendMessage(&xi,"lsa",45053,"empty",&options);
                 Trace("empty="+broken+":"+options.volume.sound);
+                options.StartGameParam.MOD_SKILL_ENEMY_RATE=8;
+                SendMessage(&xi,"lsa",45052,"OPTIONS",&options);
+                object restored;
+                SendMessage(&xi,"lsa",45053,"options",&restored);
+                Trace("saved="+restored.StartGameParam.MOD_SKILL_ENEMY_RATE+":"+restored.StartGameParam.PlayerProfile);
                 XI_SetColorCorrection(0.5,2.0,32.0);
                 int mouseX = CreateControl("CameraX");
                 int mouseY = CreateControl("CameraY");
@@ -866,7 +871,12 @@ fn interface_loads_legacy_options_and_reports_an_empty_file_synchronously() -> R
             "script:loaded=0:0.75:0.5000000",
             "script:Капитан: a=b ",
             "script:empty=1:0.75",
+            "script:saved=8:Капитан",
         ]
+    );
+    assert_eq!(
+        std::fs::read_to_string(temp.0.join("options"))?.to_ascii_lowercase(),
+        "volume.sound=0.75\nvolume.music=0.5000000\nstartgameparam.playerprofile=Капитан\nstartgameparam.mod_skill_enemy_rate=8\nnote= a=b "
     );
     assert_eq!(
         engine.host.color_correction(),
@@ -4122,6 +4132,164 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
     };
     assert!(Rc::ptr_eq(&rebuilt.texture, &border.texture));
     assert_eq!(rebuilt.uv, border.uv);
+    Ok(())
+}
+
+#[test]
+fn dialog_table_refreshes_script_cells_and_reports_native_selection_indices() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::{Picture, Text};
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let ui = ini.join("INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ui)?;
+    std::fs::create_dir_all(&textures)?;
+    let mut tx = [0u32, 8, 4, 1, 21, 128].map(u32::to_le_bytes).concat();
+    tx.extend([255; 128]);
+    std::fs::write(textures.join("table.tga.tx"), tx)?;
+    std::fs::write(
+        ui.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Face]\nTexture=Interfaces/table.tga\nTexture_xsize=8\nTexture_ysize=4\nHeight=4\nchar_A=0,0,4,4\nchar_B=0,0,4,4\nchar_C=0,0,4,4\nchar_D=0,0,4,4\nchar_H=0,0,4,4\nchar_X=0,0,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("table.ini"),
+        r#"
+        [MAIN]
+        item=100,TABLE,Skills
+        start=Skills
+        [Skills]
+        position=20,30,62,72
+        rowquantity=3
+        colquantity=2
+        rowsheight=10,16,16
+        colswidth=20,22
+        cellspacesize=2,0
+        headerlineheight=1
+        hlineheight=2
+        fontcell=Face
+        fonttitle=Face
+        fontcellalignment=center
+        iscolselect=1
+        backimage=color=(255,40,50,60)
+        selectimage=color=(128,90,50,30)
+        command=click,select:Skills
+        command=downstep
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object ui;
+        #event_handler("SetValue","SetValue");
+        #event_handler("Refresh","Refresh");
+        #event_handler("TableSelectChange","Selected");
+        #event_handler("OnTableClick","Clicked");
+        #event_handler("QueryRow","QueryRow");
+        void Main() {
+            MapControl(CreateControl("ILClick"),1);
+            MapControl(CreateControl("IDown"),40);
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(4,&ui,0);
+            LayerAddObject(5,&ui,0);
+            ui.Skills.top=0;
+            ui.Skills.hr.td1.str="H";
+            ui.Skills.tr1.td1.str="A";
+            ui.Skills.tr1.td1.textoffset="-2,-1";
+            ui.Skills.tr1.td2.str="B";
+            ui.Skills.tr2.td1.str="C";
+            ui.Skills.tr2.td2.str="D";
+            ui.Skills.tr3.td1.str="X";
+            ui.Skills.tr2.speccolor=argb(85,25,70,60);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\table.ini");
+        }
+        void SetValue() { ui.Skills.tr1.td1.str="X"; }
+        void Refresh() { SendMessage(&ui,"lsl",45045,"Skills",0); }
+        void Selected() {
+            string node=GetEventData(); int row=GetEventData(); int col=GetEventData();
+            Trace(node+"="+row+":"+col+":"+ui.Skills.select+":"+ui.Skills.top);
+        }
+        void Clicked() {
+            string node=GetEventData(); int row=GetEventData(); int col=GetEventData();
+            Trace(node+" clicked "+row+":"+col);
+        }
+        void QueryRow() {
+            int row=SendMessage(&ui,"lsl",45045,"Skills",1);
+            Trace("visible="+row);
+        }
+    "#,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(800, 600);
+    engine.frame(0)?;
+    let draws = engine.host.interface_draws();
+    let [
+        Picture(back),
+        Picture(row),
+        Picture(highlight),
+        Text(head),
+        Text(cell),
+        ..,
+    ] = draws.as_slice()
+    else {
+        panic!("table background, selection, and cells");
+    };
+    assert_eq!(back.rect, [20.0, 30.0, 62.0, 72.0]);
+    assert_eq!(row.rgba, [25, 70, 60, 85]);
+    assert_eq!(highlight.rect, [20.0, 40.0, 40.0, 56.0]);
+    assert_eq!(head.text, "H");
+    assert_eq!(cell.text, "A");
+    assert_eq!(cell.position, [27, 41]);
+
+    let mut event = Message::new("", vec![])?;
+    let texts = |engine: &Engine| {
+        engine
+            .host
+            .interface_text_draws()
+            .into_iter()
+            .map(|draw| draw.text)
+            .collect::<Vec<_>>()
+    };
+    engine.emit_event("SetValue", &mut event)?;
+    engine.frame(16)?;
+    assert_eq!(texts(&engine), ["H", "A", "B", "C", "D"]);
+    engine.emit_event("Refresh", &mut event)?;
+    engine.frame(16)?;
+    assert_eq!(texts(&engine), ["H", "X", "B", "C", "D"]);
+
+    let tap = |engine: &mut Engine, code| -> Result<()> {
+        for pressed in [true, false] {
+            engine.control_input(ControlInput::Button { code, pressed });
+            engine.frame(16)?;
+            engine.frame(16)?;
+        }
+        Ok(())
+    };
+    tap(&mut engine, 40)?;
+    tap(&mut engine, 40)?;
+    assert_eq!(
+        trace.take(),
+        ["script:Skills=2:1:2:0", "script:Skills=3:1:3:1"]
+    );
+    assert_eq!(texts(&engine), ["H", "C", "D", "X"]);
+
+    engine.host.set_interface_pointer(Some([49.0, 46.0]));
+    tap(&mut engine, 1)?;
+    engine.emit_event("QueryRow", &mut event)?;
+    assert_eq!(
+        trace.take(),
+        [
+            "script:Skills=2:2:2:1",
+            "script:Skills clicked 1:2",
+            "script:visible=1"
+        ]
+    );
     Ok(())
 }
 

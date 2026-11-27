@@ -5,7 +5,9 @@ mod edit_box;
 mod formatted;
 mod frame;
 mod image;
+mod table;
 mod text_button;
+mod wrap;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
@@ -26,6 +28,7 @@ use storm_formats::{
     texture::{Mip, Texture},
 };
 use storm_render::interface_text::{Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw};
+use table::Table;
 use text_button::TextButton;
 
 const DEFAULTS: &str = "RESOURCE/INI/INTERFACES/defaultnode.ini";
@@ -102,6 +105,7 @@ enum Widget {
     TextButton(Box<TextButton>),
     CheckButtons(Box<CheckButtons>),
     EditBox(Box<EditBox>),
+    Table(Box<Table>),
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
     Frame(Box<Frame>),
@@ -111,7 +115,11 @@ impl Widget {
     fn interactive(&self) -> bool {
         matches!(
             self,
-            Self::Button(_) | Self::TextButton(_) | Self::CheckButtons(_) | Self::EditBox(_)
+            Self::Button(_)
+                | Self::TextButton(_)
+                | Self::CheckButtons(_)
+                | Self::EditBox(_)
+                | Self::Table(_)
         )
     }
 }
@@ -197,7 +205,7 @@ impl Nodes {
             let defaults = defaults.as_deref().unwrap_or_default();
             let setting = |key: &str| field(text, name, key).or_else(|| field(defaults, kind, key));
             let class = field(defaults, kind, "class").unwrap_or(kind);
-            let rect = screen_position(screen, &setting)?;
+            let mut rect = screen_position(screen, &setting)?;
             let widget = match class.to_ascii_lowercase().as_str() {
                 "window" => Widget::Window {
                     members: records(text, name)
@@ -242,6 +250,9 @@ impl Nodes {
                 "pceditbox" => {
                     Widget::EditBox(Box::new(EditBox::load(&mut nodes, shared, &setting)?))
                 }
+                "table" => Widget::Table(Box::new(Table::load(
+                    &mut nodes, shared, &setting, &mut rect,
+                )?)),
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
@@ -418,7 +429,7 @@ impl Nodes {
         {
             for (action, target) in command.redirects.into_iter().rev() {
                 if let Some(index) = self.find(&target) {
-                    events.extend(self.execute_action(index, action)?);
+                    self.execute_action(index, action, &mut events)?;
                 }
             }
             if let Some(name) = command.focus {
@@ -568,10 +579,11 @@ impl Nodes {
         &mut self,
         index: usize,
         action: Action,
-    ) -> Result<Option<(String, Message)>> {
+        events: &mut NodeEvents,
+    ) -> Result<()> {
         let node = &mut self.items[index];
         if !node.visible {
-            return Ok(None);
+            return Ok(());
         }
         match &mut node.widget {
             Widget::Button(button) => button.press(action, node.selectable),
@@ -581,12 +593,15 @@ impl Nodes {
                     .previous_pointer
                     .and_then(|point| checks.click(node.rect, point))
                 {
-                    return Ok(Some((CHECK_EVENT.to_owned(), change.message(&node.name)?)));
+                    events.push((CHECK_EVENT.to_owned(), change.message(&node.name)?));
                 }
+            }
+            Widget::Table(table) => {
+                table.execute(node.rect, self.previous_pointer, &node.name, action, events)?
             }
             _ => {}
         }
-        Ok(None)
+        Ok(())
     }
 
     fn fire(&mut self, index: usize, action: Action) -> Result<NodeEvents> {
@@ -597,7 +612,6 @@ impl Nodes {
         else {
             return Ok(Vec::new());
         };
-        let change = self.execute_action(index, action)?;
         self.pending.retain(|pending| pending.node != index);
         if command.focus.is_some() || command.event.is_some() || !command.redirects.is_empty() {
             self.pending.push(Pending {
@@ -611,7 +625,7 @@ impl Nodes {
             "ISound".to_owned(),
             Message::new("l", vec![Value::Long(1)])?,
         )];
-        events.extend(change);
+        self.execute_action(index, action, &mut events)?;
         events.push((
             "ievnt_command".to_owned(),
             Message::new(
@@ -802,30 +816,34 @@ impl Nodes {
         Ok(())
     }
 
-    pub(in crate::interface) fn publish_checks(
+    pub(in crate::interface) fn publish_widget_attributes(
         &mut self,
         store: &mut AttributeStore,
         root: Option<AttributeId>,
     ) -> Result<()> {
         if let Some(root) = root {
             for node in &mut self.items {
-                if let Widget::CheckButtons(checks) = &mut node.widget {
-                    checks.publish(store, root, &node.name)?;
+                match &mut node.widget {
+                    Widget::CheckButtons(checks) => checks.publish(store, root, &node.name)?,
+                    Widget::Table(table) => table.publish(store, root, &node.name)?,
+                    _ => {}
                 }
             }
         }
         Ok(())
     }
 
-    pub(in crate::interface) fn initialize_edits(
-        &self,
+    pub(in crate::interface) fn initialize_attributes(
+        &mut self,
         store: &mut AttributeStore,
         root: Option<AttributeId>,
     ) -> Result<()> {
         if let Some(root) = root {
-            for node in &self.items {
-                if matches!(node.widget, Widget::EditBox(_)) {
-                    EditBox::initialize(store, root, &node.name)?;
+            for node in &mut self.items {
+                match &mut node.widget {
+                    Widget::EditBox(_) => EditBox::initialize(store, root, &node.name)?,
+                    Widget::Table(table) => table.refresh(store, root, &node.name)?,
+                    _ => {}
                 }
             }
         }
@@ -892,6 +910,7 @@ impl Nodes {
         shared: &Shared,
         screen: &InterfaceScreen,
         message: &mut Message,
+        attributes: Option<(&AttributeStore, AttributeId)>,
     ) -> Result<u64> {
         let Some(index) = self.find(message.string()?) else {
             return Ok(0);
@@ -931,6 +950,22 @@ impl Nodes {
                     "unported XINTERFACE base node message {code} for {:?}",
                     node.name
                 ),
+            };
+        }
+        if let Widget::Table(table) = &mut node.widget {
+            return match code {
+                0 => {
+                    if let Some((store, root)) = attributes {
+                        table.refresh(store, root, &node.name)?;
+                    }
+                    Ok(0)
+                }
+                1 => Ok(u64::from(
+                    table
+                        .row_at(node.rect, self.previous_pointer)
+                        .map_or(u32::MAX, |row| row as u32),
+                )),
+                _ => Ok(0),
             };
         }
         if matches!(node.widget, Widget::EditBox(_)) {
@@ -1143,6 +1178,7 @@ impl Nodes {
                 Widget::CheckButtons(checks) => {
                     checks.draw(node.rect, screen.size, node.selectable, out)
                 }
+                Widget::Table(table) => table.draw(node.rect, screen.size, out),
                 Widget::EditBox(edit) => {
                     let value = root
                         .and_then(|root| store.child(root, &node.name))
