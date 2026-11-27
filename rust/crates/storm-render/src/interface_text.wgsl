@@ -13,15 +13,19 @@ fn vertex(
     @builtin(vertex_index) index: u32,
     @location(0) rect: vec4<f32>,
     @location(1) uv: vec4<f32>,
-    @location(2) rgba: vec4<f32>,
-    @location(3) color_mode: u32,
+    @location(2) top_left: vec4<f32>,
+    @location(3) bottom_left: vec4<f32>,
+    @location(4) top_right: vec4<f32>,
+    @location(5) bottom_right: vec4<f32>,
+    @location(6) color_mode: u32,
 ) -> Output {
     let corner = array<vec2<f32>, 6>(
         vec2<f32>(0.0, 0.0), vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0),
         vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 1.0), vec2<f32>(1.0, 0.0),
     )[index];
+    let color = array(top_left, bottom_left, top_right, bottom_left, bottom_right, top_right)[index];
     return Output(vec4<f32>(mix(rect.xy, rect.zw, corner), 0.0, 1.0),
-                  mix(uv.xy, uv.zw, corner), rgba, color_mode);
+                  mix(uv.xy, uv.zw, corner), color, color_mode);
 }
 
 @fragment

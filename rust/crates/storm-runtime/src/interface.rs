@@ -311,7 +311,7 @@ impl Interfaces {
             .iter()
             .filter_map(|(_, draw)| match draw {
                 InterfaceDraw::Text(text) => Some(text.clone()),
-                InterfaceDraw::Picture(_) => None,
+                InterfaceDraw::Picture(_) | InterfaceDraw::Rectangle(_) => None,
             })
             .collect()
     }

@@ -466,10 +466,11 @@ compiler and VM. Loading `selectCharacter.ini` passes the original
 portrait, biography, difficulty panels, six checkbox widgets, and the
 `TEXTBUTTON2` controls for OK and Cancel. It initializes the
 `PCEDITBOX,PROFILE_NAME` field and the `TABLE,TABLE_SMALLSKILL` node.
-It stops at the unported `RECTANGLE,CONFIRM_WINDOW_FADER`. A separate
-partial-layout Metal capture shows the original default difficulty and
-the seven starting attributes populated by the original table script.
-It retains the scripted borders from `EI_CreateFrame` and `EI_CreateHLine`.
+`RECTANGLE` and `STRINGCOLLECTION` complete the confirmation overlay.
+The keyboard replay advances eight frames after New Game and reaches the
+original character selection screen. A separate Metal capture runs
+`ShowConfirmWindow` in isolation with the original interface resources
+and shows its localized prompt and buttons over the dimmed screen.
 
 The original difficulty handlers step through rates 2, 4, 6, 8, and 10.
 Rate 4 is the default and the fallback for invalid saved values.
@@ -609,6 +610,12 @@ falls back to the configured cell font. The refresh message rebuilds the
 snapshot, and directional input and clicks maintain selection attributes
 and send the original events. Variable-height rows, cell images, and
 linked scrollers remain pending.
+`RECTANGLE` multiplies each pair of edge colors using the native
+8-bit calculation, interpolates the resulting corner colors across the
+two triangles, and draws the optional outline. Messages move or recolor
+the rectangle. `STRINGCOLLECTION` draws localized keys and literal captions
+with the configured font, scale, position, and alignment. Node messages
+replace, read or recolor captions by index and manage named captions.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the

@@ -5,6 +5,8 @@ mod edit_box;
 mod formatted;
 mod frame;
 mod image;
+mod rectangle;
+mod strings;
 mod table;
 mod text_button;
 mod wrap;
@@ -18,16 +20,17 @@ use collection::Collection;
 use edit_box::EditBox;
 use formatted::FormattedText;
 use frame::Frame;
+use rectangle::Rectangle;
 use std::{
     collections::BTreeMap,
     rc::{Rc, Weak},
 };
 use storm_core::{AttributeId, AttributeStore, Message, Value};
-use storm_formats::{
-    TxHeader,
-    texture::{Mip, Texture},
+use storm_formats::texture::Texture;
+use storm_render::interface_text::{
+    Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw, solid_mask,
 };
-use storm_render::interface_text::{Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw};
+use strings::Strings;
 use table::Table;
 use text_button::TextButton;
 
@@ -79,6 +82,7 @@ struct Node {
 impl Node {
     fn interactive(&self) -> bool {
         self.widget.interactive()
+            || (matches!(self.widget, Widget::Rectangle(_)) && !self.commands.is_empty())
     }
 
     fn hit(&self, point: [f64; 2]) -> bool {
@@ -109,6 +113,8 @@ enum Widget {
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
     Frame(Box<Frame>),
+    Rectangle(Rectangle),
+    Strings(Box<Strings>),
 }
 
 impl Widget {
@@ -220,6 +226,18 @@ impl Nodes {
                 "picture" => nodes.load_picture(shared, &setting)?,
                 "title" => Widget::Title(nodes.load_title(shared, &setting, screen, rect, title)?),
                 "frame" => Widget::Frame(Box::new(Frame::load(&mut nodes, shared, &setting)?)),
+                "rectangle" => Widget::Rectangle(Rectangle::load(&setting)?),
+                "stringcollection" => {
+                    rect = screen.rect;
+                    Widget::Strings(Box::new(Strings::load(
+                        shared,
+                        screen,
+                        &setting,
+                        records(text, name)
+                            .filter(|(key, _)| key.eq_ignore_ascii_case("string"))
+                            .map(|(_, value)| value),
+                    )?))
+                }
                 "formatedtext" => Widget::FormattedText(Box::new(FormattedText::load(
                     shared,
                     &setting,
@@ -256,7 +274,7 @@ impl Nodes {
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
-            let commands = if widget.interactive() {
+            let commands = if widget.interactive() || matches!(widget, Widget::Rectangle(_)) {
                 bindings(
                     records(text, name)
                         .filter(|(key, _)| key.eq_ignore_ascii_case("command"))
@@ -929,7 +947,11 @@ impl Nodes {
                     ensure!(
                         matches!(
                             node.widget,
-                            Widget::CheckButtons(_) | Widget::TextButton(_) | Widget::EditBox(_)
+                            Widget::CheckButtons(_)
+                                | Widget::TextButton(_)
+                                | Widget::EditBox(_)
+                                | Widget::Rectangle(_)
+                                | Widget::Strings(_)
                         ),
                         "unported XINTERFACE base node position for {:?}",
                         node.name
@@ -943,6 +965,13 @@ impl Nodes {
                     if let Widget::CheckButtons(checks) = &mut node.widget {
                         checks.move_to(rect)?;
                     }
+                    if let Widget::Strings(strings) = &mut node.widget {
+                        strings.move_by([
+                            rect[0].saturating_sub(node.rect[0]),
+                            rect[1].saturating_sub(node.rect[1]),
+                        ]);
+                        return Ok(0);
+                    }
                     node.rect = rect;
                     Ok(0)
                 }
@@ -951,6 +980,25 @@ impl Nodes {
                     node.name
                 ),
             };
+        }
+        if let Widget::Rectangle(rectangle) = &mut node.widget {
+            match code {
+                0 => {
+                    node.rect = [
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                    ]
+                }
+                1 => rectangle.recolor(message)?,
+                _ => {}
+            }
+            return Ok(0);
+        }
+        if let Widget::Strings(strings) = &mut node.widget {
+            strings.send(shared, code, message)?;
+            return Ok(u64::from(u32::MAX));
         }
         if let Widget::Table(table) = &mut node.widget {
             return match code {
@@ -1175,6 +1223,8 @@ impl Nodes {
                 Widget::Collection(collection) => collection.draw(screen.size, out),
                 Widget::FormattedText(text) => text.draw(node.rect, screen.size, out),
                 Widget::Frame(frame) => frame.draw(node.rect, screen.size, out),
+                Widget::Rectangle(rectangle) => rectangle.draw(node.rect, screen.size, out),
+                Widget::Strings(strings) => strings.draw(screen.size, out),
                 Widget::CheckButtons(checks) => {
                     checks.draw(node.rect, screen.size, node.selectable, out)
                 }
@@ -1196,24 +1246,6 @@ impl Nodes {
             }
         }
     }
-}
-
-fn solid_mask() -> Rc<Texture> {
-    Rc::new(Texture {
-        header: TxHeader {
-            flags: 0,
-            width: 1,
-            height: 1,
-            mips: 1,
-            format: 21,
-            mip0_bytes: 4,
-        },
-        mips: vec![Mip {
-            width: 1,
-            height: 1,
-            rgba: vec![255; 4],
-        }],
-    })
 }
 
 fn read_ini(shared: &Shared, path: &str) -> Result<String> {

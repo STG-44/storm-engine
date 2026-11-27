@@ -6,7 +6,10 @@ use std::{
     ops::Range,
     rc::{Rc, Weak},
 };
-use storm_formats::texture::Texture;
+use storm_formats::{
+    TxHeader,
+    texture::{Mip, Texture},
+};
 
 const MAX_GLYPHS: usize = 512;
 const MAX_INSTANCES: usize = 65_536;
@@ -61,9 +64,19 @@ pub struct PictureDraw {
 }
 
 #[derive(Clone)]
+pub struct RectangleDraw {
+    pub canvas: [i32; 2],
+    pub rect: [i32; 4],
+    /// Top left, bottom left, top right, bottom right.
+    pub corners: [[u8; 4]; 4],
+    pub border: [u8; 4],
+}
+
+#[derive(Clone)]
 pub enum InterfaceDraw {
     Picture(PictureDraw),
     Text(TextDraw),
+    Rectangle(RectangleDraw),
 }
 
 #[repr(C)]
@@ -71,7 +84,7 @@ pub enum InterfaceDraw {
 struct Instance {
     rect: [f32; 4],
     uv: [f32; 4],
-    rgba: [u8; 4],
+    corners: [[u8; 4]; 4],
     color_mode: u32,
 }
 
@@ -98,7 +111,7 @@ impl PictureDraw {
                     1.0 - bottom * 2.0 / height,
                 ],
                 uv: self.uv,
-                rgba: self.rgba,
+                corners: [self.rgba; 4],
                 color_mode: match self.color {
                     PictureColor::Modulate => 1,
                     PictureColor::AlphaMask => 2,
@@ -107,6 +120,73 @@ impl PictureDraw {
         }
         Ok(())
     }
+}
+
+impl RectangleDraw {
+    fn layout(&self, size: [u32; 2], out: &mut Vec<Instance>) -> Result<()> {
+        let [width, height] = self.canvas.map(|n| n as f32);
+        ensure!(
+            width > 0.0 && height > 0.0 && size.into_iter().all(|n| n > 0),
+            "invalid interface rectangle viewport"
+        );
+        let [left, top, right, bottom] = self.rect.map(|n| n as f32);
+        if left >= right || top >= bottom {
+            return Ok(());
+        }
+        let [left, top, right, bottom] = [
+            left * 2.0 / width - 1.0,
+            1.0 - top * 2.0 / height,
+            right * 2.0 / width - 1.0,
+            1.0 - bottom * 2.0 / height,
+        ];
+        let mut push = |rect, corners| {
+            out.push(Instance {
+                rect,
+                corners,
+                uv: [0.5; 4],
+                color_mode: 2,
+            })
+        };
+        if self.corners.iter().any(|rgba| rgba[3] != 0) {
+            push([left, top, right, bottom], self.corners);
+        }
+        if self.border[3] != 0 {
+            let px = (2.0 / size[0] as f32).min(right - left);
+            let py = (2.0 / size[1] as f32).min(top - bottom);
+            let ink = [self.border; 4];
+            push([left, top, right, top - py], ink);
+            if bottom < top - py {
+                let inner_bottom = (bottom + py).min(top - py);
+                push([left, inner_bottom, right, bottom], ink);
+                if inner_bottom < top - py {
+                    push([left, top - py, left + px, inner_bottom], ink);
+                    let inner_right = (right - px).max(left + px);
+                    if inner_right < right {
+                        push([inner_right, top - py, right, inner_bottom], ink);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+pub fn solid_mask() -> Rc<Texture> {
+    Rc::new(Texture {
+        header: TxHeader {
+            flags: 0,
+            width: 1,
+            height: 1,
+            mips: 1,
+            format: 21,
+            mip0_bytes: 4,
+        },
+        mips: vec![Mip {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        }],
+    })
 }
 
 impl BitmapFont {
@@ -244,7 +324,7 @@ impl TextDraw {
                             (u as f32 + w as f32 - 0.5) / atlas_x,
                             (v as f32 + h as f32 - 0.5) / atlas_y,
                         ],
-                        rgba,
+                        corners: [rgba; 4],
                         color_mode: 0,
                     });
                 }
@@ -267,6 +347,7 @@ pub struct InterfaceRenderer {
     pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     textures: BTreeMap<usize, (Weak<Texture>, wgpu::BindGroup)>,
+    mask: Rc<Texture>,
     instances: Option<wgpu::Buffer>,
 }
 
@@ -284,7 +365,8 @@ impl InterfaceRenderer {
                     array_stride: size_of::<Instance>() as u64,
                     step_mode: wgpu::VertexStepMode::Instance,
                     attributes: &wgpu::vertex_attr_array![
-                        0 => Float32x4, 1 => Float32x4, 2 => Unorm8x4, 3 => Uint32
+                        0 => Float32x4, 1 => Float32x4, 2 => Unorm8x4, 3 => Unorm8x4,
+                        4 => Unorm8x4, 5 => Unorm8x4, 6 => Uint32
                     ],
                 })],
                 compilation_options: Default::default(),
@@ -314,6 +396,7 @@ impl InterfaceRenderer {
             pipeline,
             sampler,
             textures: BTreeMap::new(),
+            mask: solid_mask(),
             instances: None,
         }
     }
@@ -333,6 +416,10 @@ impl InterfaceRenderer {
         for draw in draws {
             let first = instances.len() as u32;
             let texture = match draw {
+                InterfaceDraw::Rectangle(rectangle) => {
+                    rectangle.layout(size, &mut instances)?;
+                    &self.mask
+                }
                 InterfaceDraw::Picture(picture) => {
                     picture.layout(&mut instances)?;
                     &picture.texture

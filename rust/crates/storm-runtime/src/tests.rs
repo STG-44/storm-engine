@@ -4136,6 +4136,147 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
 }
 
 #[test]
+fn dialog_modal_preserves_fade_layers_and_edits_localized_string_collections() -> Result<()> {
+    use storm_render::interface_text::{
+        Alignment,
+        InterfaceDraw::{Rectangle, Text},
+    };
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let ui = ini.join("INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ui)?;
+    std::fs::create_dir_all(&textures)?;
+    std::fs::create_dir_all(ini.join("texts/test"))?;
+    let mut tx = [0u32, 4, 4, 1, 21, 64].map(u32::to_le_bytes).concat();
+    tx.extend([255; 64]);
+    std::fs::write(textures.join("face.tga.tx"), tx)?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Face]\nTexture=Interfaces/face.tga\nTexture_xsize=4\nTexture_ysize=4\nHeight=4\nchar_А=0,0,4,4\nchar_Б=0,0,4,4\nchar_В=0,0,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/language.ini"),
+        "[COMMON]\ndefaultLanguage=Test\nstrings=common.ini\n[DIRECTORY]\nTest=test\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/test/common.ini"),
+        "string=Question,\"АБ\"\n",
+    )?;
+    std::fs::write(
+        ui.join("confirm.ini"),
+        r#"
+        [MAIN]
+        item=600,RECTANGLE,Fader
+        item=601,STRINGCOLLECTION,Labels
+        item=WINDOW,Confirm
+        [Fader]
+        bAbsoluteRectangle=5
+        position=0,0,800,600
+        leftColor=128,64,128,255
+        topColor=255,255,128,64
+        rightColor=255,128,255,64
+        bottomColor=64,128,255,255
+        [Labels]
+        string=Question,font:Face,pos:{400,230},fc:{255,240,220,200},bc:{0,0,0,0},scale:1.0,state:{CS}
+        string=#В,font:Face,pos:{420,250},fc:{255,255,255,255},bc:{0,0,0,0},scale:1.0,state:{R}
+        [Confirm]
+        show=0
+        nodelist=Fader,Labels
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r##"
+        #libriary "script_interface_functions"
+        native void XI_WindowShow(string node, bool shown);
+        object ui;
+        #event_handler("Show","Show");
+        #event_handler("Hide","Hide");
+        #event_handler("Reconfigure","Reconfigure");
+        #event_handler("Remove","Remove");
+        void Main() {
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\confirm.ini");
+        }
+        void Show() { XI_WindowShow("Confirm",true); }
+        void Hide() { XI_WindowShow("Confirm",false); }
+        void Reconfigure() {
+            SendMessage(&ui,"lslllll",45045,"Fader",0,2,3,1000,590);
+            SendMessage(&ui,"lslll",45045,"Fader",1,argb(200,32,60,80),argb(255,255,0,0));
+            SendMessage(&ui,"lslls",45045,"Labels",1,1,"#БА");
+            SendMessage(&ui,"lslll",45045,"Labels",2,2,1);
+            SendMessage(&ui,"lslll",45045,"Labels",3,2,argb(100,40,60,80));
+            SendMessage(&ui,"lslsssllllllfl",45045,"Labels",0,"Prompt","АБВ","Face",
+                200,262,argb(255,255,255,255),0,2,1,1.0,7);
+        }
+        void Remove() { SendMessage(&ui,"lslss",45045,"Labels",0,"prompt",""); }
+    "##,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.host.set_interface_window(1280, 720);
+    engine.frame(0)?;
+    assert!(engine.host.interface_draws().is_empty());
+
+    let mut event = Message::new("", vec![])?;
+    engine.emit_event("Show", &mut event)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_draws();
+    let [Rectangle(fader), Text(question), Text(literal)] = draws.as_slice() else {
+        panic!("fade should precede the confirmation lines");
+    };
+    assert_eq!(fader.rect, [0, 0, 1066, 600]);
+    assert_eq!(
+        fader.corners,
+        [
+            [63, 64, 63, 127],
+            [32, 127, 254, 32],
+            [127, 127, 16, 254],
+            [64, 254, 63, 63]
+        ]
+    );
+    assert_eq!(question.position, [533, 230]);
+    assert_eq!(question.text, "АБ");
+    assert_eq!(question.rgba, [240, 220, 200, 255]);
+    assert!(matches!(question.alignment, Alignment::Center) && question.shadow);
+    assert_eq!(literal.text, "В");
+    assert!(matches!(literal.alignment, Alignment::Right) && !literal.shadow);
+
+    engine.emit_event("Reconfigure", &mut event)?;
+    engine.frame(16)?;
+    let draws = engine.host.interface_draws();
+    let [Rectangle(fader), Text(first), Text(second), Text(dynamic)] = draws.as_slice() else {
+        panic!("three lines after script replacement");
+    };
+    assert_eq!(fader.rect, [2, 3, 1000, 590]);
+    assert_eq!(fader.corners, [[31, 59, 79, 199]; 4]);
+    assert_eq!(fader.border, [255, 0, 0, 255]);
+    assert_eq!(first.text, "БА");
+    assert_eq!(second.text, "БА");
+    assert_eq!(second.position, literal.position);
+    assert_eq!(second.rgba, [40, 60, 80, 100]);
+    assert_eq!(dynamic.position, [333, 262]);
+    assert_eq!(dynamic.scale, 0.5);
+
+    engine.emit_event("Remove", &mut event)?;
+    engine.frame(16)?;
+    assert_eq!(engine.host.interface_text_draws().len(), 2);
+    engine.emit_event("Hide", &mut event)?;
+    engine.frame(16)?;
+    assert!(engine.host.interface_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn dialog_table_refreshes_script_cells_and_reports_native_selection_indices() -> Result<()> {
     use storm_render::interface_text::InterfaceDraw::{Picture, Text};
     let temp = Temporary::new()?;
