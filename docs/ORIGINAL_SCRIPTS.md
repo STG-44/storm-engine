@@ -463,12 +463,12 @@ original `InterfaceDoExit` destroyed the menu scene and recreated
 and entered its `InitInterface`. The compiler accepts the standalone
 integer before a branch's `break` in that source, matching the retained
 compiler and VM. Loading `selectCharacter.ini` passes the original
-portrait, biography, difficulty panels, and all six checkbox widgets.
-It stops at the unported `TEXTBUTTON2,OK_BUTTON` (native class
-`TEXTBUTTON`). A separate partial-layout Metal capture shows both
-naval combat modes and the five independent options with their original
-labels and icons. The capture retains the scripted portrait and setup
-borders from `EI_CreateFrame` and `EI_CreateHLine`.
+portrait, biography, difficulty panels, six checkbox widgets, and the
+`TEXTBUTTON2` controls for OK and Cancel. It stops at the unported
+`PCEDITBOX,PROFILE_NAME`. A separate partial-layout Metal capture uses
+the original icons and labels for the options and the two buttons.
+The capture retains the scripted portrait and setup borders from
+`EI_CreateFrame` and `EI_CreateHLine`.
 
 `Sail` reads the original `[SAILS]` settings in `rigging.ini`. Its attachment
 message groups the loaded MODELR hierarchy's GM sail locators, including
@@ -580,6 +580,15 @@ Node messages can add, relabel, select, query and disable options, or
 move the widget.
 State changes publish `stateN` attributes before `CheckButtonChange` runs.
 Script setters dispatch that event before returning to the caller.
+`TEXTBUTTON` and its `TEXTBUTTON2` alias draw three atlas pieces with
+fixed-width ends, a stretched center, focus variants and optional shadows.
+The original label keys select localized captions, and node messages can
+replace the caption or move the button. Captions center on the visible
+glyphs in screen space, including on stretched fixed-size interfaces.
+An explicit dialog node `strOffset` sets the offset from the top edge.
+A button configured with
+`UseActionByDeclick` shows its pressed state while held and runs its
+command on mouse release. Video textures inside text buttons remain pending.
 Unsupported widgets and video or blinking pictures report explicit errors. The renderer reads the
 original bitmap fonts, including PC scaling, Cyrillic glyphs and the
 native shadow. The desktop window, frame capture and PNG output use the

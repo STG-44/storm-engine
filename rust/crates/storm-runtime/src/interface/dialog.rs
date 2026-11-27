@@ -173,6 +173,7 @@ impl Dialog {
                         x.saturating_add(screen.rect[0]),
                         y.saturating_add(screen.rect[1]),
                     ],
+                    vertical_anchor: None,
                     scale: entry.scale,
                     alignment: entry.alignment,
                     shadow: true,

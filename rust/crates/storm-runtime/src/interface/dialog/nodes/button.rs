@@ -10,6 +10,7 @@ use storm_render::interface_text::{
 pub(super) struct Action(pub(super) i32, pub(super) &'static str);
 
 pub(super) const CLICK: Action = Action(12, "click");
+pub(super) const DOUBLE_CLICK: Action = Action(13, "dblclick");
 pub(super) const ACTIVATE: Action = Action(5, "activate");
 pub(super) const CANCEL: Action = Action(6, "deactivate");
 pub(super) const RIGHT_CLICK: Action = Action(14, "rclick");
@@ -27,7 +28,7 @@ const ACTIONS: [Action; 15] = [
     Action(10, "speedup"),
     Action(11, "speeddown"),
     CLICK,
-    Action(13, "dblclick"),
+    DOUBLE_CLICK,
     RIGHT_CLICK,
     Action(15, "dblrclick"),
 ];
@@ -231,6 +232,7 @@ impl Button {
                     face[0].saturating_add(face[2]) / 2,
                     face[1].saturating_add(*baseline),
                 ],
+                vertical_anchor: None,
                 scale: 1.0,
                 alignment: Alignment::Center,
                 shadow: false,

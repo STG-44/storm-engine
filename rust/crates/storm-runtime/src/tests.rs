@@ -4126,6 +4126,192 @@ fn image_collections_preserve_atlas_order_and_support_script_edits() -> Result<(
 }
 
 #[test]
+fn dialog_text_button_uses_atlas_caps_and_dispatches_on_mouse_release() -> Result<()> {
+    use storm_render::interface_text::InterfaceDraw::{Picture, Text};
+
+    let temp = Temporary::new()?;
+    let ini = temp.0.join("RESOURCE/INI");
+    let ui = ini.join("INTERFACES");
+    let textures = temp.0.join("RESOURCE/Textures/Interfaces");
+    std::fs::create_dir_all(&ui)?;
+    std::fs::create_dir_all(&textures)?;
+    std::fs::create_dir_all(ini.join("texts/test"))?;
+    let mut tx = [0u32, 8, 4, 1, 21, 128].map(u32::to_le_bytes).concat();
+    tx.extend([255; 128]);
+    std::fs::write(textures.join("buttons.tga.tx"), tx)?;
+    std::fs::write(
+        ui.join("interfaces.ini"),
+        "[PC_SCREEN]\nbDynamicScaling=1\n",
+    )?;
+    std::fs::write(
+        ini.join("texts/language.ini"),
+        "[COMMON]\ndefaultLanguage=Test\nstrings=common.ini\n[DIRECTORY]\nTest=test\n",
+    )?;
+    std::fs::write(ini.join("texts/test/common.ini"), "string=Apply,\"АБ\"\n")?;
+    std::fs::write(
+        ini.join("fonts.ini"),
+        "[Face]\nTexture=Interfaces/buttons.tga\nTexture_xsize=8\nTexture_ysize=4\nHeight=8\nchar_А=0,0,4,4\nchar_Б=4,0,4,4\n",
+    )?;
+    std::fs::write(
+        ui.join("pictures.ini"),
+        r#"
+        [Buttons]
+        sTextureName=buttons.tga
+        wTextureWidth=8
+        wTextureHeight=4
+        picture=Left,0,0,2,2
+        picture=Middle,2,0,6,2
+        picture=FocusLeft,0,2,2,4
+        picture=FocusMiddle,2,2,6,4
+    "#,
+    )?;
+    std::fs::write(
+        ui.join("defaultnode.ini"),
+        r#"
+        [TEXTBUTTON2]
+        class=TEXTBUTTON
+        group=Buttons
+        buttonLeft=Left
+        buttonMiddle=Middle
+        selectButtonLeft=FocusLeft
+        selectButtonMiddle=FocusMiddle
+        font=Face
+        strOffset=5
+        fontColorSelected=255,200,210,220
+        fontColorPressed=255,130,140,150
+        fontColor=255,180,180,180
+        unselectableFontColor=255,60,60,60
+        faceColor=255,128,128,128
+        faceColorPressed=255,100,90,80
+        backColor=128,20,30,40
+        shadowOffset=1,2
+        pressPictureOffset=2,3
+        pressShadowOffset=-1,1
+        pressDelay=2
+        UseActionByDeclick=1
+    "#,
+    )?;
+    std::fs::write(
+        ui.join("confirm.ini"),
+        r#"
+        [MAIN]
+        item=100,TEXTBUTTON2,Apply
+        start=Apply
+        [Apply]
+        position=20,30,100,46
+        string=Apply
+        command=click,event:Confirmed
+        command=activate,event:Confirmed
+    "#,
+    )?;
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r##"
+        object ui;
+        #event_handler("ISound","Sound");
+        #event_handler("ievnt_command","Command");
+        #event_handler("Confirmed","Confirmed");
+        #event_handler("Edit","Edit");
+        void Main() {
+            MapControl(CreateControl("ILClick"),1);
+            MapControl(CreateControl("IAction"),32);
+            CreateEntity(&ui,"XINTERFACE");
+            LayerAddObject(4,&ui,0);
+            LayerAddObject(5,&ui,0);
+            SendMessage(&ui,"ls",45010,"resource\ini\interfaces\confirm.ini");
+        }
+        void Sound() { Trace("sound"); }
+        void Command() { string action=GetEventData(); Trace(action); }
+        void Confirmed() { int code=GetEventData(); Trace("confirmed="+code); }
+        void Edit() {
+            SendMessage(&ui,"lsls",45045,"Apply",0,"#БА");
+            SendMessage(&ui,"lslllll",45045,"Apply",1,40,70,130,90);
+            SendMessage(&ui,"lsl",45024,"Apply",0);
+        }
+    "##,
+    )?;
+    let trace = Trace::default();
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine = Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, host(&trace)?)?;
+    engine.host.set_interface_window(800, 600);
+    engine.host.set_interface_pointer(Some([50.0, 38.0]));
+    engine.frame(0)?;
+    let draws = engine.host.interface_draws();
+    let [
+        Picture(shadow),
+        _,
+        _,
+        Picture(fill),
+        Picture(left),
+        Picture(middle),
+        Picture(right),
+        Text(text),
+    ] = draws.as_slice()
+    else {
+        panic!("shadow, fill, face, and caption");
+    };
+    assert_eq!(shadow.rect, [21.0, 32.0, 23.0, 48.0]);
+    assert_eq!(fill.rgba, [20, 30, 40, 128]);
+    assert_eq!(left.rect, [20.0, 30.0, 22.0, 46.0]);
+    assert_eq!(middle.rect, [22.0, 30.0, 98.0, 46.0]);
+    assert_eq!(right.rect, [98.0, 30.0, 100.0, 46.0]);
+    assert_eq!(right.uv, [left.uv[2], left.uv[1], left.uv[0], left.uv[3]]);
+    assert_eq!(left.uv, [0.0625, 0.625, 0.1875, 0.875]);
+    assert_eq!(text.position, [60, 38]);
+    assert_eq!(text.vertical_anchor, Some(6.0));
+    assert_eq!(text.text, "АБ");
+    assert_eq!(text.rgba, [200, 210, 220, 255]);
+
+    let input = |engine: &mut Engine, code, pressed| -> Result<()> {
+        engine.control_input(ControlInput::Button { code, pressed });
+        engine.frame(16)?;
+        engine.frame(16)?;
+        Ok(())
+    };
+    input(&mut engine, 1, true)?;
+    for _ in 0..4 {
+        engine.frame(16)?;
+    }
+    assert!(trace.borrow().is_empty());
+    let pressed = engine.host.interface_draws();
+    let [Picture(shadow), _, _, _, Picture(left), _, _, Text(text)] = pressed.as_slice() else {
+        panic!("pressed face and caption");
+    };
+    assert_eq!(shadow.rect, [21.0, 34.0, 23.0, 50.0]);
+    assert_eq!(left.rect, [22.0, 33.0, 24.0, 49.0]);
+    assert_eq!(left.rgba, [100, 90, 80, 255]);
+    assert_eq!(text.position, [62, 41]);
+    assert_eq!(text.vertical_anchor, Some(6.0));
+    assert_eq!(text.rgba, [130, 140, 150, 255]);
+
+    input(&mut engine, 1, false)?;
+    engine.frame(16)?;
+    assert_eq!(
+        trace.take(),
+        ["script:sound", "script:click", "script:confirmed=12"]
+    );
+    input(&mut engine, 32, true)?;
+    input(&mut engine, 32, false)?;
+    assert_eq!(
+        trace.take(),
+        ["script:sound", "script:activate", "script:confirmed=5"]
+    );
+
+    engine.emit_event("Edit", &mut Message::new("", vec![])?)?;
+    engine.frame(16)?;
+    let edited = engine.host.interface_draws();
+    let [_, _, _, _, Picture(left), _, _, Text(text)] = edited.as_slice() else {
+        panic!("moved button and label");
+    };
+    assert_eq!(left.rect, [40.0, 70.0, 42.0, 90.0]);
+    assert_eq!(text.text, "БА");
+    assert_eq!(text.position, [85, 80]);
+    assert_eq!(text.rgba, [60, 60, 60, 255]);
+    Ok(())
+}
+
+#[test]
 fn dialog_check_buttons_share_mouse_and_script_state_with_native_callbacks() -> Result<()> {
     use storm_render::interface_text::InterfaceDraw::{Picture, Text};
 

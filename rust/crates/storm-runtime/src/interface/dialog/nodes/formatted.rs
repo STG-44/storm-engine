@@ -323,6 +323,7 @@ impl FormattedText {
                     text: span.text.clone(),
                     canvas,
                     position: [x, y],
+                    vertical_anchor: None,
                     scale: self.scale,
                     alignment,
                     shadow: true,

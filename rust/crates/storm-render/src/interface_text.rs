@@ -35,6 +35,8 @@ pub struct TextDraw {
     pub text: String,
     pub canvas: [i32; 2],
     pub position: [i32; 2],
+    /// Align this height in the font's glyph coordinates to the screen-space Y anchor.
+    pub vertical_anchor: Option<f32>,
     pub scale: f32,
     pub alignment: Alignment,
     pub shadow: bool,
@@ -127,6 +129,55 @@ impl BitmapFont {
     pub fn text_width(&self, text: &str) -> i32 {
         symbols(text).map(|c| self.glyph_advance(c)).sum::<f32>() as i32
     }
+
+    /// Coverage-weighted vertical center of the visible glyphs.
+    pub fn ink_center_y(&self, text: &str) -> f32 {
+        let line_height = (self.height as f32 * self.pc_scale).trunc();
+        let Some(mip) = self.texture.mips.first() else {
+            return line_height * 0.5;
+        };
+        if [mip.width, mip.height] != self.sheet_size {
+            return line_height * 0.5;
+        }
+        let mut coverage = 0.0;
+        let mut weighted_y = 0.0;
+        for [x, y, w, h] in symbols(text)
+            .filter(|&c| c != ' ')
+            .filter_map(|c| self.glyphs.get(&c).copied())
+        {
+            if w == 0
+                || h == 0
+                || x.saturating_add(w) > mip.width
+                || y.saturating_add(h) > mip.height
+            {
+                continue;
+            }
+            let glyph_width = (w as f32 * self.pc_scale).trunc();
+            let glyph_height = (h as f32 * self.pc_scale).trunc();
+            let glyph_top = line_height - glyph_height;
+            let row_height = glyph_height / h as f32;
+            let texel_area = row_height * glyph_width / w as f32;
+            for row in 0..h {
+                let start = ((y + row) as usize * mip.width as usize + x as usize) * 4;
+                let Some(pixels) = mip.rgba.get(start..start + w as usize * 4) else {
+                    break;
+                };
+                let alpha: u32 = pixels
+                    .chunks_exact(4)
+                    .map(|pixel| u32::from(pixel[3]))
+                    .sum();
+                let weight = alpha as f32 * texel_area;
+                coverage += weight;
+                weighted_y += weight * (glyph_top + (row as f32 + 0.5) * row_height);
+            }
+        }
+
+        if coverage > 0.0 {
+            weighted_y / coverage
+        } else {
+            line_height * 0.5
+        }
+    }
 }
 
 fn symbols(text: &str) -> impl Iterator<Item = char> + Clone + '_ {
@@ -144,7 +195,8 @@ impl TextDraw {
             self.canvas.into_iter().all(|n| n > 0)
                 && size.into_iter().all(|n| n > 0)
                 && self.scale.is_finite()
-                && self.scale > 0.0,
+                && self.scale > 0.0
+                && self.vertical_anchor.is_none_or(f32::is_finite),
             "invalid interface text viewport or scale"
         );
         let font = &self.font;
@@ -154,7 +206,8 @@ impl TextDraw {
         );
         let [ratio_x, ratio_y] = std::array::from_fn(|i| size[i] as f32 / self.canvas[i] as f32);
         let scale = self.scale * ratio_x;
-        let y = (self.position[1] as f32 * ratio_y).trunc();
+        let y = (self.position[1] as f32 * ratio_y).trunc()
+            - self.vertical_anchor.unwrap_or(0.0) * scale;
         let glyph_width = |glyph: &[u32; 4]| (glyph[2] as f32 * font.pc_scale).trunc();
         let symbols = symbols(&self.text);
         let width = font.text_width(&self.text);
@@ -364,6 +417,60 @@ impl InterfaceRenderer {
             pass.set_bind_group(0, &self.textures[&key].1, &[]);
             pass.draw(0..6, range);
         }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use storm_formats::{TxHeader, texture::Mip};
+
+    #[test]
+    fn text_ink_stays_centered_on_a_stretched_interface() -> Result<()> {
+        let mut rgba = vec![0; 2 * 8 * 4];
+        rgba[2 * 4 * 4..].fill(255);
+        let texture = Rc::new(Texture {
+            header: TxHeader {
+                flags: 0,
+                width: 2,
+                height: 8,
+                mips: 1,
+                format: 21,
+                mip0_bytes: 64,
+            },
+            mips: vec![Mip {
+                width: 2,
+                height: 8,
+                rgba,
+            }],
+        });
+        let font = Rc::new(BitmapFont {
+            texture,
+            sheet_size: [2, 8],
+            glyphs: BTreeMap::from([('A', [0, 0, 2, 8])]),
+            height: 8,
+            pc_scale: 1.0,
+            interval: 0,
+            space: 0,
+            shadow: [0; 2],
+        });
+        let draw = TextDraw {
+            vertical_anchor: Some(font.ink_center_y("A")),
+            font,
+            text: "A".to_owned(),
+            canvas: [800, 600],
+            position: [100, 50],
+            scale: 1.0,
+            alignment: Alignment::Center,
+            shadow: false,
+            rgba: [255; 4],
+        };
+        let mut instances = Vec::new();
+        draw.layout([1280, 720], &mut instances)?;
+        let [_, top, _, bottom] = instances[0].rect;
+        let ink_center = top + (bottom - top) * 0.75;
+        assert!((ink_center - (1.0 - 60.0 * 2.0 / 720.0)).abs() < 1e-6);
         Ok(())
     }
 }

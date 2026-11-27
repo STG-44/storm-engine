@@ -1,9 +1,9 @@
 use super::{
-    Atlas, FULL_UV, NEUTRAL, Nodes, Setting, Shared, Texture, ini_color, ini_integer, tuple,
+    Atlas, FULL_UV, NEUTRAL, Nodes, Setting, Shared, Texture, ini_color, ini_integer, solid_mask,
+    tuple,
 };
 use anyhow::{Result, ensure};
 use std::rc::Rc;
-use storm_formats::{TxHeader, texture::Mip};
 use storm_render::interface_text::{InterfaceDraw, PictureColor, PictureDraw};
 
 pub(super) struct Frame {
@@ -273,22 +273,4 @@ impl FrameImage {
             color: self.color,
         }));
     }
-}
-
-fn solid_mask() -> Rc<Texture> {
-    Rc::new(Texture {
-        header: TxHeader {
-            flags: 0,
-            width: 1,
-            height: 1,
-            mips: 1,
-            format: 21,
-            mip0_bytes: 4,
-        },
-        mips: vec![Mip {
-            width: 1,
-            height: 1,
-            rgba: vec![255; 4],
-        }],
-    })
 }

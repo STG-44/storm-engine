@@ -497,6 +497,7 @@ impl CheckButtons {
                             (origin[1] + self.text_offset[1] + self.line_height * index as f32)
                                 as i32,
                         ],
+                        vertical_anchor: None,
                         scale: self.scale,
                         alignment: Alignment::Left,
                         shadow: true,

@@ -3,6 +3,7 @@ mod check;
 mod collection;
 mod formatted;
 mod frame;
+mod text_button;
 
 use super::{Shared, color, decode, load_font, load_texture, records};
 use crate::{config::ini_integer, controls::Controls, interface::InterfaceScreen};
@@ -17,8 +18,12 @@ use std::{
     rc::{Rc, Weak},
 };
 use storm_core::{AttributeId, AttributeStore, Message, Value};
-use storm_formats::texture::Texture;
+use storm_formats::{
+    TxHeader,
+    texture::{Mip, Texture},
+};
 use storm_render::interface_text::{Alignment, InterfaceDraw, PictureColor, PictureDraw, TextDraw};
+use text_button::TextButton;
 
 const DEFAULTS: &str = "RESOURCE/INI/INTERFACES/defaultnode.ini";
 const PICTURES: &str = "RESOURCE/INI/INTERFACES/pictures.ini";
@@ -67,7 +72,7 @@ struct Node {
 
 impl Node {
     fn interactive(&self) -> bool {
-        matches!(self.widget, Widget::Button(_) | Widget::CheckButtons(_))
+        self.widget.interactive()
     }
 
     fn hit(&self, point: [f64; 2]) -> bool {
@@ -91,10 +96,20 @@ enum Widget {
     },
     Title(Vec<InterfaceDraw>),
     Button(Box<Button>),
+    TextButton(Box<TextButton>),
     CheckButtons(Box<CheckButtons>),
     Collection(Box<Collection>),
     FormattedText(Box<FormattedText>),
     Frame(Box<Frame>),
+}
+
+impl Widget {
+    fn interactive(&self) -> bool {
+        matches!(
+            self,
+            Self::Button(_) | Self::TextButton(_) | Self::CheckButtons(_)
+        )
+    }
 }
 
 struct Atlas {
@@ -211,13 +226,19 @@ impl Nodes {
                         .map(|(_, value)| value),
                 )?)),
                 "button" => Widget::Button(Box::new(Button::load(&mut nodes, shared, &setting)?)),
+                "textbutton" => Widget::TextButton(Box::new(TextButton::load(
+                    &mut nodes,
+                    shared,
+                    &setting,
+                    field(text, name, "strOffset"),
+                )?)),
                 "checkbutton" => Widget::CheckButtons(Box::new(CheckButtons::load(
                     &mut nodes, shared, &setting, rect,
                 )?)),
                 _ => bail!("unported XINTERFACE dialog node {class:?} (item={line})"),
             };
             let window = matches!(&widget, Widget::Window { .. });
-            let commands = if matches!(widget, Widget::Button(_) | Widget::CheckButtons(_)) {
+            let commands = if widget.interactive() {
                 bindings(
                     records(text, name)
                         .filter(|(key, _)| key.eq_ignore_ascii_case("command"))
@@ -226,7 +247,8 @@ impl Nodes {
             } else {
                 BTreeMap::new()
             };
-            let selectable = !commands.is_empty();
+            let text_button = matches!(widget, Widget::TextButton(_));
+            let selectable = text_button || !commands.is_empty();
             let clickable = selectable || matches!(widget, Widget::CheckButtons(_));
             let priority = priority.unwrap_or(80);
             let index = nodes
@@ -242,7 +264,7 @@ impl Nodes {
                     selectable,
                     clickable,
                     commands,
-                    select_on_hover: flag(setting("moveMouseDoSelect"), false),
+                    select_on_hover: text_button || flag(setting("moveMouseDoSelect"), false),
                     on_release: flag(setting("UseActionByDeclick"), false),
                     rect,
                     widget,
@@ -273,8 +295,10 @@ impl Nodes {
         if let Some(index) = self.find(name) {
             let node = &mut self.items[index];
             node.visible = show;
-            if let Widget::Button(button) = &mut node.widget {
-                button.reset_press();
+            match &mut node.widget {
+                Widget::Button(button) => button.reset_press(),
+                Widget::TextButton(button) => button.reset_press(),
+                _ => {}
             }
         }
     }
@@ -446,20 +470,29 @@ impl Nodes {
         self.previous_pointer = point;
         if controls.activated("ILClick") {
             self.mouse_target = clicked;
-            if let Some(index) = clicked
-                && self.input_node(index).is_some_and(|node| !node.on_release)
-            {
-                return self.fire(index, CLICK);
+            if let Some(index) = clicked {
+                let node = &mut self.items[index];
+                if !node.on_release {
+                    return self.fire(index, CLICK);
+                }
+                if let Widget::TextButton(button) = &mut node.widget {
+                    button.begin_press();
+                }
             }
             return Ok(Vec::new());
         }
         if controls.released("ILClick")
             && let Some(index) = self.mouse_target.take()
-            && self
-                .input_node(index)
-                .is_some_and(|node| node.clickable && node.on_release)
         {
-            return self.fire(index, CLICK);
+            let node = &mut self.items[index];
+            if node.on_release {
+                if let Widget::TextButton(button) = &mut node.widget {
+                    button.reset_press();
+                }
+                if node.clickable {
+                    return self.fire(index, CLICK);
+                }
+            }
         }
         if !controls.held("ILClick") && controls.activated("IRClick") {
             return clicked.map_or_else(|| Ok(Vec::new()), |index| self.fire(index, RIGHT_CLICK));
@@ -520,6 +553,7 @@ impl Nodes {
         }
         match &mut node.widget {
             Widget::Button(button) => button.press(action, node.selectable),
+            Widget::TextButton(button) => button.execute(action, node.on_release),
             Widget::CheckButtons(checks) if action == CLICK => {
                 if let Some(change) = self
                     .previous_pointer
@@ -722,6 +756,7 @@ impl Nodes {
                 text: caption,
                 canvas: screen.size,
                 position: [center, top.saturating_add(offset)],
+                vertical_anchor: None,
                 scale,
                 alignment: Alignment::Center,
                 shadow: true,
@@ -788,16 +823,20 @@ impl Nodes {
                 }
                 2 => Ok(u64::from(node.clickable)),
                 4 => {
-                    let Widget::CheckButtons(checks) = &mut node.widget else {
-                        bail!("unported XINTERFACE base node position for {:?}", node.name);
-                    };
+                    ensure!(
+                        matches!(node.widget, Widget::CheckButtons(_) | Widget::TextButton(_)),
+                        "unported XINTERFACE base node position for {:?}",
+                        node.name
+                    );
                     let rect = [
                         message.long()?,
                         message.long()?,
                         message.long()?,
                         message.long()?,
                     ];
-                    checks.move_to(rect)?;
+                    if let Widget::CheckButtons(checks) = &mut node.widget {
+                        checks.move_to(rect)?;
+                    }
                     node.rect = rect;
                     Ok(0)
                 }
@@ -806,6 +845,21 @@ impl Nodes {
                     node.name
                 ),
             };
+        }
+        if let Widget::TextButton(button) = &mut node.widget {
+            match code {
+                0 => button.set_text(shared, message.string()?)?,
+                1 => {
+                    node.rect = [
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                        message.long()?,
+                    ];
+                }
+                _ => {}
+            }
+            return Ok(0);
         }
         if let Widget::CheckButtons(checks) = &mut node.widget {
             let (result, change) = checks.send(shared, node.rect, code, message)?;
@@ -968,6 +1022,14 @@ impl Nodes {
                     delta_ms,
                     out,
                 ),
+                Widget::TextButton(button) => button.draw(
+                    node.rect,
+                    screen.size,
+                    self.focus == Some(index),
+                    node.selectable,
+                    node.on_release,
+                    out,
+                ),
                 Widget::Picture {
                     texture: Some(texture),
                     uv,
@@ -993,6 +1055,24 @@ impl Nodes {
             }
         }
     }
+}
+
+fn solid_mask() -> Rc<Texture> {
+    Rc::new(Texture {
+        header: TxHeader {
+            flags: 0,
+            width: 1,
+            height: 1,
+            mips: 1,
+            format: 21,
+            mip0_bytes: 4,
+        },
+        mips: vec![Mip {
+            width: 1,
+            height: 1,
+            rgba: vec![255; 4],
+        }],
+    })
 }
 
 fn read_ini(shared: &Shared, path: &str) -> Result<String> {
