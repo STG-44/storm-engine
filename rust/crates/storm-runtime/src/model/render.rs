@@ -1,0 +1,433 @@
+use super::*;
+use std::collections::BTreeSet;
+use storm_render::{
+    Frame, Gpu,
+    model::{
+        AstronomyRenderer, Atmosphere, CelestialDraw, CoastFoamDraw, CoastFoamRenderer,
+        LightningDraw, MAX_CONFIGURED_SCENES, ModelScene, OceanRenderer, OrbitCamera, RainDraw,
+        RainRenderer, SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer, native_model_matrix,
+    },
+};
+
+/// GPU scenes follow the registry's draw order and asset revision. This bounded
+/// static path reuses the existing shader/material foundation.
+pub struct ModelScenes {
+    owners: Vec<Owner>,
+    scenes: Vec<ModelScene>,
+    active: usize,
+    camera: OrbitCamera,
+    authored_camera: Option<OrbitCamera>,
+    framed: bool,
+    format: wgpu::TextureFormat,
+    ocean: Option<OceanRenderer>,
+    coast_foam: Option<CoastFoamRenderer>,
+    rain: Option<RainRenderer>,
+    sun: Option<SunRenderer>,
+    lightning: Option<SunRenderer>,
+    astronomy: Option<AstronomyRenderer>,
+    sky: Option<SkyRenderer>,
+}
+#[derive(Default)]
+pub struct AtmosphereDraws<'a> {
+    pub coast_foam: &'a [CoastFoamDraw],
+    pub rain: &'a [RainDraw],
+    pub sun: &'a [SunDraw],
+    pub lightning: &'a [LightningDraw],
+    pub astronomy: &'a [CelestialDraw],
+    pub sky: Option<&'a SkyDraw>,
+}
+struct Owner {
+    id: u64,
+    revision: u64,
+    asset: std::rc::Weak<ModelAsset>,
+    part: DrawPart,
+}
+impl Owner {
+    fn for_draw(draw: &Draw) -> Self {
+        Self {
+            id: draw.entity.raw(),
+            revision: draw.revision,
+            asset: Rc::downgrade(&draw.asset),
+            part: draw.part,
+        }
+    }
+    fn matches(&self, draw: &Draw) -> bool {
+        self.key() == draw_key(draw)
+            && self.revision == draw.revision
+            && self
+                .asset
+                .upgrade()
+                .is_some_and(|asset| Rc::ptr_eq(&asset, &draw.asset))
+    }
+    fn key(&self) -> (u64, DrawPart) {
+        (self.id, self.part)
+    }
+}
+fn draw_key(draw: &Draw) -> (u64, DrawPart) {
+    (draw.entity.raw(), draw.part)
+}
+impl Default for ModelScenes {
+    fn default() -> Self {
+        Self::new(wgpu::TextureFormat::Rgba8UnormSrgb)
+    }
+}
+impl ModelScenes {
+    pub fn new(format: wgpu::TextureFormat) -> Self {
+        Self {
+            owners: Vec::new(),
+            scenes: Vec::new(),
+            active: 0,
+            camera: OrbitCamera::from_bounds([0.0; 3].into(), 1.0),
+            authored_camera: None,
+            framed: false,
+            format,
+            ocean: None,
+            coast_foam: None,
+            rain: None,
+            sun: None,
+            lightning: None,
+            astronomy: None,
+            sky: None,
+        }
+    }
+    pub fn cached(&self) -> usize {
+        self.scenes.len()
+    }
+    pub fn camera(&self) -> &OrbitCamera {
+        self.authored_camera.as_ref().unwrap_or(&self.camera)
+    }
+    pub fn set_authored_camera(&mut self, camera: Option<OrbitCamera>) {
+        self.authored_camera = camera;
+    }
+    pub fn set_camera(&mut self, camera: OrbitCamera) {
+        self.camera = camera;
+        self.framed = true;
+    }
+    pub fn prepare(&mut self, gpu: &Gpu, draws: &[Draw], live: &[EntityId]) -> Result<()> {
+        let mut counts = BTreeMap::<_, usize>::new();
+        let mut ids = BTreeSet::new();
+        let mut replacements = BTreeMap::new();
+        for draw in draws {
+            let count = counts.entry(draw.part).or_default();
+            *count += 1;
+            ensure!(
+                *count <= 16,
+                "runtime renderer supports at most 16 active draws for each model part"
+            );
+            ensure!(
+                ids.insert(draw_key(draw)),
+                "repeated model draw of the same part requires per-draw uniforms"
+            );
+            native_model_matrix(draw.matrix)?;
+        }
+        // Validate inputs and build replacement storage before moving existing
+        // scenes. Device loss/OOM are outside this checked setup boundary.
+        for draw in draws {
+            if !self.owners.iter().any(|owner| owner.matches(draw)) {
+                let mut scene = if matches!(draw.part, DrawPart::MenuItem(..)) {
+                    ModelScene::menu(gpu, self.format, &draw.asset)?
+                } else {
+                    ModelScene::new(gpu, self.format, &draw.asset)?
+                };
+                scene.set_native_model_matrix(Some(draw.matrix))?;
+                replacements.insert(draw_key(draw), scene);
+            }
+        }
+        let mut previous = std::mem::take(&mut self.owners)
+            .into_iter()
+            .zip(std::mem::take(&mut self.scenes))
+            .map(|(owner, scene)| (owner.key(), (owner, scene)))
+            .collect::<BTreeMap<_, _>>();
+        let mut scenes = Vec::new();
+        let mut owners = Vec::new();
+        for draw in draws {
+            let mut scene = if let Some(scene) = replacements.remove(&draw_key(draw)) {
+                scene
+            } else {
+                previous
+                    .remove(&draw_key(draw))
+                    .context("missing retained GPU model")?
+                    .1
+            };
+            scene.set_native_model_matrix(Some(draw.matrix))?;
+            scene.set_ambient_light(draw.ambient_light);
+            if let Some(rig) = &draw.rig {
+                scene.set_ship_state(storm_render::model::ShipState {
+                    native_rig: Some(rig.clone()),
+                    ..Default::default()
+                })?;
+            }
+            scenes.push(scene);
+            owners.push(Owner::for_draw(draw));
+        }
+        self.active = scenes.len();
+        let live = live.iter().map(|id| id.raw()).collect::<BTreeSet<_>>();
+        for (key, (owner, scene)) in previous {
+            // The underlying model can stay live after its SAIL group is retired.
+            let keep = match owner.part {
+                DrawPart::Body => live.contains(&owner.id),
+                DrawPart::MenuItem(..) => owner.asset.strong_count() > 0,
+                _ => false,
+            };
+            if keep && !ids.contains(&key) && scenes.len() < MAX_CONFIGURED_SCENES {
+                owners.push(owner);
+                scenes.push(scene);
+            }
+        }
+        self.scenes = scenes;
+        self.owners = owners;
+        if !self.framed && self.authored_camera.is_none() && !draws.is_empty() {
+            let mut bounds: Option<([f32; 3], [f32; 3])> = None;
+            for draw in draws {
+                let matrix = native_model_matrix(draw.matrix)?;
+                let center = matrix.transform_point3(draw.asset.center).to_array();
+                let scale = matrix
+                    .x_axis
+                    .truncate()
+                    .length()
+                    .max(matrix.y_axis.truncate().length())
+                    .max(matrix.z_axis.truncate().length());
+                let radius = draw.asset.radius * scale;
+                let lo = std::array::from_fn(|i| center[i] - radius);
+                let hi = std::array::from_fn(|i| center[i] + radius);
+                bounds = Some(if let Some((a, b)) = bounds {
+                    (
+                        std::array::from_fn(|i| a[i].min(lo[i])),
+                        std::array::from_fn(|i| b[i].max(hi[i])),
+                    )
+                } else {
+                    (lo, hi)
+                });
+            }
+            let (lo, hi) = bounds.unwrap();
+            let center = std::array::from_fn::<_, 3, _>(|i| (lo[i] + hi[i]) * 0.5);
+            let radius = (0..3)
+                .map(|i| ((hi[i] - lo[i]) * 0.5).powi(2))
+                .sum::<f32>()
+                .sqrt()
+                .max(0.1);
+            self.camera = OrbitCamera::from_bounds(center.into(), radius);
+            self.framed = true;
+        }
+        Ok(())
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        seconds: f32,
+    ) -> Result<()> {
+        ModelScene::draw_models(
+            &mut self.scenes[..self.active],
+            gpu,
+            encoder,
+            target,
+            width,
+            height,
+            seconds,
+            self.authored_camera.as_ref().unwrap_or(&self.camera),
+            SailWind {
+                speed: 0.0,
+                ..Default::default()
+            },
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_with_sea(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        surface: &crate::sea::Surface,
+    ) -> Result<()> {
+        self.encode_weather(gpu, encoder, target, size, seconds, Some(surface), &[])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_weather(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        sea: Option<&crate::sea::Surface>,
+        rain: &[RainDraw],
+    ) -> Result<()> {
+        self.encode_atmosphere(gpu, encoder, target, size, seconds, sea, rain, &[])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_atmosphere(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        sea: Option<&crate::sea::Surface>,
+        rain: &[RainDraw],
+        sun: &[SunDraw],
+    ) -> Result<()> {
+        self.encode_configured(
+            gpu,
+            encoder,
+            target,
+            size,
+            seconds,
+            sea,
+            AtmosphereDraws {
+                rain,
+                sun,
+                ..AtmosphereDraws::default()
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn encode_configured(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: [u32; 2],
+        seconds: f32,
+        sea: Option<&crate::sea::Surface>,
+        AtmosphereDraws {
+            coast_foam,
+            rain,
+            sun,
+            lightning,
+            astronomy,
+            sky,
+        }: AtmosphereDraws<'_>,
+    ) -> Result<()> {
+        let water_view = sea
+            .filter(|_| !self.framed && self.authored_camera.is_none())
+            .map(|surface| {
+                // The model-independent orbit keeps the eye above the wave envelope
+                // until an actual scene selects its camera.
+                let wave_height = surface
+                    .parameters
+                    .amplitude
+                    .iter()
+                    .map(|v| v.abs())
+                    .sum::<f32>();
+                OrbitCamera::from_bounds([0.0, wave_height, 0.0].into(), wave_height.max(1.0) * 4.0)
+            });
+        let ocean = sea.map(|surface| {
+            (
+                self.ocean
+                    .get_or_insert_with(|| OceanRenderer::new(gpu, self.format)),
+                surface,
+            )
+        });
+        let coast_foam = (ocean.is_some() && !coast_foam.is_empty()).then(|| {
+            (
+                self.coast_foam
+                    .get_or_insert_with(|| CoastFoamRenderer::new(gpu, self.format)),
+                coast_foam,
+            )
+        });
+        let rain = (!rain.is_empty()).then(|| {
+            (
+                self.rain
+                    .get_or_insert_with(|| RainRenderer::new(gpu, self.format)),
+                rain,
+            )
+        });
+        let sun = (!sun.is_empty()).then(|| {
+            (
+                self.sun
+                    .get_or_insert_with(|| SunRenderer::new(gpu, self.format)),
+                sun,
+            )
+        });
+        let lightning = (!lightning.is_empty()).then(|| {
+            (
+                self.lightning
+                    .get_or_insert_with(|| SunRenderer::new(gpu, self.format)),
+                lightning,
+            )
+        });
+        let astronomy = (!astronomy.is_empty()).then(|| {
+            (
+                self.astronomy
+                    .get_or_insert_with(|| AstronomyRenderer::new(gpu, self.format)),
+                astronomy,
+            )
+        });
+        let sky = sky.map(|draw| {
+            (
+                self.sky
+                    .get_or_insert_with(|| SkyRenderer::new(gpu, self.format)),
+                draw,
+            )
+        });
+        ModelScene::draw_configured_with_atmosphere(
+            &mut self.scenes[..self.active],
+            gpu,
+            encoder,
+            target,
+            size,
+            seconds,
+            self.authored_camera
+                .as_ref()
+                .or(water_view.as_ref())
+                .unwrap_or(&self.camera),
+            ocean,
+            Atmosphere {
+                coast_foam,
+                rain,
+                sun,
+                lightning,
+                astronomy,
+                sky,
+            },
+        )
+    }
+    pub fn offscreen(&mut self, gpu: &Gpu, width: u32, height: u32, seconds: f32) -> Result<Frame> {
+        ensure!(
+            self.format == wgpu::TextureFormat::Rgba8UnormSrgb,
+            "offscreen model scenes require RGBA8 sRGB storage"
+        );
+        storm_render::render_models_offscreen(
+            gpu,
+            &mut self.scenes[..self.active],
+            self.authored_camera.as_ref().unwrap_or(&self.camera),
+            width,
+            height,
+            seconds,
+        )
+    }
+    /// Call after encoding/submission to release even a model which was erased
+    /// after its Realize request. Submitted wgpu commands retain their resources.
+    pub fn prune(&mut self, live: &[EntityId]) {
+        let live = live.iter().map(|id| id.raw()).collect::<BTreeSet<_>>();
+        let mut owners = Vec::new();
+        let mut scenes = Vec::new();
+        let mut active = 0;
+        for (index, (owner, scene)) in std::mem::take(&mut self.owners)
+            .into_iter()
+            .zip(std::mem::take(&mut self.scenes))
+            .enumerate()
+        {
+            if live.contains(&owner.id) {
+                if index < self.active {
+                    active += 1;
+                }
+                owners.push(owner);
+                scenes.push(scene);
+            }
+        }
+        self.owners = owners;
+        self.scenes = scenes;
+        self.active = active;
+    }
+}

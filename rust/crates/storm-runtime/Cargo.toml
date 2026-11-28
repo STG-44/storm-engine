@@ -1,0 +1,25 @@
+[package]
+name = "storm-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+encoding_rs.workspace = true
+rodio.workspace = true
+storm-core = { path = "../storm-core" }
+storm-script = { path = "../storm-script" }
+storm-render = { path = "../storm-render" }
+storm-formats = { path = "../storm-formats" }
+storm-sim = { path = "../storm-sim" }
+wgpu.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true

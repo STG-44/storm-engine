@@ -1,0 +1,131 @@
+# Persistent script globals and arrays
+
+`storm-script::Runtime` now keeps source globals, their object attribute trees
+and checked references between script calls, immediate/nested events and posted
+frames. The first entry creates storage in the World supplied by Host; later
+entries reuse it. Separate runtimes have separate declarations and values.
+`Program::call` remains a one-shot helper: globals start fresh for each call.
+Script side effects before an execution error are retained, including globals.
+
+The compiler collects top-level declarations before resolving function bodies.
+Global names are ASCII case-insensitive; function locals take precedence over
+globals. Locals still must be declared before their first source use. Functions
+and variables have separate name tables. Types include int/bool, float, string,
+object, ref and aref. Global scalar initializers are matching typed literals;
+int/float/string arrays accept literal brace lists with zero/empty defaults for
+omitted elements. Negative numeric literals and comma declarations work.
+Initializers are not arbitrary executable expressions.
+
+## Indexed data and lifetime
+
+One-dimensional global and function-local arrays support integer index
+expressions, assignment, compound arithmetic, increment/decrement and object
+attributes such as `Characters[i].ship.sails.hd`. An assignment's index executes
+once. Each invocation and recursive frame gets fresh local arrays. `makeref`
+and `makearef` can select indexed cells/objects. A direct scalar element load
+copies its value. As in the retained compiler's ref-variable read path, reading
+an element through a ref to the array produces a ref; arithmetic/conversions
+can therefore mutate the original cell. Direct object loads use the existing
+checked deep-copy rules; object/ref/aref arrays retain checked identities.
+
+`GetArraySize(ref)` returns the current size. `SetArraySize(ref, positive_int)`
+keeps the prefix, discards the tail when shrinking and creates default values
+when growing. Both require an explicit ref to an array, for example:
+
+```c
+int Masks[2] = {548,274};
+int Main() {
+    ref masks;
+    makeref(masks, Masks);
+    SetArraySize(masks, 3);
+    Masks[2] = 1;
+    return GetArraySize(masks);
+}
+```
+
+The retained `DATA::SetType` treats declarations `[0]` and `[1]` as scalars:
+indexing them fails. An actual array resized down to one remains an array.
+Refs to retained cells remain valid across resizing in Rust; removed cells and
+objects expire and regrowing does not revive their old refs or arefs. The C++
+implementation uses vector element addresses, which can dangle on reallocation;
+Rust deliberately never reproduces undefined pointer access. An lvalue already
+selected before its RHS removes that element remains a checked temporary cell
+until the instruction finishes. Its write does not reinsert it into the array.
+
+Array declarations are capped at 4,096 elements, with a shared 16,384 live array
+cell budget across globals, local frames and retained arrays. There are at most
+128 global declarations. Shrinking, failed allocations and unwound calls release
+their charges. Existing string, object tree, call depth, operand and instruction
+limits still apply; lvalue selections count toward each frame's operand limit.
+
+## Executable diagnostic and retained reference
+
+Run without game resources or a GPU:
+
+```sh
+cargo run -p storm-script --locked -- \
+  rust/crates/storm-script/fixtures/global_ships.c \
+  --frame-ms 0,0 --report global-script-state.json
+```
+
+This newly written fixture declares two Characters objects and arrays of masks,
+node names and group names. Two immediate handlers store masks 548/274 and six
+holes in persistent globals. A posted Commit handler reads those globals after
+Main has returned. It fires on the second supplied frame and writes hd=548,
+hd=274 and holes=6 to the native preview entity, in that order. Expected totals:
+three completed handlers, one posted event and three entity notifications. It is
+not an original game handler or a full character/battle system.
+
+`reference/arrays/generate.py` extracts 13 unedited retained DATA constructors
+and methods, including SetType, SetElementsNum, GetElementsNum, GetArrayElement,
+GetVarPointer and scalar Set variants. C++20 runs them under UBSan with fail-fast
+undefined-behavior checks. Only scalar storage/error/platform scaffolding is
+substituted; no original interpreter or complete game program runs. Twelve
+sequences produce 444 full snapshots of array/scalar status, size, values and
+exact float bits. Rust consumes the committed snapshots on every host.
+
+Source tests additionally cover persistent and isolated globals, forward global
+resolution and shadowing, partial initializers, recursion, single-evaluation
+indices, object copies, array/element refs, shrinking and expired aliases,
+allocation bounds/error recovery and state shared by nested/posted events.
+
+## Remaining scope
+
+Dimensions accept integer literals or earlier integer `#define` constants,
+following [source-registration order](SCRIPT_SOURCES.md). Multidimensional arrays,
+local array initializer lists, whole-array
+value loads/copies and boolean array initializer lists are explicit errors.
+Boolean global scalars work; the retained compiler's erroneous scalar Set calls
+for boolean array initializers are not emulated. Mismatched initializer types
+fail explicitly rather than reproducing silent ignored initializers.
+Reference-array container edge cases are not covered by the scalar C++ oracle;
+the checked Rust element behavior is tested separately. Dynamic modules,
+additional syntax, saved/cached programs, original native gameplay bindings and
+unmodified original game handlers remain pending. This phase adds no game assets.
+
+## Four-platform evidence, 2026-10-18
+
+Code `f5ad68bff0223a6570a4ebd194ff0d4e043fc9ed` passes the
+[PR workflow](https://github.com/STG-44/storm-engine/actions/runs/39144685224)
+and [push workflow](https://github.com/STG-44/storm-engine/actions/runs/39144682486)
+on Ubuntu, Windows, macOS Intel and macOS Apple Silicon. All eight jobs succeed.
+Each host runs 133 CPU tests, including 56 script tests, formatting, Clippy with
+warnings denied, native builds and four source fixtures. Linux additionally
+passes all 13 explicit software Vulkan GPU tests and native-window fixtures.
+
+The four script-state archives from the push workflow were downloaded with
+GitHub's ZIP digests verified. All sixteen complete JSON reports match local
+results. Canonical sorted compact JSON SHA-256 values:
+
+- Legacy sail fixture: `019aaddb5fe945aca58edd5c5d5dc7205249e3292de702437eb158c81454a3cf`.
+- Object fixture: `6646bebfe318ee2f388ceb9da03d7e98979cb453c8d8e4eb1f74605198f18266`.
+- Timed fixture: `09efcc4fc9b47b3f52fae4b2cbd05d6a7be40f73e258c896e30737065deb5fc4`.
+- Global character fixture: `ba47b992ad4287abcc6b5e45707a23816fa644638d3a2f4f27729db5390065ad`.
+
+The three prior source reports are unchanged. A local resource-dependent audit
+passes all 40 original ship roots, restoring 368 sail masks through 2,204 script
+handlers and 1,105 attribute notifications. All 80 full event/layout JSON reports
+match the previous phase. These reports and commercial resources remain outside
+Git. The generated ship also presents three native Metal frames locally.
+Hosted Windows/macOS jobs establish CPU/build behavior; physical GPU coverage
+for those additional machines remains pending.

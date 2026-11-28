@@ -1,0 +1,783 @@
+//! Bounded source-language subset of Storm's retained stack VM.
+//! The private instruction format is not the original cached-program format.
+mod builtins;
+mod compile;
+mod compile_limits;
+pub use compile_limits::CompileLimits;
+mod conversions;
+mod entity_api;
+mod events;
+mod objects;
+pub mod preview;
+mod retained_builtins;
+mod segments;
+mod source;
+mod storage;
+pub use source::{DirectorySource, LibraryRequest, SourceLoader};
+mod value;
+pub use storage::Array;
+use storage::{Declaration, Slot, State};
+
+use anyhow::{Context, Result, bail, ensure};
+pub use events::Runtime;
+pub use objects::{AttributeReference, Object, Reference, Variable, World};
+use std::{collections::BTreeMap, rc::Rc};
+use storm_core::{AttributeId, AttributeStore, EntityId};
+use value::Op;
+pub use value::{MAX_STRING, Type, Value};
+
+/// External native functions must be declared in source. Internal builtins
+/// use explicit hooks below; segment loading requires a host-provided source.
+pub trait Host {
+    fn call(&mut self, name: &str, arguments: &[Value]) -> Result<Value>;
+    /// Read a normalized, root-relative source path from the configured program.
+    fn load_script_source(&mut self, _path: &str) -> Result<String> {
+        bail!("runtime script source is not bound by this host")
+    }
+    /// A failed LoadSegment returns false and reports its source error here.
+    fn script_diagnostic(&mut self, _message: &str) {}
+    /// Resolve a #libriary name through explicit registrations. Called before
+    /// fresh script state; the embedding owns idempotence and native bindings.
+    fn load_library(&mut self, name: &str) -> Result<()> {
+        bail!("native script library {name} is not registered")
+    }
+    fn world(&self) -> World {
+        World::default()
+    }
+    /// Embeddings must explicitly provide entity lookup and deferred deletion.
+    fn is_entity(&self, _entity: EntityId) -> Result<bool> {
+        bail!("entity lookup is not bound by this host")
+    }
+    /// Current attribute binding for an entity received in an event.
+    fn entity_attribute_root(&self, _entity: EntityId) -> Option<AttributeId> {
+        None
+    }
+    fn first_entity_of_type(&self, _class: &str) -> Result<Option<EntityId>> {
+        bail!("class-based entity lookup is not bound by this host")
+    }
+    fn delete_entity(&mut self, _entity: EntityId) -> Result<()> {
+        bail!("entity deletion is not bound by this host")
+    }
+    fn delete_entities(&mut self) -> Result<()> {
+        bail!("scene-wide entity deletion is not bound by this host")
+    }
+    fn delete_entities_by_type(&mut self, _class: &str) -> Result<()> {
+        bail!("class-based entity deletion is not bound by this host")
+    }
+    fn create_entity(
+        &mut self,
+        _class: &str,
+        _store: &mut AttributeStore,
+        _attributes: Option<AttributeId>,
+    ) -> Result<EntityId> {
+        bail!("entity creation is not bound by this host")
+    }
+    /// Native Init may synchronously query a script before binding the caller's entity ID.
+    fn entity_init_events(
+        &self,
+        _entity: EntityId,
+    ) -> Result<Vec<(&'static str, storm_core::Message)>> {
+        Ok(Vec::new())
+    }
+    fn entity_init_result(
+        &mut self,
+        _entity: EntityId,
+        _event: &str,
+        _value: Option<Value>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    /// Synchronous native dispatch. Attribute handles belong to this store and
+    /// are only borrowed for this call; pointer tokens are opaque 64-bit values.
+    fn send_message(
+        &mut self,
+        _entity: EntityId,
+        _message: &mut storm_core::Message,
+        _attributes: &mut AttributeStore,
+    ) -> Result<u64> {
+        bail!("entity messages are not bound by this host")
+    }
+    /// A native message may resume after a script callback releases the world.
+    fn entity_message_has_callbacks(
+        &self,
+        _entity: EntityId,
+        _message: &storm_core::Message,
+    ) -> bool {
+        false
+    }
+    fn next_entity_message_callback(
+        &mut self,
+        _entity: EntityId,
+        _store: &mut AttributeStore,
+    ) -> Result<Option<(&'static str, storm_core::Message)>> {
+        Ok(None)
+    }
+    fn abort_entity_message_callbacks(&mut self, _entity: EntityId) -> Result<()> {
+        Ok(())
+    }
+    /// A synchronous, payload-free event raised by the preceding entity message.
+    fn take_entity_event(&mut self, _entity: EntityId) -> Option<&'static str> {
+        None
+    }
+    /// Payload-free events posted by the preceding native entity message.
+    fn take_entity_posts(&mut self, _entity: EntityId) -> Vec<(&'static str, i32)> {
+        Vec::new()
+    }
+    /// An isolated budget for a top-level event handler that initializes the game.
+    fn event_handler_instructions(&self, _event: &str, _function: &str) -> Option<u64> {
+        None
+    }
+    fn attribute_changed(
+        &mut self,
+        _entity: EntityId,
+        _attributes: &AttributeStore,
+        _changed: AttributeId,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn set_layer_type(&mut self, _index: u8, _kind: storm_core::LayerType) -> Result<()> {
+        bail!("layer types are not bound by this host")
+    }
+    fn add_to_layer(&mut self, _index: u8, _entity: EntityId, _priority: u32) -> Result<()> {
+        bail!("entity layers are not bound by this host")
+    }
+    fn remove_from_layer(&mut self, _index: u8, _entity: EntityId) -> Result<()> {
+        bail!("entity layers are not bound by this host")
+    }
+    fn freeze_layer(&mut self, _index: u8, _frozen: bool) -> Result<()> {
+        bail!("layer freezing is not bound by this host")
+    }
+    fn delta_time(&self) -> Result<u32> {
+        bail!("frame time is not bound by this host")
+    }
+    fn trace(&mut self, _text: &str) -> Result<()> {
+        bail!("script logging is not bound by this host")
+    }
+}
+
+impl Host for () {
+    fn call(&mut self, name: &str, _: &[Value]) -> Result<Value> {
+        bail!("native function {name} is not registered")
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub instructions: u64,
+    pub frames: usize,
+    pub stack: usize,
+}
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            instructions: 100000,
+            frames: 32,
+            stack: 1024,
+        }
+    }
+}
+
+pub struct Program {
+    functions: BTreeMap<String, Rc<Function>>,
+    globals: Vec<segments::GlobalDeclaration>,
+    defines: BTreeMap<String, Value>,
+    sources: Vec<String>,
+    static_handlers: Vec<(String, String)>,
+    libraries: Vec<LibraryRequest>,
+    entry: Option<String>,
+    limits: CompileLimits,
+    bytes: usize,
+    raw_tokens: usize,
+}
+struct Function {
+    parameters: usize,
+    returns: Type,
+    kind: FunctionKind,
+    locals: Vec<Declaration>,
+    code: Vec<Located>,
+}
+impl Function {
+    fn signature(&self) -> FunctionSignature {
+        FunctionSignature {
+            parameters: self.parameters,
+            kind: self.kind,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) struct FunctionSignature {
+    parameters: usize,
+    kind: FunctionKind,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FunctionKind {
+    Script,
+    Native,
+    Extern,
+}
+struct Located {
+    op: Instruction,
+    file: std::rc::Rc<str>,
+    line: usize,
+    column: usize,
+}
+enum Instruction {
+    Push(Value),
+    Select(Slot),
+    Index,
+    Load(bool),
+    Address,
+    Store(bool),
+    StorePrevious,
+    MakeRef,
+    MakeARef,
+    Attribute(Vec<Access>, AttributeMode),
+    WriteAttribute,
+    Increment(bool),
+    Binary(Op),
+    CompareSwitch,
+    Negate,
+    Not,
+    Drop,
+    Jump(usize),
+    JumpFalse(usize, Option<usize>),
+    RestoreExpression(usize),
+    JumpIfExpressionNonZero(usize),
+    Short(usize, bool),
+    Call(String, usize, CallSite),
+    DynamicCall(Slot, usize),
+    Return(bool, usize),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CallSite {
+    Expression,
+    Statement,
+}
+enum Access {
+    Literal(String),
+    Dynamic(Slot),
+}
+#[derive(Clone, Copy)]
+enum AttributeMode {
+    Read,
+    Bind,
+    Write,
+}
+
+#[derive(Clone)]
+struct SelectedVariable {
+    variable: Variable,
+    indirect: bool,
+    slot: Slot,
+    index: Option<i32>,
+}
+
+enum LeftOperand {
+    Variable(Slot, Option<i32>),
+    Attribute(AttributeReference),
+}
+
+struct Execution<'a, H: Host> {
+    host: &'a mut H,
+    world: World,
+    state: &'a State,
+    limits: Limits,
+    fuel: u64,
+    events: &'a mut events::Handlers,
+    messages: Vec<storm_core::Message>,
+    current_message: Option<usize>,
+    break_events: bool,
+}
+
+impl<H: Host> Execution<'_, H> {
+    fn call_native(
+        &mut self,
+        name: &str,
+        arguments: &[Value],
+        returns: Option<Type>,
+    ) -> Result<Value> {
+        let result = self
+            .host
+            .call(name, arguments)
+            .with_context(|| format!("native {name}"))?;
+        result.validate()?;
+        ensure!(
+            returns.is_none_or(|expected| result.kind() == expected),
+            "native {name} return type mismatch"
+        );
+        Ok(result)
+    }
+
+    fn store_variable(&self, variable: &Variable, value: Value, convert: bool) -> Result<()> {
+        if let Some(converted) = variable.assign(value, convert)? {
+            self.state.set_expression(converted);
+        }
+        Ok(())
+    }
+
+    fn write_attribute(&mut self, attribute: &AttributeReference, source: Value) -> Result<()> {
+        let value = source.clone().attribute_text()?;
+        self.state
+            .set_expression(if matches!(source, Value::Reference(_)) {
+                source
+            } else {
+                Value::String(value.clone())
+            });
+        if self.state.entity_update.get() {
+            attribute.write(&value, self.host)
+        } else {
+            attribute.set_value(&value)
+        }
+    }
+}
+
+pub(crate) fn spend(fuel: &mut u64) -> Result<()> {
+    ensure!(*fuel > 0, "script instruction budget exhausted");
+    *fuel -= 1;
+    Ok(())
+}
+
+impl Program {
+    pub fn compile(source: &str) -> Result<Self> {
+        compile::compile(source::memory(source)?)
+    }
+    pub fn compile_with_limits(source: &str, limits: CompileLimits) -> Result<Self> {
+        compile::compile(source::memory_with_limits(source, limits)?)
+    }
+
+    pub fn compile_with_loader(entry: &str, loader: &mut impl SourceLoader) -> Result<Self> {
+        compile::compile(source::load(entry, loader)?)
+    }
+    pub fn compile_with_loader_and_limits(
+        entry: &str,
+        loader: &mut impl SourceLoader,
+        limits: CompileLimits,
+    ) -> Result<Self> {
+        compile::compile(source::load_with_limits(entry, loader, limits)?)
+    }
+    /// Normalized file names in original append order; in-memory source has one synthetic name.
+    pub fn sources(&self) -> &[String] {
+        &self.sources
+    }
+    pub fn libraries(&self) -> &[LibraryRequest] {
+        &self.libraries
+    }
+
+    /// Execute with fresh globals and temporary event state. Use Runtime to persist them.
+    pub fn call(
+        &self,
+        name: &str,
+        arguments: &[Value],
+        host: &mut impl Host,
+        limits: Limits,
+    ) -> Result<Value> {
+        let state = State::new(self, host)?;
+        self.execute(
+            name,
+            arguments,
+            host,
+            limits,
+            &mut events::Handlers::for_program(self)?,
+            &state,
+        )
+    }
+
+    fn execute(
+        &self,
+        name: &str,
+        arguments: &[Value],
+        host: &mut impl Host,
+        limits: Limits,
+        events: &mut events::Handlers,
+        state: &State,
+    ) -> Result<Value> {
+        let mut execution = Self::execution(host, limits, events, None, state)?;
+        self.invoke(&name.to_ascii_lowercase(), arguments, &mut execution, 0)
+    }
+
+    fn execution<'a, H: Host>(
+        host: &'a mut H,
+        limits: Limits,
+        events: &'a mut events::Handlers,
+        message: Option<&storm_core::Message>,
+        state: &'a State,
+    ) -> Result<Execution<'a, H>> {
+        // Keep recursion and allocation bounded even if caller raises limits.
+        ensure!(
+            limits.frames > 0 && limits.frames <= 32 && limits.stack > 0 && limits.stack <= 1024,
+            "runtime limits exceed supported bounds"
+        );
+        let world = state.world.clone();
+        Ok(Execution {
+            host,
+            world,
+            state,
+            limits,
+            fuel: limits.instructions,
+            events,
+            messages: message.cloned().into_iter().collect(),
+            current_message: message.map(|_| 0),
+            break_events: false,
+        })
+    }
+
+    fn invoke(
+        &self,
+        name: &str,
+        arguments: &[Value],
+        execution: &mut Execution<'_, impl Host>,
+        depth: usize,
+    ) -> Result<Value> {
+        spend(&mut execution.fuel)?;
+        ensure!(depth < execution.limits.frames, "script call depth limit");
+        for value in arguments {
+            value.validate()?;
+        }
+        if entity_api::signature(name).is_some() {
+            return entity_api::call(self, name, arguments, execution, depth);
+        }
+        if events::signature(name).is_some() {
+            return self.event_builtin(name, arguments, execution, depth);
+        }
+        if builtins::signature(name).is_some() {
+            return builtins::call(name, arguments);
+        }
+        if let Some((arity, returns)) = retained_builtins::signature(name) {
+            ensure!(arguments.len() == arity, "{name} expects {arity} arguments");
+            if matches!(
+                name,
+                "loadsegment" | "unloadsegment" | "segmentisloaded" | "checkfunction"
+            ) {
+                return segments::call(name, &arguments[0], self, execution);
+            }
+            return execution.call_native(name, arguments, returns);
+        }
+        let (_, function) = execution.state.segments.borrow().function(name)?;
+        ensure!(
+            arguments.len() == function.parameters,
+            "{name} expects {} arguments",
+            function.parameters
+        );
+        if function.kind == FunctionKind::Native {
+            return execution.call_native(name, arguments, Some(function.returns));
+        }
+        let locals = function
+            .locals
+            .iter()
+            .enumerate()
+            .map(|(i, declaration)| -> Result<Variable> {
+                if let Some(argument) = arguments.get(i) {
+                    Ok(Variable::new(argument.clone()))
+                } else {
+                    declaration.allocate(&execution.world, &execution.state.budget)
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut targets: Vec<SelectedVariable> = Vec::new();
+        let mut stack: Vec<Value> = Vec::new();
+        let mut if_conditions: Vec<Option<Value>> = Vec::new();
+        let mut left_operand = None;
+        let mut ip = 0;
+        loop {
+            let located = function
+                .code
+                .get(ip)
+                .context("script reached invalid instruction")?;
+            let result: Result<Option<Value>> = (|| {
+                spend(&mut execution.fuel)?;
+                ip += 1;
+                let pop =
+                    |stack: &mut Vec<Value>| stack.pop().context("script operand stack underflow");
+                match &located.op {
+                    Instruction::Push(value) => stack.push(value.clone()),
+                    Instruction::Select(slot) => targets.push(SelectedVariable {
+                        variable: slot.variable(&locals, execution.state)?,
+                        indirect: false,
+                        slot: *slot,
+                        index: None,
+                    }),
+                    Instruction::Index => {
+                        let index = pop(&mut stack)?.resolved()?;
+                        let Value::Int(index) = index else {
+                            bail!("array index requires integer");
+                        };
+                        let base = targets.pop().context("script target stack underflow")?;
+                        let indirect = base.indirect || base.variable.is_reference();
+                        let Value::Array(array) = base.variable.value()? else {
+                            bail!("index on scalar");
+                        };
+                        targets.push(SelectedVariable {
+                            variable: array.element(index)?,
+                            indirect,
+                            slot: base.slot,
+                            index: Some(index),
+                        });
+                    }
+                    Instruction::Address => {
+                        let target = targets.pop().context("script target stack underflow")?;
+                        stack.push(target.variable.address()?);
+                    }
+                    Instruction::Load(keep) => {
+                        let target = if *keep {
+                            targets.last().cloned()
+                        } else {
+                            targets.pop()
+                        }
+                        .context("script target stack underflow")?;
+                        stack.push(if target.indirect {
+                            target.variable.reference()
+                        } else {
+                            target.variable.load()?
+                        });
+                    }
+                    Instruction::Store(convert) => {
+                        let value = pop(&mut stack)?;
+                        let target = targets.pop().context("script target stack underflow")?;
+                        execution.store_variable(&target.variable, value, *convert)?;
+                        left_operand = Some(LeftOperand::Variable(target.slot, target.index));
+                    }
+                    Instruction::StorePrevious => {
+                        let value = pop(&mut stack)?;
+                        match left_operand
+                            .as_ref()
+                            .context("no previous script assignment target")?
+                        {
+                            LeftOperand::Variable(slot, index) => {
+                                let variable = slot.variable(&locals, execution.state)?;
+                                if let Some(index) = index {
+                                    let Value::Array(array) = variable.value()? else {
+                                        bail!("index on scalar");
+                                    };
+                                    execution.store_variable(
+                                        &array.element(*index)?,
+                                        value,
+                                        true,
+                                    )?;
+                                } else {
+                                    execution.store_variable(&variable, value, true)?;
+                                }
+                            }
+                            LeftOperand::Attribute(attribute) => {
+                                execution.write_attribute(attribute, value)?;
+                            }
+                        }
+                    }
+                    Instruction::MakeRef => {
+                        let source = targets.pop().context("script target stack underflow")?;
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .variable
+                            .bind(&source.variable)?;
+                    }
+                    Instruction::MakeARef => {
+                        let attribute = pop(&mut stack)?.attributes()?;
+                        targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .variable
+                            .bind_attribute(attribute)?;
+                    }
+                    Instruction::Attribute(path, mode) => {
+                        let base = targets
+                            .pop()
+                            .context("script target stack underflow")?
+                            .variable
+                            .value()?
+                            .attributes()?;
+                        let segments = path
+                            .iter()
+                            .map(|access| -> Result<_> {
+                                Ok(match access {
+                                    Access::Literal(s) => (s.clone(), false),
+                                    Access::Dynamic(slot) => {
+                                        let value =
+                                            slot.variable(&locals, execution.state)?.load()?;
+                                        let key = value.clone().path_text()?;
+                                        // ADVANCE_AP and VERIFY_AP convert the key in EX.
+                                        // Assignment targets use ACCESS_VAR instead.
+                                        if !matches!(mode, AttributeMode::Write) {
+                                            let expression = if matches!(value, Value::Reference(_))
+                                            {
+                                                value
+                                            } else {
+                                                Value::String(key.clone())
+                                            };
+                                            execution.state.set_expression(expression);
+                                        }
+                                        (key, true)
+                                    }
+                                })
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        let attribute =
+                            base.walk(&segments, !matches!(mode, AttributeMode::Read))?;
+                        stack.push(match mode {
+                            AttributeMode::Read => Value::String(attribute.value()?),
+                            AttributeMode::Bind | AttributeMode::Write => {
+                                Value::AReference(Some(attribute))
+                            }
+                        });
+                    }
+                    Instruction::WriteAttribute => {
+                        let source = pop(&mut stack)?;
+                        let attribute = pop(&mut stack)?.attributes()?;
+                        execution.write_attribute(&attribute, source)?;
+                        left_operand = Some(LeftOperand::Attribute(attribute));
+                    }
+                    Instruction::Increment(decrement) => {
+                        let target = targets.pop().context("script target stack underflow")?;
+                        target.variable.increment(*decrement)?;
+                        left_operand = Some(LeftOperand::Variable(target.slot, target.index));
+                    }
+                    Instruction::Binary(op) => {
+                        let rhs = pop(&mut stack)?;
+                        let lhs = pop(&mut stack)?;
+                        stack.push(lhs.apply_binary(*op, rhs, &mut execution.fuel)?);
+                    }
+                    Instruction::CompareSwitch => {
+                        let case = pop(&mut stack)?;
+                        let selector = stack
+                            .last()
+                            .context("script switch stack underflow")?
+                            .clone();
+                        // Native STACK_COMPARE uses the case expression as the
+                        // left operand and retains the selector on SStack.
+                        stack.push(case.apply_binary(Op::Eq, selector, &mut execution.fuel)?);
+                    }
+                    Instruction::Negate => {
+                        let v = pop(&mut stack)?;
+                        stack.push(v.apply_negate()?);
+                    }
+                    Instruction::Not => {
+                        let v = pop(&mut stack)?;
+                        ensure!(
+                            !matches!(v, Value::Reference(_)),
+                            "logical negation on ref is invalid in DATA::Neg"
+                        );
+                        stack.push(v.not()?);
+                    }
+                    Instruction::Drop => {
+                        pop(&mut stack)?;
+                    }
+                    Instruction::Jump(target) => ip = *target,
+                    Instruction::JumpFalse(target, retain) => {
+                        let value = pop(&mut stack)?;
+                        if let Some(slot) = retain {
+                            if *slot >= if_conditions.len() {
+                                if_conditions.resize_with(*slot + 1, || None);
+                            }
+                            if_conditions[*slot] = Some(value.clone());
+                        }
+                        execution.state.set_expression(value);
+                        if execution.state.expression_condition()? == 0 {
+                            ip = *target;
+                        }
+                    }
+                    Instruction::RestoreExpression(slot) => {
+                        let value = if_conditions[*slot]
+                            .take()
+                            .context("script if condition was not retained")?;
+                        execution.state.set_expression(value);
+                    }
+                    Instruction::JumpIfExpressionNonZero(target) => {
+                        if execution.state.expression_condition()? != 0 {
+                            ip = *target;
+                        }
+                    }
+                    Instruction::Short(target, when_true) => {
+                        let value = stack
+                            .last_mut()
+                            .context("script condition stack underflow")?;
+                        execution.state.set_expression(value.clone());
+                        if (execution.state.expression_condition()? != 0) == *when_true {
+                            *value = value.bool_convert()?;
+                            ip = *target;
+                        }
+                    }
+                    Instruction::Call(_, count, _) | Instruction::DynamicCall(_, count) => {
+                        ensure!(stack.len() >= *count, "script argument stack underflow");
+                        let args = stack.split_off(stack.len() - count);
+                        let dynamic_name;
+                        let callee = match &located.op {
+                            Instruction::Call(callee, _, _) => callee,
+                            Instruction::DynamicCall(slot, _) => {
+                                // CALL reads the name after evaluating the
+                                // arguments, including any mutations they make.
+                                let Value::String(name) =
+                                    slot.variable(&locals, execution.state)?.value()?
+                                else {
+                                    bail!("dynamic call requires a string variable");
+                                };
+                                dynamic_name = name.to_ascii_lowercase();
+                                &dynamic_name
+                            }
+                            _ => unreachable!(),
+                        };
+                        let result = self.invoke(callee, &args, execution, depth + 1)?;
+                        if matches!(&located.op, Instruction::DynamicCall(..)) {
+                            execution
+                                .state
+                                .set_expression(Value::Int(i32::from(result.kind() != Type::Void)));
+                        }
+                        stack.push(result);
+                    }
+                    Instruction::Return(value, switch_depth) => {
+                        ensure!(
+                            *value == (function.returns != Type::Void),
+                            "{name} return value presence does not match declaration"
+                        );
+                        let mut result = if *value {
+                            let result = pop(&mut stack)?;
+                            execution.state.set_expression(result.clone());
+                            result
+                        } else {
+                            Value::Void
+                        };
+                        // The retained FUNCTION_RETURN permits exactly this
+                        // implicit mismatch, keeping the low int32 bits.
+                        if function.returns == Type::Int && result.kind() == Type::Ptr {
+                            result = result.convert(Type::Int)?;
+                        }
+                        ensure!(
+                            result.kind() == function.returns,
+                            "{name} return type mismatch: expected {:?}, got {:?}",
+                            function.returns,
+                            result.kind()
+                        );
+                        ensure!(
+                            stack.len() == *switch_depth && targets.is_empty(),
+                            "script return stack is not balanced"
+                        );
+                        return Ok(Some(result));
+                    }
+                }
+                ensure!(
+                    stack.len() + targets.len() <= execution.limits.stack,
+                    "script operand stack limit"
+                );
+                Ok(None)
+            })();
+            if let Some(value) = result.with_context(|| {
+                format!(
+                    "{name} {}:{}:{}",
+                    located.file, located.line, located.column
+                )
+            })? {
+                return Ok(value);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod object_tests;
+#[cfg(test)]
+mod storage_tests;
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod address_tests;
+#[cfg(test)]
+mod source_tests;

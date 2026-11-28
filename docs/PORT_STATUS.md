@@ -1,0 +1,109 @@
+# Port status estimate
+
+Planning snapshot, 2026-11-05, after shared native window/TIMER integration:
+
+| Target | Approximate functional coverage |
+| --- | --- |
+| Native engine capable of running the complete original game on macOS, Windows and Linux, including land gameplay | About 20% (rough range 15–25%) |
+| Ship presentation and sailing demonstration, including remaining polish and platform verification | About 70% |
+
+These are subjective estimates of functional scope with substantial uncertainty,
+not measurements of files, lines, tests or elapsed work. The denominator is the
+complete original game running through the Rust engine with its original assets
+and scripts. The full-game estimate gives considerable weight to the large
+subsystems still pending; completing a ship milestone does not imply a fixed
+percentage gain. About 80% of that scope remains, with the same uncertainty.
+The [latest native-window validation](NATIVE_WINDOW.md#four-host-evidence-2026-11-05)
+passes Windows, Linux and both macOS architectures: 429 CPU tests per host,
+26 Linux Vulkan tests, the actual shared-engine window, four verified ZIP digests,
+144 exact scenario reports and four unchanged startup traces. Physical
+GPU/input/audio and full original gameplay remain separate acceptance work.
+
+The [milestone checklist](RUST_PORT.md#milestones) and reproducible checks describe
+the actual implemented scope.
+
+Working foundations include native builds, GPU rendering, original ship assets,
+sail sets/rigging/flags and damage presentation, entities, messages, attribute
+trees and a bounded source-language runtime with events, persistent globals,
+one-dimensional arrays and bounded multi-file source loading. Retained native
+ship movement, rocking, sail drive, rolling, cloth and rope-constraint arithmetic
+now have reference comparisons; their surrounding services remain incomplete.
+Original resources have been exercised on all 40 available ship roots. CI covers
+Windows, Linux and both macOS architectures; physical GPU coverage remains
+limited. The [latest static-model validation](STATIC_MODELS.md#platform-evidence-and-hosted-arm-gap-2026-11-02)
+checks 424 CPU tests on Windows, Linux and macOS Intel, 108 exact reports and three
+startup traces. Hosted ARM execution is unavailable because no runner was
+acquired on either attempt; the overall run is not green. The exact source and
+all ten test executables cross-build/link for ARM locally, without execution.
+The preceding shared-runtime increment retains its separate four-host evidence.
+Production window/sea/camera, full model/geometry/lighting, language/API,
+controls/audio and state loading remain pending. These checks establish the
+documented scope, not a percentage of the engine.
+
+The [weather-attribute increment](SEA_WEATHER.md) now adds original numeric
+amplitude/animation/movement controls and stop/resume through a script/entity
+fixture. This is another bounded integration step; full weather and native
+entity/camera scheduling remain pending.
+
+The [camera/stage increment](SEA_STAGES.md) adds native view extraction and
+Execute-before-Realize numerical timing through a bounded entity adapter.
+Original global entity/camera integration and sea rendering remain pending.
+
+The [shared ship-dispatch increment](SHIP_STAGES.md) runs retained movement and
+rocking inside actual ship Execute callbacks, with native priorities and deferred
+registry cleanup. Numeric input/output and model presentation remain preview
+bridges; full mount/destructor services and global entity integration are pending.
+
+The [ship-cleanup increment](SHIP_CLEANUP.md) adds checked destructor callbacks,
+native request ownership/order, logical group deletion and cascading registry
+release. Preview particle/sail ownership follows those requests. Geometry
+destruction, service buffer compaction and complete Mount remain pending.
+
+The [rigging-compaction library](RIG_COMPACTION.md) adds retained layout /
+buffer-replacement rules and a tested wgpu storage port. Original geometry fills,
+full group payloads and live service/render integration remain pending.
+
+The [static MODELR path](STATIC_MODELS.md) connects original geometry/transform /
+texture-prefix messages to real GPU draws through the shared host. Complete
+MODELR/NODER, native camera/sea, lighting/materials, animation and gameplay remain
+pending; this does not establish a playable land location.
+
+The [desktop window/TIMER path](NATIVE_WINDOW.md) drives that same host and real
+model draws, retains timing/config/close boundaries and handles portable surface
+lifetime. Full controls/audio, native camera/sea and original game startup remain
+pending. Hosted ARM execution has the separate documented capacity gap.
+
+The immediate shared-foundation priority is an actual runtime host and engine
+entry point: rooted game access, configuration, original script entry/events,
+native class/layer bindings and common frame scheduling. The
+[initial shared host](ENGINE_RUNTIME.md) now has a separate headless
+`storm-engine` entry point; production window/services and complete game startup
+remain pending. This host must feed both sea and land gameplay.
+The [integrated marine checkpoint](MARINE_INTEGRATION.md) remains the first
+playable target: original sea/coupled simulation and one naval encounter before
+the first land location. Shared character/deck/boarding, interface, audio and
+save systems span both environments. This sequencing update does not change
+the coverage estimate.
+
+## Scope still to cover
+
+| Area | Current position |
+| --- | --- |
+| Shared engine foundation, formats and scripts | Implemented in bounded slices; complete script programs, native classes and API remain pending. |
+| Ship display and sailing | An extensive demo and growing native numeric ports; complete sea, combat, AI and game service integration remain pending. |
+| Land locations: towns, jungle and interiors | No playable location-loading/movement loop yet. GM/TX and animation readers are reusable foundations. |
+| Player characters, NPCs and land combat | Movement, collision/navigation, interactions, combat and AI remain pending. Animated deck-crew previews do not establish these systems. |
+| Player movement on decks and boarding | Playable deck movement, transitions and boarding combat remain pending. |
+| Weather and time of day | [Separate unfinished milestone](WEATHER_ROADMAP.md), including sky, fog, rain, storms and gameplay integration. |
+| Interface, audio and save/load | Complete native services and their connection to original game scripts remain pending. |
+| Complete game and platform acceptance | Original startup/gameplay/save-resume loops and representative physical GPU/input checks across all targets remain pending. |
+
+The largest remaining blocks are complete source/module loading and language
+support, the original native game API and handlers, locations and their collision,
+interface, sea/land gameplay and AI, complete animation/audio, save/load and
+representative end-to-end gameplay on all target platforms. The default diagnostic sea is a prototype;
+the opt-in scalar SEA pipeline retains original numeric behavior through
+explicit frame, weather/camera and scheduling providers. Complete original sea
+rendering and service integration remain pending. The full original game cannot yet be
+launched through the Rust implementation. The ship-demo estimate must not be
+used as the completion estimate for naval gameplay, land gameplay or the engine.
