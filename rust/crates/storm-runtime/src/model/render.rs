@@ -4,8 +4,8 @@ use storm_render::{
     Frame, Gpu,
     model::{
         AstronomyRenderer, Atmosphere, CelestialDraw, CoastFoamDraw, CoastFoamRenderer,
-        MAX_CONFIGURED_SCENES, ModelScene, OceanRenderer, OrbitCamera, RainDraw, RainRenderer,
-        SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer, native_model_matrix,
+        LightningDraw, MAX_CONFIGURED_SCENES, ModelScene, OceanRenderer, OrbitCamera, RainDraw,
+        RainRenderer, SailWind, SkyDraw, SkyRenderer, SunDraw, SunRenderer, native_model_matrix,
     },
 };
 
@@ -23,6 +23,7 @@ pub struct ModelScenes {
     coast_foam: Option<CoastFoamRenderer>,
     rain: Option<RainRenderer>,
     sun: Option<SunRenderer>,
+    lightning: Option<SunRenderer>,
     astronomy: Option<AstronomyRenderer>,
     sky: Option<SkyRenderer>,
 }
@@ -31,6 +32,7 @@ pub struct AtmosphereDraws<'a> {
     pub coast_foam: &'a [CoastFoamDraw],
     pub rain: &'a [RainDraw],
     pub sun: &'a [SunDraw],
+    pub lightning: &'a [LightningDraw],
     pub astronomy: &'a [CelestialDraw],
     pub sky: Option<&'a SkyDraw>,
 }
@@ -83,6 +85,7 @@ impl ModelScenes {
             coast_foam: None,
             rain: None,
             sun: None,
+            lightning: None,
             astronomy: None,
             sky: None,
         }
@@ -300,6 +303,7 @@ impl ModelScenes {
             coast_foam,
             rain,
             sun,
+            lightning,
             astronomy,
             sky,
         }: AtmosphereDraws<'_>,
@@ -345,6 +349,13 @@ impl ModelScenes {
                 sun,
             )
         });
+        let lightning = (!lightning.is_empty()).then(|| {
+            (
+                self.lightning
+                    .get_or_insert_with(|| SunRenderer::new(gpu, self.format)),
+                lightning,
+            )
+        });
         let astronomy = (!astronomy.is_empty()).then(|| {
             (
                 self.astronomy
@@ -375,6 +386,7 @@ impl ModelScenes {
                 coast_foam,
                 rain,
                 sun,
+                lightning,
                 astronomy,
                 sky,
             },

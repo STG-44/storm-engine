@@ -51,6 +51,7 @@ pub struct NativeHost {
     pub(crate) weather: Option<crate::weather::Weather>,
     pub(crate) flags: Option<crate::flag::Flags>,
     pub(crate) rain: Option<crate::rain::Rain>,
+    pub(crate) lightning: Option<crate::lightning::Lightning>,
     pub(crate) sun_glow: Option<crate::sun_glow::SunGlow>,
     pub(crate) astronomy: Option<crate::astronomy::Astronomy>,
     pub(crate) skies: Option<crate::sky::Skies>,
@@ -101,6 +102,7 @@ impl NativeHost {
             weather: None,
             flags: None,
             rain: None,
+            lightning: None,
             sun_glow: None,
             astronomy: None,
             skies: None,
@@ -203,6 +205,11 @@ impl NativeHost {
         self.astronomy
             .as_ref()
             .map_or_else(Vec::new, |astronomy| astronomy.draws())
+    }
+    pub fn lightning_draws(&self) -> Vec<storm_render::model::LightningDraw> {
+        self.lightning
+            .as_ref()
+            .map_or_else(Vec::new, |lightning| lightning.draws())
     }
     pub fn sky_draw(&self) -> Option<storm_render::model::SkyDraw> {
         self.skies.as_ref()?.draw()

@@ -453,9 +453,16 @@ setup. The original `InitInterface` opens `mainmenu.ini` through
 The pinned startup rendered the menu with its logo, items and Cyrillic
 version string on Metal at 1280 × 720. Add `--headless menu.png --width 1280
 --height 720` to the startup command above to capture the final frame.
-A randomly selected thunderstorm can stop earlier at the missing
-`Lightning` class in `weather/whrlightning.c:34`. These probes use the
-original source files as supplied.
+The original `Lightning` class loads the authored bolt atlas and flash
+texture. It handles the original strike message, advances the flicker
+mask and fade in Execute, and draws the depth-tested bolt and additive
+flash in Realize. The original script still schedules strikes and selects
+when to play the thunder alias. The WAV requests reach the desktop
+stereo mixer. Positional playback, collision attenuation of the flash,
+and lightning in the sea reflection pass remain pending.
+A Metal run with menu weather preset 25 reaches the original main menu.
+An isolated Metal capture also renders the original bolt and flash
+textures and starts a desktop voice from the original thunder alias.
 
 A keyboard replay selected New Game and activated it with Space. The
 original `InterfaceDoExit` destroyed the menu scene and recreated

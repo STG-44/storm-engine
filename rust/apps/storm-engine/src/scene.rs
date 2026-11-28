@@ -2,7 +2,9 @@
 use anyhow::{Result, ensure};
 use std::rc::Rc;
 use storm_core::EntityId;
-use storm_render::model::{CelestialDraw, CoastFoamDraw, OrbitCamera, RainDraw, SkyDraw, SunDraw};
+use storm_render::model::{
+    CelestialDraw, CoastFoamDraw, LightningDraw, OrbitCamera, RainDraw, SkyDraw, SunDraw,
+};
 use storm_render::{
     Frame, Gpu,
     color::{ColorCorrection, ColorPass},
@@ -30,6 +32,7 @@ pub(crate) struct SceneFrame<'a> {
     pub coast_foam: Vec<CoastFoamDraw>,
     pub rain: Vec<RainDraw>,
     pub sun: Vec<SunDraw>,
+    pub lightning: Vec<LightningDraw>,
     pub astronomy: Vec<CelestialDraw>,
     pub sky: Option<SkyDraw>,
 }
@@ -123,6 +126,7 @@ impl SceneRenderer {
             coast_foam: host.coast_foam_draws(),
             rain: host.rain_draws(),
             sun: host.sun_draws(),
+            lightning: host.lightning_draws(),
             astronomy: host.astronomy_draws(),
             sky: host.sky_draw(),
         };
@@ -163,6 +167,7 @@ impl SceneRenderer {
                 if frame.sea.is_some()
                     || !frame.rain.is_empty()
                     || !frame.sun.is_empty()
+                    || !frame.lightning.is_empty()
                     || !frame.astronomy.is_empty()
                     || frame.sky.is_some()
                 {
@@ -177,6 +182,7 @@ impl SceneRenderer {
                             coast_foam: &frame.coast_foam,
                             rain: &frame.rain,
                             sun: &frame.sun,
+                            lightning: &frame.lightning,
                             astronomy: &frame.astronomy,
                             sky: frame.sky.as_ref(),
                         },

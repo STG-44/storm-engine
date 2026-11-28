@@ -15,7 +15,9 @@ pub use rain::{RainBlock, RainDraw, RainRenderer};
 mod sky;
 pub use sky::{SkyDraw, SkyFaces, SkyRenderer, sky_fog_positions};
 mod sun_glow;
-pub use sun_glow::{Flare, FlareDraw, OverflowDraw, SunDraw, SunRenderer, SunSprite};
+pub use sun_glow::{
+    Flare, FlareDraw, LightningDraw, OverflowDraw, SunDraw, SunRenderer, SunSprite,
+};
 mod particle_replay;
 mod particle_world;
 pub use particle_world::WorldEmitter;
@@ -585,6 +587,7 @@ pub struct Atmosphere<'a> {
     pub coast_foam: Option<(&'a mut CoastFoamRenderer, &'a [CoastFoamDraw])>,
     pub rain: Option<(&'a mut RainRenderer, &'a [RainDraw])>,
     pub sun: Option<(&'a mut SunRenderer, &'a [SunDraw])>,
+    pub lightning: Option<(&'a mut SunRenderer, &'a [LightningDraw])>,
     pub astronomy: Option<(&'a mut AstronomyRenderer, &'a [CelestialDraw])>,
     pub sky: Option<(&'a mut SkyRenderer, &'a SkyDraw)>,
 }
@@ -1362,6 +1365,7 @@ impl ModelScene {
             coast_foam,
             mut rain,
             mut sun,
+            mut lightning,
             mut astronomy,
             mut sky,
         }: Atmosphere<'_>,
@@ -1376,6 +1380,7 @@ impl ModelScene {
             && matches!(&water, Water::None)
             && rain.is_none()
             && sun.is_none()
+            && lightning.is_none()
             && astronomy.is_none()
             && sky.is_none()
         {
@@ -1480,6 +1485,20 @@ impl ModelScene {
                 atmosphere_depth && rain.is_none() && sun.is_none() && astronomy.is_none(),
             )?;
         }
+        if let Some((renderer, draws)) = &mut lightning {
+            renderer.prepare_lightning(
+                gpu,
+                [width, height],
+                seconds,
+                camera,
+                draws,
+                atmosphere_depth
+                    && rain.is_none()
+                    && sun.is_none()
+                    && astronomy.is_none()
+                    && sky.is_none(),
+            )?;
+        }
         let depth = if let Some(scene) = scenes.first() {
             &scene.depth
         } else if let Water::Configured(renderer, _) = &water {
@@ -1490,10 +1509,13 @@ impl ModelScene {
             renderer.depth().expect("prepared sun depth")
         } else if let Some((renderer, _)) = &astronomy {
             renderer.depth().expect("prepared astronomy depth")
+        } else if let Some((renderer, _)) = &sky {
+            renderer.depth().expect("prepared sky depth")
         } else {
-            sky.as_ref()
+            lightning
+                .as_ref()
                 .and_then(|(renderer, _)| renderer.depth())
-                .expect("prepared sky depth")
+                .expect("prepared lightning depth")
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Original model and water"),
@@ -1555,6 +1577,10 @@ impl ModelScene {
             }
         }
         if let Some((renderer, _)) = &sun {
+            renderer.encode(&mut pass, false);
+        }
+        if let Some((renderer, _)) = &lightning {
+            renderer.encode(&mut pass, true);
             renderer.encode(&mut pass, false);
         }
         if let Some((renderer, _)) = &rain {

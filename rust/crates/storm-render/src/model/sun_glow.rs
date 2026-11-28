@@ -19,6 +19,18 @@ pub struct SunDraw {
 }
 
 #[derive(Clone)]
+pub struct LightningDraw {
+    pub bolt: Option<Rc<Texture>>,
+    pub flash: Option<Rc<Texture>>,
+    pub position: [f32; 3],
+    pub bolt_size: [f32; 2],
+    pub flash_size: f32,
+    pub tile: u32,
+    pub tiles: [u32; 2],
+    pub intensity: u8,
+}
+
+#[derive(Clone)]
 pub struct SunSprite {
     pub texture: Rc<Texture>,
     pub size: f32,
@@ -67,11 +79,12 @@ struct Batch {
 
 struct Billboard {
     center: Vec3,
-    size: f32,
+    size: [f32; 2],
     angle: f32,
     color: [u8; 3],
     uv: [f32; 4],
     horizon: bool,
+    background: bool,
 }
 
 struct View {
@@ -101,22 +114,31 @@ impl View {
 
     fn project(&self, billboard: &Billboard) -> [Vertex; 6] {
         let (sin, cos) = billboard.angle.sin_cos();
-        let right = billboard.size * (self.right * cos + self.up * sin);
-        let up = billboard.size * (self.up * cos - self.right * sin);
+        let (right, up) = if billboard.background {
+            (self.right, self.up)
+        } else {
+            let transpose = self.projection.transpose();
+            (
+                transpose.x_axis.truncate().normalize(),
+                transpose.y_axis.truncate().normalize(),
+            )
+        };
+        let right_offset = billboard.size[0] * (right * cos + up * sin);
+        let up_offset = billboard.size[1] * (up * cos - right * sin);
         let [u0, v0, u1, v1] = billboard.uv;
         let [r, g, b] = billboard.color;
         let corners = [
-            (-right + up, [u0, v0]),
-            (-right - up, [u0, v1]),
-            (right - up, [u1, v1]),
-            (right + up, [u1, v0]),
+            (-right_offset + up_offset, [u0, v0]),
+            (-right_offset - up_offset, [u0, v1]),
+            (right_offset - up_offset, [u1, v1]),
+            (right_offset + up_offset, [u1, v0]),
         ]
         .map(|(offset, uv)| {
             let world = billboard.center + offset;
             let mut clip = self.projection * world.extend(1.0);
-            // Keep celestial sprites at background depth while preserving
-            // their original projected size and horizon intersection.
-            clip.z = 0.999_999 * clip.w;
+            if billboard.background {
+                clip.z = 0.999_999 * clip.w;
+            }
             Vertex {
                 clip: clip.to_array(),
                 uv,
@@ -248,13 +270,63 @@ impl SunRenderer {
     ) -> Result<()> {
         ensure!(sun.len() <= 16, "sun glow scene draw limit");
         let view = View::new(camera, size, seconds)?;
+        self.clear();
+        for draw in sun {
+            self.prepare_draw(gpu, &view, draw, sky)?;
+        }
+        self.upload(gpu, size, standalone)
+    }
+
+    pub(super) fn prepare_lightning(
+        &mut self,
+        gpu: &Gpu,
+        size: [u32; 2],
+        seconds: f32,
+        camera: &OrbitCamera,
+        strikes: &[LightningDraw],
+        standalone: bool,
+    ) -> Result<()> {
+        ensure!(strikes.len() <= 128, "lightning scene draw limit");
+        let view = View::new(camera, size, seconds)?;
+        self.clear();
+        let deform_y = size[1] as f32 * 4.0 / (size[0] as f32 * 3.0);
+        for draw in strikes {
+            let [x, y, z] = draw.position;
+            let billboard = |[width, height]: [f32; 2], uv| Billboard {
+                center: Vec3::new(x, y, -z),
+                size: [width, height * deform_y],
+                angle: 0.0,
+                color: [draw.intensity; 3],
+                uv,
+                horizon: false,
+                background: false,
+            };
+            if let Some(bolt) = &draw.bolt {
+                let uv = atlas_uv(draw.tile, draw.tiles);
+                self.push(gpu, &view, bolt, billboard(draw.bolt_size, uv), true)?;
+            }
+            if let Some(flash) = &draw.flash {
+                let uv = [0.0, 0.0, 1.0, 1.0];
+                self.push(
+                    gpu,
+                    &view,
+                    flash,
+                    billboard([draw.flash_size; 2], uv),
+                    false,
+                )?;
+            }
+        }
+        self.upload(gpu, size, standalone)
+    }
+
+    fn clear(&mut self) {
         self.textures
             .retain(|(source, _)| source.strong_count() != 0);
         self.vertices.clear();
         self.batches.clear();
-        for draw in sun {
-            self.prepare_draw(gpu, &view, draw, sky)?;
-        }
+    }
+
+    fn upload(&mut self, gpu: &Gpu, size: [u32; 2], standalone: bool) -> Result<()> {
         if standalone && self.depth.as_ref().is_none_or(|(old, _)| *old != size) {
             self.depth = Some((size, depth_view(&gpu.device, size[0], size[1])));
         }
@@ -305,11 +377,12 @@ impl SunRenderer {
         let transmission = sky.map_or(1.0, |sky| sky.transmittance(center, view.eye));
         let sprite = |sprite: &SunSprite, alpha, angle, horizon| Billboard {
             center,
-            size: sprite.size,
+            size: [sprite.size; 2],
             angle,
             color: scaled(sprite.color, alpha),
             uv: [0.0, 0.0, 1.0, 1.0],
             horizon,
+            background: true,
         };
         if let Some(disc) = &draw.disc {
             self.push(gpu, view, &disc.texture, sprite(disc, 1.0, 0.0, true), true)?;
@@ -352,11 +425,12 @@ impl SunRenderer {
             for flare in &flares.entries {
                 let billboard = Billboard {
                     center: center + delta * (1.0 - flare.distance),
-                    size: flare.size * flares.scale,
+                    size: [flare.size * flares.scale; 2],
                     angle: 0.0,
                     color: scaled(flare.color, transmission * flares.alpha),
                     uv: atlas_uv(flare.tile, flares.grid),
                     horizon: false,
+                    background: true,
                 };
                 self.push(gpu, view, &flares.atlas, billboard, false)?;
             }
@@ -372,7 +446,12 @@ impl SunRenderer {
         quad: Billboard,
         depth_test: bool,
     ) -> Result<()> {
-        if !quad.size.is_finite() || quad.size <= 0.0 || quad.color == [0; 3] {
+        if quad
+            .size
+            .iter()
+            .any(|size| !size.is_finite() || *size <= 0.0)
+            || quad.color == [0; 3]
+        {
             return Ok(());
         }
         let source = Rc::downgrade(texture);

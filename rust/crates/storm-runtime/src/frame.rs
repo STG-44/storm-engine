@@ -506,6 +506,9 @@ impl Engine {
         if let Some(astronomy) = &self.host.astronomy {
             astronomy.begin_frame();
         }
+        if let Some(lightning) = &self.host.lightning {
+            lightning.begin_frame();
+        }
         if let Some(sky) = &self.host.skies {
             sky.begin_frame();
         }
@@ -593,6 +596,9 @@ impl Engine {
         }
         if let Some(astronomy) = &self.host.astronomy {
             astronomy.begin_frame();
+        }
+        if let Some(lightning) = &self.host.lightning {
+            lightning.begin_frame();
         }
         if let Some(sky) = &self.host.skies {
             sky.begin_frame();

@@ -24,6 +24,7 @@ const SCHEME_ADD: i32 = 77015;
 const ALIAS_ADD: i32 = 77017;
 const SET_MASTER_VOLUME: i32 = 77021;
 const GET_MASTER_VOLUME: i32 = 77022;
+const PCM_3D: i32 = 1;
 const STREAMED_STEREO: i32 = 2;
 const PCM_STEREO: i32 = 4;
 const MAX_VOICES: usize = 150;
@@ -332,7 +333,9 @@ impl State {
     fn try_play(&mut self, name: &str, args: Playback) -> Result<u32> {
         let slot = match args.kind {
             STREAMED_STEREO => self.next_music,
-            PCM_STEREO => {
+            // Scripted 3D WAV requests use the desktop stereo mixer until
+            // the positional listener is available.
+            PCM_3D | PCM_STEREO => {
                 let Some(slot) = (2..self.voices.len()).find(|&i| self.voices[i].is_none()) else {
                     return Ok(0);
                 };

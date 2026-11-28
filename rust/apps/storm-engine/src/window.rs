@@ -301,6 +301,7 @@ impl Application<'_> {
                     coast_foam: self.engine.host.coast_foam_draws(),
                     rain: self.engine.host.rain_draws(),
                     sun: self.engine.host.sun_draws(),
+                    lightning: self.engine.host.lightning_draws(),
                     astronomy: self.engine.host.astronomy_draws(),
                     sky: self.engine.host.sky_draw(),
                 };

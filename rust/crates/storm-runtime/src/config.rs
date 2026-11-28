@@ -155,6 +155,7 @@ impl Startup {
         crate::vant::register(&mut host, game.clone())?;
         crate::ship::Ships::register(&mut host)?;
         crate::rain::Rain::register(&mut host)?;
+        crate::lightning::Lightning::register(&mut host, game.clone())?;
         crate::sun_glow::SunGlow::register(&mut host, game.clone())?;
         crate::astronomy::Astronomy::register(&mut host, game.clone())?;
         crate::sky::Skies::register(&mut host, game.clone())?;

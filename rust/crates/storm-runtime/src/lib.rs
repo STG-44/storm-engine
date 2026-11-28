@@ -11,6 +11,7 @@ mod flag;
 mod frame;
 mod host;
 pub mod interface;
+mod lightning;
 mod locator;
 mod particles;
 mod rain;

@@ -167,6 +167,7 @@ fn main() -> Result<()> {
                                 coast_foam: engine.host.coast_foam_draws(),
                                 rain: engine.host.rain_draws(),
                                 sun: engine.host.sun_draws(),
+                                lightning: engine.host.lightning_draws(),
                                 astronomy: engine.host.astronomy_draws(),
                                 sky: engine.host.sky_draw(),
                             },
@@ -197,6 +198,7 @@ fn main() -> Result<()> {
                 coast_foam: engine.host.coast_foam_draws(),
                 rain: engine.host.rain_draws(),
                 sun: engine.host.sun_draws(),
+                lightning: engine.host.lightning_draws(),
                 astronomy: engine.host.astronomy_draws(),
                 sky: engine.host.sky_draw(),
             };

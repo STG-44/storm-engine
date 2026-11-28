@@ -31,6 +31,7 @@ fn configured_sound_routes_script_commands_through_the_stereo_mixer() -> Result<
         #event_handler("reset","Reset");
         #event_handler("stop_one","StopOne");
         #event_handler("stop_all","StopAll");
+        #event_handler("thunder","Thunder");
         void Main() {
             CreateEntity(&Sound,"SOUND");
             id = SendMessage(&Sound,"lsllll",77003,"music\tone.wav",4,1,0,1);
@@ -39,6 +40,9 @@ fn configured_sound_routes_script_commands_through_the_stereo_mixer() -> Result<
         void Reset() { SendMessage(&Sound,"l",77013); }
         void StopOne() { SendMessage(&Sound,"lll",77004,id,20); }
         void StopAll() { SendMessage(&Sound,"lll",77004,0,0); }
+        void Thunder() {
+            SendMessage(&Sound,"lsllllllfff",77003,"thunder",1,1,0,0,0,0,1000.0,590.0,1200.0);
+        }
         "#,
     )?;
     std::fs::write(
@@ -48,6 +52,10 @@ fn configured_sound_routes_script_commands_through_the_stereo_mixer() -> Result<
     std::fs::write(
         temp.0.join("RESOURCE/INI/Aliases/test.ini"),
         "[tone_alias]\nname=music\\tone.wav\n",
+    )?;
+    std::fs::write(
+        temp.0.join("RESOURCE/INI/Aliases/sound_alias.ini"),
+        "[thunder]\nname=music\\tone.wav\n",
     )?;
     let data_size = 4800u32 * 4;
     let mut wav = Vec::new();
@@ -108,7 +116,20 @@ fn configured_sound_routes_script_commands_through_the_stereo_mixer() -> Result<
     engine.frame(0)?;
     assert_eq!(count(), 0);
     // The audio callback observes stopped players on its next control tick.
-    assert!(samples.skip(500).take(500).all(|value| value == 0.0));
+    assert!(
+        samples
+            .by_ref()
+            .skip(500)
+            .take(500)
+            .all(|value| value == 0.0)
+    );
+    engine.emit_event("thunder", &mut message)?;
+    assert_eq!(count(), 1);
+    // The callback keeps polling when the queue is empty at a channel boundary.
+    let thunder_peak = (0..9600)
+        .filter_map(|_| samples.next())
+        .fold(0.0_f32, f32::max);
+    assert_eq!(thunder_peak, 0.25);
     engine.shutdown()?;
     Ok(())
 }

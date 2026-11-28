@@ -300,6 +300,83 @@ fn configured_astronomy_stages_the_catalog_and_planets_with_weather_fades() -> R
 }
 
 #[test]
+fn configured_lightning_uses_script_textures_and_retires_strikes() -> Result<()> {
+    let temp = Temporary::new()?;
+    let textures = temp.0.join("RESOURCE/Textures/Weather/Lightning");
+    std::fs::create_dir_all(&textures)?;
+    for (name, red) in [("Storm", 220), ("Flash", 160)] {
+        let mut bytes = [0u32, 1, 1, 1, 21, 4]
+            .into_iter()
+            .flat_map(u32::to_le_bytes)
+            .collect::<Vec<_>>();
+        bytes.extend([1, 2, red, 255]);
+        std::fs::write(textures.join(format!("{name}.tga.tx")), bytes)?;
+    }
+    std::fs::write(temp.0.join("engine.ini"), "run=main.c\n")?;
+    std::fs::write(
+        temp.0.join("main.c"),
+        r#"
+        object Lightning;
+        #event_handler("strike", "Strike");
+        #event_handler("clear", "Clear");
+        #event_handler("retire", "Retire");
+        void Main() {
+            CreateEntity(&Lightning, "Lightning");
+            Lightning.Texture = "Weather\\Lightning\\Storm.tga";
+            Lightning.Flash.Texture = "Weather\\Lightning\\Flash.tga.tx";
+            Lightning.SubTexX = 4;
+            Lightning.SubTexY = 1;
+            Lightning.isDone = "";
+            LayerAddObject(0, &Lightning, -2);
+            LayerAddObject(1, &Lightning, -2);
+            Strike();
+        }
+        void Strike() {
+            SendMessage(&Lightning, "llsflffffffsff", 54000, 3, "lightning", 0.045, 32,
+                600.0, 0.7, 1.0, 1000.0, 590.0, 1200.0, "flash_lightning", 1500.0, 0.0225);
+        }
+        void Clear() { Lightning.Clear = ""; }
+        void Retire() { DeleteClass(&Lightning); }
+        "#,
+    )?;
+    let game = GameDirectory::open(&temp.0)?;
+    let mut engine =
+        Startup::load(&game)?.engine(&game, ScriptEncoding::Utf8, NativeHost::new()?)?;
+    engine.frame(16)?;
+    let first = engine.host.lightning_draws();
+    assert_eq!(first.len(), 1);
+    let draw = &first[0];
+    assert_eq!(draw.position, [1000.0, 590.0, 1200.0]);
+    assert_eq!(draw.bolt_size, [420.0, 600.0]);
+    assert_eq!(draw.flash_size, 1500.0);
+    assert_eq!((draw.tile, draw.tiles, draw.intensity), (3, [4, 1], 255));
+    assert_eq!(&draw.bolt.as_ref().unwrap().mips[0].rgba[..3], &[220, 2, 1]);
+    assert_eq!(
+        &draw.flash.as_ref().unwrap().mips[0].rgba[..3],
+        &[160, 2, 1]
+    );
+    engine.frame(16)?;
+    assert!(engine.host.lightning_draws().is_empty());
+    engine.frame(25)?;
+    assert_eq!(engine.host.lightning_draws()[0].intensity, 191);
+    engine.frame(80)?;
+    assert!(engine.host.lightning_draws().is_empty());
+
+    let mut message = Message::new("", vec![])?;
+    engine.emit_event("strike", &mut message)?;
+    engine.frame(0)?;
+    assert_eq!(engine.host.lightning_draws().len(), 1);
+    engine.emit_event("clear", &mut message)?;
+    engine.frame(0)?;
+    assert!(engine.host.lightning_draws().is_empty());
+    engine.emit_event("strike", &mut message)?;
+    engine.emit_event("retire", &mut message)?;
+    engine.frame(0)?;
+    assert!(engine.host.lightning_draws().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_sun_glow_loads_original_texture_requests_and_switches_to_the_moon() -> Result<()> {
     let temp = Temporary::new()?;
     let textures = temp.0.join("RESOURCE/Textures/Weather");
