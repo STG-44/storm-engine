@@ -471,6 +471,10 @@ The keyboard replay advances eight frames after New Game and reaches the
 original character selection screen. A separate Metal capture runs
 `ShowConfirmWindow` in isolation with the original interface resources
 and shows its localized prompt and buttons over the dimmed screen.
+The original OK event calls `GetSymbol` during name validation. The
+interpreter reads a UTF-8 character by its zero-based index, including
+through a string reference. Profile folder checks and creation through
+the original interface library remain pending.
 
 The original difficulty handlers step through rates 2, 4, 6, 8, and 10.
 Rate 4 is the default and the fallback for invalid saved values.

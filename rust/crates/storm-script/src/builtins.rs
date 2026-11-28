@@ -5,6 +5,7 @@ pub(crate) fn signature(name: &str) -> Option<(usize, Type)> {
     Some(match name {
         "getengineversion" => (0, Type::Int),
         "strlen" => (1, Type::Int),
+        "getsymbol" => (2, Type::String),
         "strcut" => (3, Type::String),
         "findsubstr" => (3, Type::Int),
         "argb" => (4, Type::Int),
@@ -97,6 +98,20 @@ pub(crate) fn call(name: &str, arguments: &[Value]) -> Result<Value> {
     }
     if name == "strlen" {
         return Ok(Value::Int(value.text()?.len() as i32));
+    }
+    if name == "getsymbol" {
+        let text = value.text()?;
+        let Value::Int(index) = arguments[1].resolved()? else {
+            anyhow::bail!("GetSymbol requires an integer character index");
+        };
+        // FUNC_GETSYMBOL counts UTF-8 code points and returns an empty string
+        // for indices outside the string, including negative indices.
+        let symbol = usize::try_from(index)
+            .ok()
+            .and_then(|index| text.chars().nth(index));
+        return Ok(Value::String(
+            symbol.map_or_else(String::new, |symbol| symbol.to_string()),
+        ));
     }
     if name == "strcut" {
         let (Value::Int(start), Value::Int(end)) =

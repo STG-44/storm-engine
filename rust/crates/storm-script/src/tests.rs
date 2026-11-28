@@ -38,6 +38,28 @@ fn script_string_tests_use_byte_offsets_and_only_fold_ascii() -> Result<()> {
 }
 
 #[test]
+fn getsymbol_indexes_utf8_characters_through_string_references() -> Result<()> {
+    let program = Program::compile(
+        r#"
+        string Symbol(int index) {
+            string name = "Яé🦜Z";
+            return GetSymbol(&name, index);
+        }"#,
+    )?;
+    for (index, expected) in [(-1, ""), (0, "Я"), (1, "é"), (2, "🦜"), (3, "Z"), (4, "")] {
+        assert_eq!(
+            program.call("Symbol", &[Value::Int(index)], &mut (), Limits::default())?,
+            Value::String(expected.into())
+        );
+    }
+    assert_eq!(
+        eval("string", r#"getsymbol("",0)"#)?,
+        Value::String(String::new())
+    );
+    Ok(())
+}
+
+#[test]
 fn strcut_keeps_inclusive_byte_offsets_and_empty_invalid_ranges() -> Result<()> {
     for (expression, expected) in [
         (r#"strcut("Long Name",5,8)"#, "Name"),
